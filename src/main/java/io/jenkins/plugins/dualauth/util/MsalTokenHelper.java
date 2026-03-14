@@ -42,17 +42,20 @@ public class MsalTokenHelper {
     /**
      * Builds the Microsoft Azure AD authorization URL to redirect the user's browser to.
      *
-     * @param redirectUri  The registered redirect URI (finishLogin endpoint)
-     * @param state        A random nonce stored in the HTTP session for CSRF protection
-     * @return             The full authorization URL string
+     * @param redirectUri   The registered redirect URI (finishLogin endpoint)
+     * @param state         A random nonce stored in the HTTP session for CSRF protection
+     * @param codeChallenge BASE64URL(SHA-256(codeVerifier)) for PKCE
+     * @return              The full authorization URL string
      */
-    public String buildAuthorizationUrl(String redirectUri, String state) throws Exception {
+    public String buildAuthorizationUrl(String redirectUri, String state, String codeChallenge) throws Exception {
         Set<String> scopes = Collections.singleton(config.getScope());
 
         AuthorizationRequestUrlParameters params = AuthorizationRequestUrlParameters
                 .builder(redirectUri, scopes)
                 .responseMode(ResponseMode.QUERY)
                 .prompt(Prompt.SELECT_ACCOUNT)
+                .codeChallenge(codeChallenge)
+                .codeChallengeMethod("S256")
                 .state(state)
                 .build();
 
@@ -62,17 +65,20 @@ public class MsalTokenHelper {
     /**
      * Exchanges an OAuth2 authorization code for tokens.
      *
-     * @param authCode    The code received from Azure AD at the redirect URI
-     * @param redirectUri The same redirect URI used during the authorization request
-     * @return            The authentication result containing access token and ID token
+     * @param authCode     The code received from Azure AD at the redirect URI
+     * @param redirectUri  The same redirect URI used during the authorization request
+     * @param codeVerifier The original PKCE verifier generated during commenceLogin;
+     *                     Azure hashes this and checks it matches the earlier challenge
+     * @return             The authentication result containing access token and ID token
      */
-    public IAuthenticationResult exchangeCodeForTokens(String authCode, String redirectUri)
+    public IAuthenticationResult exchangeCodeForTokens(String authCode, String redirectUri, String codeVerifier)
             throws ExecutionException, InterruptedException {
         Set<String> scopes = Collections.singleton(config.getScope());
 
         AuthorizationCodeParameters params = AuthorizationCodeParameters
                 .builder(authCode, URI.create(redirectUri))
                 .scopes(scopes)
+                .codeVerifier(codeVerifier)
                 .build();
 
         return msalApp.acquireToken(params).get();

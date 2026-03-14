@@ -20,8 +20,12 @@ import org.springframework.security.core.userdetails.UserDetails;
 import jenkins.security.SecurityListener;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 import java.util.logging.Level;
@@ -44,8 +48,9 @@ public class DualAuthSecurityRealm extends HudsonPrivateSecurityRealm {
 
     private static final Logger LOGGER = Logger.getLogger(DualAuthSecurityRealm.class.getName());
 
-    static final String SESSION_OAUTH_STATE = "dualauth_oauth_state";
-    static final String SESSION_FROM_URL    = "dualauth_from_url";
+    static final String SESSION_OAUTH_STATE    = "dualauth_oauth_state";
+    static final String SESSION_FROM_URL       = "dualauth_from_url";
+    static final String SESSION_CODE_VERIFIER  = "dualauth_code_verifier";
 
     /** Azure AD configuration — may be null when Entra login is not yet configured. */
     private final EntraOAuthConfig entraConfig;
@@ -118,8 +123,20 @@ public class DualAuthSecurityRealm extends HudsonPrivateSecurityRealm {
             req.getSession().setAttribute(SESSION_FROM_URL, from);
         }
 
+        // PKCE — generate a cryptographically random code verifier and derive its challenge
+        // The verifier stays in the session; only the SHA-256 hash (challenge) goes to Azure.
+        // On token exchange, Azure re-hashes the verifier and compares — proving the same
+        // server that started the login is completing it.
+        byte[] verifierBytes = new byte[32];
+        new SecureRandom().nextBytes(verifierBytes);
+        String codeVerifier = Base64.getUrlEncoder().withoutPadding().encodeToString(verifierBytes);
+        byte[] challengeBytes = MessageDigest.getInstance("SHA-256")
+                .digest(codeVerifier.getBytes(StandardCharsets.US_ASCII));
+        String codeChallenge = Base64.getUrlEncoder().withoutPadding().encodeToString(challengeBytes);
+        req.getSession().setAttribute(SESSION_CODE_VERIFIER, codeVerifier);
+
         MsalTokenHelper helper = new MsalTokenHelper(entraConfig);
-        String authUrl = helper.buildAuthorizationUrl(buildRedirectUri(req), state);
+        String authUrl = helper.buildAuthorizationUrl(buildRedirectUri(req), state, codeChallenge);
 
         LOGGER.log(Level.FINE, "Redirecting to Azure AD for Entra login");
         return HttpResponses.redirectTo(authUrl);
@@ -153,9 +170,19 @@ public class DualAuthSecurityRealm extends HudsonPrivateSecurityRealm {
             return HttpResponses.error(400, "No authorization code received from Azure AD.");
         }
 
+        // PKCE — retrieve the verifier stored during commenceLogin and send it to Azure.
+        // Azure hashes it and checks it matches the challenge sent earlier. An attacker
+        // who intercepted the authorization code cannot exchange it without this verifier.
+        String codeVerifier = (String) req.getSession().getAttribute(SESSION_CODE_VERIFIER);
+        req.getSession().removeAttribute(SESSION_CODE_VERIFIER);
+        if (codeVerifier == null) {
+            LOGGER.log(Level.WARNING, "PKCE code verifier missing from session — possible session expiry");
+            return HttpResponses.redirectTo(Jenkins.get().getRootUrl() + "securityRealm/login?error=session");
+        }
+
         // Exchange code → tokens
         MsalTokenHelper helper = new MsalTokenHelper(entraConfig);
-        IAuthenticationResult result = helper.exchangeCodeForTokens(authCode, buildRedirectUri(req));
+        IAuthenticationResult result = helper.exchangeCodeForTokens(authCode, buildRedirectUri(req), codeVerifier);
 
         JWTClaimsSet claims = helper.parseIdToken(result.idToken());
         String oid   = MsalTokenHelper.getStringClaim(claims, "oid");
