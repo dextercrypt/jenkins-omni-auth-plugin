@@ -52,6 +52,7 @@ public class MsalTokenHelper {
         AuthorizationRequestUrlParameters params = AuthorizationRequestUrlParameters
                 .builder(redirectUri, scopes)
                 .responseMode(ResponseMode.QUERY)
+                .prompt(Prompt.SELECT_ACCOUNT)
                 .state(state)
                 .build();
 
