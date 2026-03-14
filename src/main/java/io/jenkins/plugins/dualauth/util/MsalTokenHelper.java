@@ -7,7 +7,8 @@ import com.nimbusds.jwt.JWTParser;
 import io.jenkins.plugins.dualauth.EntraOAuthConfig;
 
 import java.net.URI;
-import java.util.Collections;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.logging.Level;
@@ -48,7 +49,7 @@ public class MsalTokenHelper {
      * @return              The full authorization URL string
      */
     public String buildAuthorizationUrl(String redirectUri, String state, String codeChallenge) throws Exception {
-        Set<String> scopes = Collections.singleton(config.getScope());
+        Set<String> scopes = new HashSet<>(Arrays.asList(config.getScope().split("\\s+")));
 
         AuthorizationRequestUrlParameters params = AuthorizationRequestUrlParameters
                 .builder(redirectUri, scopes)
@@ -73,7 +74,7 @@ public class MsalTokenHelper {
      */
     public IAuthenticationResult exchangeCodeForTokens(String authCode, String redirectUri, String codeVerifier)
             throws ExecutionException, InterruptedException {
-        Set<String> scopes = Collections.singleton(config.getScope());
+        Set<String> scopes = new HashSet<>(Arrays.asList(config.getScope().split("\\s+")));
 
         AuthorizationCodeParameters params = AuthorizationCodeParameters
                 .builder(authCode, URI.create(redirectUri))
