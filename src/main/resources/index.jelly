@@ -1,0 +1,5 @@
+<?jelly escape-by-default='true'?>
+<div>
+  Provides dual authentication: native Jenkins username/password login
+  and Microsoft Entra (Azure AD) OAuth2/OIDC login, both available simultaneously.
+</div>

@@ -1,0 +1,19 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:f="/lib/form">
+
+  <!-- Native Jenkins user database — same config as HudsonPrivateSecurityRealm -->
+  <f:entry title="${%Allow users to sign up}" field="allowsSignup">
+    <f:checkbox/>
+  </f:entry>
+
+  <!-- Microsoft Entra / Azure AD section -->
+  <f:separator/>
+  <f:section title="Microsoft Entra (Azure AD)">
+    <f:block>
+      <p>Users can sign in with their Microsoft organizational account.
+         Entra users are automatically provisioned on first login.</p>
+    </f:block>
+    <f:property field="entraConfig"/>
+  </f:section>
+
+</j:jelly>

@@ -1,0 +1,2 @@
+_extends: .github
+tag-template: dual-auth-$NEXT_MINOR_VERSION
