@@ -7,6 +7,7 @@ import hudson.model.Descriptor;
 import hudson.model.User;
 import hudson.security.HudsonPrivateSecurityRealm;
 import hudson.security.SecurityRealm;
+import org.jenkinsci.Symbol;
 import io.jenkins.plugins.dualauth.util.GraphApiHelper;
 import io.jenkins.plugins.dualauth.util.MsalTokenHelper;
 import jenkins.model.Jenkins;
@@ -295,6 +296,7 @@ public class DualAuthSecurityRealm extends HudsonPrivateSecurityRealm {
     // -------------------------------------------------------------------------
 
     @Extension
+    @Symbol("dualAuth")
     public static final class DescriptorImpl extends Descriptor<SecurityRealm> {
 
         @Override

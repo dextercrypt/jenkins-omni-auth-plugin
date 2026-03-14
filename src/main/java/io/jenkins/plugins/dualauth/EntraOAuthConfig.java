@@ -5,6 +5,7 @@ import hudson.model.AbstractDescribableImpl;
 import hudson.model.Descriptor;
 import hudson.util.FormValidation;
 import hudson.util.Secret;
+import org.jenkinsci.Symbol;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
@@ -67,6 +68,7 @@ public class EntraOAuthConfig extends AbstractDescribableImpl<EntraOAuthConfig> 
     }
 
     @Extension
+    @Symbol("entraConfig")
     public static class DescriptorImpl extends Descriptor<EntraOAuthConfig> {
 
         @Override
