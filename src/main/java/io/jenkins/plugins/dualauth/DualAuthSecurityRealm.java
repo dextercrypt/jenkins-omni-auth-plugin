@@ -5,6 +5,7 @@ import com.nimbusds.jwt.JWTClaimsSet;
 import hudson.Extension;
 import hudson.model.Descriptor;
 import hudson.model.User;
+import hudson.security.GroupDetails;
 import hudson.security.HudsonPrivateSecurityRealm;
 import hudson.security.SecurityRealm;
 import org.jenkinsci.Symbol;
@@ -99,6 +100,24 @@ public class DualAuthSecurityRealm extends HudsonPrivateSecurityRealm {
             }
             throw e;
         }
+    }
+
+    /**
+     * Called by Jenkins when resolving a group name in the authorization matrix UI.
+     * When group sync is enabled, we accept any group name as valid so that admins
+     * can pre-add Azure AD group names to the Project Matrix before any member logs in —
+     * preventing the red strikethrough that would otherwise appear.
+     */
+    @Override
+    public GroupDetails loadGroupByGroupname2(String groupname, boolean fetchMembers)
+            throws org.springframework.security.core.userdetails.UsernameNotFoundException {
+        if (entraConfig != null && entraConfig.isEnableGroupSync()) {
+            return new GroupDetails() {
+                @Override
+                public String getName() { return groupname; }
+            };
+        }
+        throw new org.springframework.security.core.userdetails.UsernameNotFoundException(groupname);
     }
 
     // -------------------------------------------------------------------------
