@@ -1,4 +1,4 @@
-package io.jenkins.plugins.dualauth;
+package io.jenkins.plugins.omniauth;
 
 import hudson.Extension;
 import hudson.model.User;
@@ -15,7 +15,7 @@ import java.util.List;
  * Persisted to JENKINS_HOME/users/&lt;username&gt;/config.xml alongside the user record.
  * Used to re-link Entra users after Jenkins restarts without creating duplicates.
  */
-public class DualAuthUserProperty extends UserProperty {
+public class OmniAuthUserProperty extends UserProperty {
 
     /** Azure AD Object ID — stable, unique identifier across tenant changes / UPN renames. */
     private final String entraObjectId;
@@ -30,7 +30,7 @@ public class DualAuthUserProperty extends UserProperty {
     private List<String> cachedGroups;
 
     @DataBoundConstructor
-    public DualAuthUserProperty(String entraObjectId, String entraUpn) {
+    public OmniAuthUserProperty(String entraObjectId, String entraUpn) {
         this.entraObjectId = entraObjectId;
         this.entraUpn = entraUpn;
         this.cachedGroups = new ArrayList<>();
@@ -70,8 +70,8 @@ public class DualAuthUserProperty extends UserProperty {
 
         @Override
         public boolean isEnabled() {
-            // Only show this property when the DualAuthSecurityRealm is active
-            return hudson.model.Hudson.get().getSecurityRealm() instanceof DualAuthSecurityRealm;
+            // Only show this property when OmniAuthSecurityRealm is active
+            return hudson.model.Hudson.get().getSecurityRealm() instanceof OmniAuthSecurityRealm;
         }
 
         @Override

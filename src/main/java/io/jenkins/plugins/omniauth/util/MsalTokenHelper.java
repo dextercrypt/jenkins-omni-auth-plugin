@@ -1,10 +1,10 @@
-package io.jenkins.plugins.dualauth.util;
+package io.jenkins.plugins.omniauth.util;
 
 import com.microsoft.aad.msal4j.*;
 import com.nimbusds.jwt.JWT;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.JWTParser;
-import io.jenkins.plugins.dualauth.EntraOAuthConfig;
+import io.jenkins.plugins.omniauth.EntraOAuthConfig;
 
 import java.net.URI;
 import java.util.Arrays;

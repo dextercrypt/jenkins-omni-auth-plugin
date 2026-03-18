@@ -1,8 +1,8 @@
-package io.jenkins.plugins.dualauth.util;
+package io.jenkins.plugins.omniauth.util;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.jenkins.plugins.dualauth.EntraGroupDetails;
+import io.jenkins.plugins.omniauth.EntraGroupDetails;
 
 import java.io.IOException;
 import java.net.URI;

@@ -1,4 +1,4 @@
-package io.jenkins.plugins.dualauth;
+package io.jenkins.plugins.omniauth;
 
 import org.springframework.security.authentication.AbstractAuthenticationToken;
 

@@ -1,4 +1,4 @@
-package io.jenkins.plugins.dualauth;
+package io.jenkins.plugins.omniauth;
 
 import com.microsoft.aad.msal4j.IAuthenticationResult;
 import com.nimbusds.jwt.JWTClaimsSet;
@@ -9,8 +9,8 @@ import hudson.security.GroupDetails;
 import hudson.security.HudsonPrivateSecurityRealm;
 import hudson.security.SecurityRealm;
 import org.jenkinsci.Symbol;
-import io.jenkins.plugins.dualauth.util.GraphApiHelper;
-import io.jenkins.plugins.dualauth.util.MsalTokenHelper;
+import io.jenkins.plugins.omniauth.util.GraphApiHelper;
+import io.jenkins.plugins.omniauth.util.MsalTokenHelper;
 import jenkins.model.Jenkins;
 import net.sf.json.JSONObject;
 import org.kohsuke.stapler.*;
@@ -46,19 +46,19 @@ import java.util.logging.Logger;
  * All other SecurityRealm methods (createSecurityComponents, loadUserByUsername2,
  * allowsSignup, signup page, …) are inherited unchanged from the parent class.
  */
-public class DualAuthSecurityRealm extends HudsonPrivateSecurityRealm {
+public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
 
-    private static final Logger LOGGER = Logger.getLogger(DualAuthSecurityRealm.class.getName());
+    private static final Logger LOGGER = Logger.getLogger(OmniAuthSecurityRealm.class.getName());
 
-    static final String SESSION_OAUTH_STATE    = "dualauth_oauth_state";
-    static final String SESSION_FROM_URL       = "dualauth_from_url";
-    static final String SESSION_CODE_VERIFIER  = "dualauth_code_verifier";
+    static final String SESSION_OAUTH_STATE    = "omniauth_oauth_state";
+    static final String SESSION_FROM_URL       = "omniauth_from_url";
+    static final String SESSION_CODE_VERIFIER  = "omniauth_code_verifier";
 
     /** Azure AD configuration — may be null when Entra login is not yet configured. */
     private final EntraOAuthConfig entraConfig;
 
     @DataBoundConstructor
-    public DualAuthSecurityRealm(boolean allowsSignup, EntraOAuthConfig entraConfig) {
+    public OmniAuthSecurityRealm(boolean allowsSignup, EntraOAuthConfig entraConfig) {
         super(allowsSignup, false, null);   // enableCaptcha=false, captchaSupport=null
         this.entraConfig = entraConfig;
     }
@@ -74,7 +74,7 @@ public class DualAuthSecurityRealm extends HudsonPrivateSecurityRealm {
 
     /**
      * Points Stapler at our login.jelly, which lives in:
-     *   resources/io/jenkins/plugins/dualauth/DualAuthSecurityRealm/login.jelly
+     *   resources/io/jenkins/plugins/omniauth/OmniAuthSecurityRealm/login.jelly
      *
      * That file is an exact copy of Jenkins 2.541.2's login page with the
      * "Sign in with Microsoft" button added below the native login form.
@@ -276,14 +276,26 @@ public class DualAuthSecurityRealm extends HudsonPrivateSecurityRealm {
 
     private User getOrCreateEntraUser(String oid, String upn, String displayName,
                                       List<EntraGroupDetails> groups) throws IOException {
+        // Fast path: look up by UPN directly (UPN is the Jenkins user ID)
+        if (upn != null && !upn.isEmpty()) {
+            User existing = User.getById(upn, false);
+            if (existing != null) {
+                OmniAuthUserProperty prop = existing.getProperty(OmniAuthUserProperty.class);
+                if (prop != null && oid.equals(prop.getEntraObjectId())) {
+                    updateUserProperty(existing, oid, upn, groups);
+                    return existing;
+                }
+            }
+        }
+        // Slow path: UPN may have changed — scan all users by OID
         for (User u : User.getAll()) {
-            DualAuthUserProperty prop = u.getProperty(DualAuthUserProperty.class);
+            OmniAuthUserProperty prop = u.getProperty(OmniAuthUserProperty.class);
             if (prop != null && oid.equals(prop.getEntraObjectId())) {
                 updateUserProperty(u, oid, upn, groups);
                 return u;
             }
         }
-        // Use UPN (email) as Jenkins user ID so admins can pre-assign permissions by email
+        // New user — provision with UPN as Jenkins user ID
         String userId = (upn != null && !upn.isEmpty()) ? upn : oid;
         User newUser = User.getOrCreateByIdOrFullName(userId);
         newUser.setFullName(displayName != null ? displayName : upn);
@@ -294,7 +306,7 @@ public class DualAuthSecurityRealm extends HudsonPrivateSecurityRealm {
 
     private void updateUserProperty(User user, String oid, String upn,
                                     List<EntraGroupDetails> groups) throws IOException {
-        DualAuthUserProperty prop = new DualAuthUserProperty(oid, upn);
+        OmniAuthUserProperty prop = new OmniAuthUserProperty(oid, upn);
         prop.setGroupsLastSynced(Instant.now().toString());
         List<String> names = new ArrayList<>();
         for (EntraGroupDetails g : groups) names.add(g.getDisplayName());
@@ -315,12 +327,12 @@ public class DualAuthSecurityRealm extends HudsonPrivateSecurityRealm {
     // -------------------------------------------------------------------------
 
     @Extension
-    @Symbol("dualAuth")
+    @Symbol("omniAuth")
     public static final class DescriptorImpl extends Descriptor<SecurityRealm> {
 
         @Override
         public String getDisplayName() {
-            return "Jenkins' own user database + Microsoft Entra";
+            return "Jenkins' own user database + Microsoft Entra (Omni Auth)";
         }
 
         @Override
@@ -340,7 +352,7 @@ public class DualAuthSecurityRealm extends HudsonPrivateSecurityRealm {
                     entraConfig.setEnableGroupSync(entraData.optBoolean("enableGroupSync", false));
                 }
             }
-            return new DualAuthSecurityRealm(allowsSignup, entraConfig);
+            return new OmniAuthSecurityRealm(allowsSignup, entraConfig);
         }
     }
 }
