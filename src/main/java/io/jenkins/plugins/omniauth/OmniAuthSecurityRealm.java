@@ -53,6 +53,7 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
     static final String SESSION_OAUTH_STATE    = "omniauth_oauth_state";
     static final String SESSION_FROM_URL       = "omniauth_from_url";
     static final String SESSION_CODE_VERIFIER  = "omniauth_code_verifier";
+    static final String SESSION_NONCE          = "omniauth_nonce";
 
     /** Azure AD configuration — may be null when Entra login is not yet configured. */
     private final EntraOAuthConfig entraConfig;
@@ -155,8 +156,14 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
         String codeChallenge = Base64.getUrlEncoder().withoutPadding().encodeToString(challengeBytes);
         req.getSession().setAttribute(SESSION_CODE_VERIFIER, codeVerifier);
 
+        // Nonce — embedded in the ID token by Azure AD and validated on return.
+        // Prevents token replay attacks where an attacker tries to reuse a previously
+        // captured ID token to establish a new session.
+        String nonce = UUID.randomUUID().toString();
+        req.getSession().setAttribute(SESSION_NONCE, nonce);
+
         MsalTokenHelper helper = new MsalTokenHelper(entraConfig);
-        String authUrl = helper.buildAuthorizationUrl(buildRedirectUri(req), state, codeChallenge);
+        String authUrl = helper.buildAuthorizationUrl(buildRedirectUri(req), state, codeChallenge, nonce);
 
         LOGGER.log(Level.FINE, "Redirecting to Azure AD for Entra login");
         return HttpResponses.redirectTo(authUrl);
@@ -205,6 +212,17 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
         IAuthenticationResult result = helper.exchangeCodeForTokens(authCode, buildRedirectUri(req), codeVerifier);
 
         JWTClaimsSet claims = helper.parseIdToken(result.idToken());
+
+        // Nonce validation — confirm the ID token was issued for this exact login attempt.
+        // Azure AD embeds the nonce we sent in the token; we verify it matches what we stored.
+        String sessionNonce = (String) req.getSession().getAttribute(SESSION_NONCE);
+        req.getSession().removeAttribute(SESSION_NONCE);
+        String tokenNonce = MsalTokenHelper.getStringClaim(claims, "nonce");
+        if (sessionNonce == null || !sessionNonce.equals(tokenNonce)) {
+            LOGGER.log(Level.SEVERE, "ID token nonce mismatch — possible token replay attack, rejecting login");
+            return HttpResponses.error(400, "Authentication failed: nonce validation error.");
+        }
+
         String oid   = MsalTokenHelper.getStringClaim(claims, "oid");
         String upn   = MsalTokenHelper.getStringClaim(claims, "preferred_username");
         String name  = MsalTokenHelper.getStringClaim(claims, "name");

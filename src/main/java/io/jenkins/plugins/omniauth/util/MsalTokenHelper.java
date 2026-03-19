@@ -46,9 +46,10 @@ public class MsalTokenHelper {
      * @param redirectUri   The registered redirect URI (finishLogin endpoint)
      * @param state         A random nonce stored in the HTTP session for CSRF protection
      * @param codeChallenge BASE64URL(SHA-256(codeVerifier)) for PKCE
+     * @param nonce         A random value embedded in the ID token for replay attack prevention
      * @return              The full authorization URL string
      */
-    public String buildAuthorizationUrl(String redirectUri, String state, String codeChallenge) throws Exception {
+    public String buildAuthorizationUrl(String redirectUri, String state, String codeChallenge, String nonce) throws Exception {
         Set<String> scopes = new HashSet<>(Arrays.asList(config.getScope().split("\\s+")));
 
         AuthorizationRequestUrlParameters params = AuthorizationRequestUrlParameters
@@ -58,6 +59,7 @@ public class MsalTokenHelper {
                 .codeChallenge(codeChallenge)
                 .codeChallengeMethod("S256")
                 .state(state)
+                .nonce(nonce)
                 .build();
 
         return msalApp.getAuthorizationRequestUrl(params).toString();
