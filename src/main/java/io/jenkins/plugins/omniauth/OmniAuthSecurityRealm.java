@@ -11,6 +11,7 @@ import hudson.security.SecurityRealm;
 import org.jenkinsci.Symbol;
 import io.jenkins.plugins.omniauth.util.GraphApiHelper;
 import io.jenkins.plugins.omniauth.util.MsalTokenHelper;
+import io.jenkins.plugins.omniauth.util.TokenHelper;
 import jenkins.model.Jenkins;
 import net.sf.json.JSONObject;
 import org.kohsuke.stapler.*;
@@ -57,6 +58,19 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
 
     /** Azure AD configuration — may be null when Entra login is not yet configured. */
     private final EntraOAuthConfig entraConfig;
+
+    /**
+     * Cached MSAL4J helper — created once on first use and reused for all subsequent logins.
+     *
+     * Why transient: OmniAuthSecurityRealm is serialised by XStream for Jenkins config
+     * persistence. ConfidentialClientApplication (inside MsalTokenHelper) is not
+     * serialisable, so the field must be excluded from serialisation and rebuilt lazily
+     * after deserialisation.
+     *
+     * Why volatile: multiple browser sessions can trigger concurrent logins. volatile
+     * ensures the double-checked locking pattern below is safe on all JVMs (Java 5+).
+     */
+    private transient volatile TokenHelper cachedHelper;
 
     @DataBoundConstructor
     public OmniAuthSecurityRealm(boolean allowsSignup, EntraOAuthConfig entraConfig) {
@@ -127,9 +141,9 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
 
     /**
      * Step 1 — redirect browser to Azure AD login page.
-     * URL: GET /securityRealm/commenceLogin[?from=…]
+     * Called by OmniAuthRootAction at GET /omniauth/commenceLogin[?from=…]
      */
-    public HttpResponse doCommenceLogin(StaplerRequest req, StaplerResponse rsp)
+    HttpResponse startEntraLogin(StaplerRequest req)
             throws Exception {
         if (entraConfig == null) {
             return HttpResponses.error(503,
@@ -140,7 +154,7 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
         req.getSession().setAttribute(SESSION_OAUTH_STATE, state);
 
         String from = req.getParameter("from");
-        if (from != null && !from.isEmpty()) {
+        if (from != null && !from.isEmpty() && isSafeRedirectUrl(from)) {
             req.getSession().setAttribute(SESSION_FROM_URL, from);
         }
 
@@ -162,7 +176,7 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
         String nonce = UUID.randomUUID().toString();
         req.getSession().setAttribute(SESSION_NONCE, nonce);
 
-        MsalTokenHelper helper = new MsalTokenHelper(entraConfig);
+        TokenHelper helper = createMsalTokenHelper();
         String authUrl = helper.buildAuthorizationUrl(buildRedirectUri(req), state, codeChallenge, nonce);
 
         LOGGER.log(Level.FINE, "Redirecting to Azure AD for Entra login");
@@ -171,9 +185,9 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
 
     /**
      * Step 2 — Azure AD posts back with an authorization code.
-     * URL: GET /securityRealm/finishLogin?code=…&state=…
+     * Called by OmniAuthRootAction at GET /omniauth/finishLogin?code=…&state=…
      */
-    public HttpResponse doFinishLogin(StaplerRequest req, StaplerResponse rsp)
+    HttpResponse finishEntraLogin(StaplerRequest req)
             throws Exception {
         // CSRF: validate state nonce
         String returnedState = req.getParameter("state");
@@ -208,7 +222,7 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
         }
 
         // Exchange code → tokens
-        MsalTokenHelper helper = new MsalTokenHelper(entraConfig);
+        TokenHelper helper = createMsalTokenHelper();
         IAuthenticationResult result = helper.exchangeCodeForTokens(authCode, buildRedirectUri(req), codeVerifier);
 
         JWTClaimsSet claims = helper.parseIdToken(result.idToken());
@@ -333,11 +347,47 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
         user.save();
     }
 
+    /**
+     * Returns the shared MsalTokenHelper, creating it on first call (lazy init).
+     *
+     * ConfidentialClientApplication is designed to be long-lived and thread-safe — MSAL4J
+     * caches authority metadata, token cache, and discovery results on it. Creating a new
+     * instance per login throws all that away and re-runs the authority discovery call on
+     * every login. We create it once and reuse it for the lifetime of this realm instance.
+     *
+     * entraConfig is final, so the helper never goes stale. If an admin reconfigures the
+     * realm, Jenkins creates a new OmniAuthSecurityRealm instance, which gets a fresh helper.
+     *
+     * Overridden in tests to inject a fake helper without touching MSAL4J.
+     */
+    TokenHelper createMsalTokenHelper() throws Exception {
+        if (cachedHelper == null) {
+            synchronized (this) {
+                if (cachedHelper == null) {
+                    cachedHelper = new MsalTokenHelper(entraConfig);
+                }
+            }
+        }
+        return cachedHelper;
+    }
+
+    /**
+     * Returns true only for relative URLs that stay within this server.
+     * Rejects absolute URLs (http/https), protocol-relative URLs (//evil.com),
+     * and backslash paths (\evil.com) — all of which browsers treat as external redirects.
+     * Only paths starting with a single "/" are accepted as safe post-login destinations.
+     */
+    private static boolean isSafeRedirectUrl(String url) {
+        return url.startsWith("/")
+            && !url.startsWith("//")
+            && !url.startsWith("\\");
+    }
+
     private String buildRedirectUri(StaplerRequest req) {
         String root = Jenkins.get().getRootUrl();
         if (root == null) root = req.getRootPath() + "/";
         if (root.endsWith("/")) root = root.substring(0, root.length() - 1);
-        return root + "/securityRealm/finishLogin";
+        return root + "/omniauth/finishLogin";
     }
 
     // -------------------------------------------------------------------------

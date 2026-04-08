@@ -2,22 +2,22 @@
 <j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:f="/lib/form">
 
   <f:entry title="Tenant ID" field="tenantId"
-           help="/plugin/dual-auth/help/tenantId.html">
+           help="/plugin/omni-auth/help/tenantId.html">
     <f:textbox/>
   </f:entry>
 
   <f:entry title="Client ID" field="clientId"
-           help="/plugin/dual-auth/help/clientId.html">
+           help="/plugin/omni-auth/help/clientId.html">
     <f:textbox/>
   </f:entry>
 
   <f:entry title="Client Secret" field="clientSecret"
-           help="/plugin/dual-auth/help/clientSecret.html">
+           help="/plugin/omni-auth/help/clientSecret.html">
     <f:password/>
   </f:entry>
 
   <f:entry title="Enable Group Sync" field="enableGroupSync"
-           help="/plugin/dual-auth/help/enableGroupSync.html">
+           help="/plugin/omni-auth/help/enableGroupSync.html">
     <f:checkbox/>
   </f:entry>
 
@@ -25,7 +25,7 @@
     <div class="jenkins-alert jenkins-alert-info">
       <b>Required Azure AD App Registration settings:</b>
       <ul>
-        <li>Redirect URI: <code>${rootURL}/securityRealm/finishLogin</code></li>
+        <li>Redirect URI: <code>${rootURL}/omniauth/finishLogin</code></li>
         <li>API Permissions: <code>openid</code>, <code>profile</code>, <code>email</code> (delegated)</li>
         <li>If group sync enabled: <code>GroupMember.Read.All</code> (delegated, admin consent required)</li>
       </ul>

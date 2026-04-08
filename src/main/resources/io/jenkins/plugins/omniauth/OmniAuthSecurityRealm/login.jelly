@@ -119,9 +119,9 @@
                     <hr style="flex:1;border:none;border-top:1px solid var(--text-color-secondary,#888);"/>
                   </div>
 
-                  <j:set var="entraUrl" value="${rootURL}/securityRealm/commenceLogin"/>
+                  <j:set var="entraUrl" value="${rootURL}/omniauth/commenceLogin"/>
                   <j:if test="${from != null and from != ''}">
-                    <j:set var="entraUrl" value="${rootURL}/securityRealm/commenceLogin?from=${from}"/>
+                    <j:set var="entraUrl" value="${rootURL}/omniauth/commenceLogin?from=${from}"/>
                   </j:if>
 
                   <a href="${entraUrl}" style="

@@ -22,7 +22,7 @@ import java.util.logging.Logger;
  * - Exchange the authorization code for access + ID tokens
  * - Parse claims from the ID token JWT
  */
-public class MsalTokenHelper {
+public class MsalTokenHelper implements TokenHelper {
 
     private static final Logger LOGGER = Logger.getLogger(MsalTokenHelper.class.getName());
 
@@ -37,7 +37,9 @@ public class MsalTokenHelper {
         this.msalApp = ConfidentialClientApplication.builder(
                 config.getClientId(),
                 clientCredential
-        ).authority(config.getAuthority()).build();
+        ).authority(config.getAuthority())
+         .validateAuthority(true)
+         .build();
     }
 
     /**
@@ -49,6 +51,7 @@ public class MsalTokenHelper {
      * @param nonce         A random value embedded in the ID token for replay attack prevention
      * @return              The full authorization URL string
      */
+    @Override
     public String buildAuthorizationUrl(String redirectUri, String state, String codeChallenge, String nonce) throws Exception {
         Set<String> scopes = new HashSet<>(Arrays.asList(config.getScope().split("\\s+")));
 
@@ -74,6 +77,7 @@ public class MsalTokenHelper {
      *                     Azure hashes this and checks it matches the earlier challenge
      * @return             The authentication result containing access token and ID token
      */
+    @Override
     public IAuthenticationResult exchangeCodeForTokens(String authCode, String redirectUri, String codeVerifier)
             throws ExecutionException, InterruptedException {
         Set<String> scopes = new HashSet<>(Arrays.asList(config.getScope().split("\\s+")));
@@ -93,6 +97,7 @@ public class MsalTokenHelper {
      * @param idToken The raw JWT string from the authentication result
      * @return        Parsed JWT claims set
      */
+    @Override
     public JWTClaimsSet parseIdToken(String idToken) throws Exception {
         JWT jwt = JWTParser.parse(idToken);
         return jwt.getJWTClaimsSet();

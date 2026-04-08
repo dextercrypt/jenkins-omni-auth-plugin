@@ -1,8 +1,13 @@
 <div>
-  When enabled, Jenkins will call the <b>Microsoft Graph API</b> after each Entra login
-  to retrieve the user's current group memberships. These groups are available in
-  Jenkins' Matrix-based authorization strategy.
+  When enabled, Jenkins fetches the user's Azure AD <strong>group memberships</strong> on every login
+  and makes them available to Jenkins' authorization strategies (e.g. Matrix-based security).
   <br/><br/>
-  <b>Requires:</b> <code>GroupMember.Read.All</code> delegated permission with admin consent
-  on the Azure AD app registration.
+  <b>Requirements:</b>
+  <ul>
+    <li>Add <code>GroupMember.Read.All</code> as a <em>delegated</em> API permission on your app registration</li>
+    <li>Grant admin consent for that permission in Azure Portal</li>
+  </ul>
+  Group names in Jenkins must match the <b>display name</b> of the group exactly as it appears in Azure AD.
+  <br/><br/>
+  Leave unchecked if you only need single sign-on without group-based permissions.
 </div>

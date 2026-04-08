@@ -77,9 +77,20 @@ public class GraphApiHelper {
                 }
             }
 
-            // Follow pagination link if present
+            // Follow pagination link if present — validate it stays within the known
+            // Graph API base to prevent SSRF if the response body were ever tampered with.
             JsonNode nextLink = root.get("@odata.nextLink");
-            nextUrl = (nextLink != null && !nextLink.isNull()) ? nextLink.asText() : null;
+            if (nextLink != null && !nextLink.isNull()) {
+                String candidate = nextLink.asText();
+                if (candidate.startsWith(GRAPH_BASE)) {
+                    nextUrl = candidate;
+                } else {
+                    LOGGER.log(Level.WARNING, "Graph API nextLink rejected — unexpected URL: {0}", candidate);
+                    nextUrl = null;
+                }
+            } else {
+                nextUrl = null;
+            }
         }
 
         LOGGER.log(Level.FINE, "Graph API: found {0} group memberships", groups.size());
