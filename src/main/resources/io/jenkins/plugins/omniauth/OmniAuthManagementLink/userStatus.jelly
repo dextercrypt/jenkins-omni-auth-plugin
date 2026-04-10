@@ -13,9 +13,14 @@
         </div>
       </div>
 
-      <div style="padding: 16px;">
-        <p style="color: #6c757d;">
-          All Jenkins users. Status is based on login activity (last 30 days) and job triggers (last 90 days).
+      <div style="padding: 16px 24px;">
+
+        <j:set var="cfg" value="${it.omniAuthGlobalConfig}"/>
+
+        <p style="color: #6c757d; margin-bottom: 16px;">
+          All Jenkins users. Active = logged in within <strong>${cfg.activeThresholdDays} days</strong>.
+          Stale threshold is <strong>${cfg.staleThresholdDays} days</strong>.
+          Configure in <a href="settings">Settings</a>.
         </p>
 
         <j:set var="users" value="${it.userStatusList}"/>
@@ -44,7 +49,7 @@
                       <span style="background:#e8f0fe;color:#0078d4;padding:2px 8px;border-radius:4px;font-size:0.85em;">Entra</span>
                     </j:when>
                     <j:otherwise>
-                      <span style="background:#f0f0f0;color:#6c757d;padding:2px 8px;border-radius:4px;font-size:0.85em;">Legacy</span>
+                      <span style="background:#f0f0f0;color:#6c757d;padding:2px 8px;border-radius:4px;font-size:0.85em;">Native</span>
                     </j:otherwise>
                   </j:choose>
                 </td>
@@ -52,7 +57,15 @@
                 <td>
                   <j:choose>
                     <j:when test="${u.neverLoggedIn}"><em style="color:#6c757d;">Never</em></j:when>
-                    <j:otherwise>${u.lastLoginAt}</j:otherwise>
+                    <j:otherwise>
+                      <span style="display:inline-flex;align-items:center;gap:4px;">
+                        <span>${u.relativeLastLoginAt}</span>
+                        <span class="oau-info-wrap">
+                          <span class="oau-info-btn">i</span>
+                          <span class="oau-info-tip">${u.formattedLastLoginAt}</span>
+                        </span>
+                      </span>
+                    </j:otherwise>
                   </j:choose>
                 </td>
 
@@ -61,7 +74,13 @@
                     <j:when test="${u.neverTriggered}"><em style="color:#6c757d;">—</em></j:when>
                     <j:otherwise>
                       ${u.lastJobName}<br/>
-                      <small style="color:#6c757d;">${u.lastJobTriggeredAt}</small>
+                      <small style="color:#6c757d;display:inline-flex;align-items:center;gap:4px;">
+                        <span>${u.relativeLastJobTriggeredAt}</span>
+                        <span class="oau-info-wrap">
+                          <span class="oau-info-btn">i</span>
+                          <span class="oau-info-tip">${u.formattedLastJobTriggeredAt}</span>
+                        </span>
+                      </small>
                     </j:otherwise>
                   </j:choose>
                 </td>
@@ -93,6 +112,35 @@
           </tbody>
         </table>
       </div>
+
+      <style>
+        .oau-info-wrap {
+          position: relative; display: inline-flex; align-items: center;
+        }
+        .oau-info-btn {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 14px; height: 14px; border-radius: 50%;
+          background: var(--text-color-secondary, #6c757d); color: #fff;
+          font-size: 9px; font-weight: 700; font-style: normal;
+          cursor: default; user-select: none; flex-shrink: 0;
+          font-family: serif; line-height: 1;
+        }
+        .oau-info-tip {
+          display: none; position: absolute; bottom: calc(100% + 6px); left: 50%;
+          transform: translateX(-50%);
+          background: #333; color: #fff; font-size: 0.78em;
+          padding: 4px 8px; border-radius: 4px; white-space: nowrap;
+          z-index: 100; pointer-events: none;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+        }
+        .oau-info-tip::after {
+          content: ''; position: absolute; top: 100%; left: 50%;
+          transform: translateX(-50%);
+          border: 4px solid transparent; border-top-color: #333;
+        }
+        .oau-info-wrap:hover .oau-info-tip { display: block; }
+      </style>
+
     </l:main-panel>
   </l:layout>
 

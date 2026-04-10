@@ -478,15 +478,51 @@ public class OmniAuthManagementLink extends ManagementLink {
             this.status            = status;
         }
 
-        public String getUserId()             { return userId; }
-        public String getFullName()           { return fullName; }
-        public String getUserType()           { return userType; }
-        public String getLastLoginAt()        { return lastLoginAt; }
-        public String getLastJobName()        { return lastJobName; }
-        public String getLastJobTriggeredAt() { return lastJobTriggeredAt; }
-        public String getStatus()             { return status; }
-        public boolean isNeverLoggedIn()      { return lastLoginAt == null; }
-        public boolean isNeverTriggered()     { return lastJobName == null; }
+        public String getUserId()                    { return userId; }
+        public String getFullName()                  { return fullName; }
+        public String getUserType()                  { return userType; }
+        public String getLastLoginAt()               { return lastLoginAt; }
+        public String getLastJobName()               { return lastJobName; }
+        public String getLastJobTriggeredAt()        { return lastJobTriggeredAt; }
+        public String getStatus()                    { return status; }
+        public boolean isNeverLoggedIn()             { return lastLoginAt == null; }
+        public boolean isNeverTriggered()            { return lastJobName == null; }
+        public String getRelativeLastLoginAt()        { return relativeTime(lastLoginAt); }
+        public String getRelativeLastJobTriggeredAt() { return relativeTime(lastJobTriggeredAt); }
+        public String getFormattedLastLoginAt()       { return formatDate(lastLoginAt); }
+        public String getFormattedLastJobTriggeredAt(){ return formatDate(lastJobTriggeredAt); }
+    }
+
+    static String relativeTime(String isoStr) {
+        if (isoStr == null) return null;
+        try {
+            long diffSec = java.time.Duration.between(Instant.parse(isoStr), Instant.now()).getSeconds();
+            if (diffSec < 60)    return "just now";
+            if (diffSec < 3600)  return (diffSec / 60) + "m";
+            if (diffSec < 86400) return (diffSec / 3600) + "h";
+            long days = diffSec / 86400;
+            if (days < 30)  return days + "d";
+            if (days < 365) return (days / 30) + "mo";
+            return (days / 365) + "y";
+        } catch (Exception e) {
+            return isoStr;
+        }
+    }
+
+    static String formatDate(String isoStr) {
+        if (isoStr == null) return null;
+        try {
+            java.time.ZonedDateTime zdt = Instant.parse(isoStr)
+                    .atZone(java.time.ZoneId.systemDefault());
+            return String.format("%d %s %d, %02d:%02d",
+                    zdt.getDayOfMonth(),
+                    zdt.getMonth().getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.ENGLISH),
+                    zdt.getYear(),
+                    zdt.getHour(),
+                    zdt.getMinute());
+        } catch (Exception e) {
+            return isoStr;
+        }
     }
 
     public static final class UserInfo {

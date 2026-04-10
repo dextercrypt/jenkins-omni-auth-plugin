@@ -143,8 +143,15 @@
                   <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.8em; margin-bottom: 6px;">
                     Standard 5-field cron. Default: <code>0 2 * * 0</code> (02:00 every Sunday).
                   </div>
-                  <input type="text" name="cleanupCron" value="${cfg.cleanupCron}"
-                         class="jenkins-input" style="width: 200px;" placeholder="0 2 * * 0"/>
+                  <input type="text" name="cleanupCron" id="cleanupCron" value="${cfg.cleanupCron}"
+                         class="jenkins-input" style="width: 200px;" placeholder="0 2 * * 0"
+                         oninput="validateCron(this)"/>
+                  <div id="cronError" style="margin-top: 6px; font-size: 0.78em; color: #e74c3c; display: none;">
+                    Invalid cron — must be 5 fields: minute hour day month weekday (e.g. <code>0 2 * * 0</code>)
+                  </div>
+                  <div id="cronOk" style="margin-top: 6px; font-size: 0.78em; color: #27ae60; display: none;">
+                    Valid cron expression.
+                  </div>
                 </div>
 
                 <!-- Max deletions -->
@@ -167,6 +174,12 @@
                   </div>
                   <input type="email" name="cleanupNotifyEmail" value="${cfg.cleanupNotifyEmail}"
                          class="jenkins-input" style="width: 300px;" placeholder="admin@example.com"/>
+                  <div style="margin-top: 6px; font-size: 0.78em; color: #e67e22; display: flex; align-items: center; gap: 4px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    Email notifications are not yet implemented. This field is saved but no emails will be sent.
+                  </div>
                 </div>
 
               </div>
@@ -213,8 +226,24 @@
           fields.style.opacity       = enabled ? '1'  : '0.4';
           fields.style.pointerEvents = enabled ? ''   : 'none';
         }
+
+        function validateCron(input) {
+          var val    = input.value.trim();
+          var errEl  = document.getElementById('cronError');
+          var okEl   = document.getElementById('cronOk');
+          if (!val) { errEl.style.display = 'none'; okEl.style.display = 'none'; return; }
+          var parts  = val.split(/\s+/);
+          var valid  = parts.length === 5 && parts.every(function(p) {
+            return /^(\*|(\d+)(-\d+)?|\*\/\d+)$/.test(p);
+          });
+          errEl.style.display = valid ? 'none' : 'block';
+          okEl.style.display  = valid ? 'block' : 'none';
+        }
+
         // Init on load
         toggleCleanupFields();
+        var cronInput = document.getElementById('cleanupCron');
+        if (cronInput) validateCron(cronInput);
       //]]></script>
 
     </l:main-panel>
