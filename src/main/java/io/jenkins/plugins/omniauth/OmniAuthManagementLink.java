@@ -179,23 +179,26 @@ public class OmniAuthManagementLink extends ManagementLink {
         List<UserStatusInfo> result = new ArrayList<>();
 
         for (User user : User.getAll()) {
-            OmniAuthUserProperty entraProp = user.getProperty(OmniAuthUserProperty.class);
-            LastLoginProperty    loginProp = user.getProperty(LastLoginProperty.class);
+            OmniAuthUserProperty  entraProp = user.getProperty(OmniAuthUserProperty.class);
+            LastLoginProperty     loginProp = user.getProperty(LastLoginProperty.class);
+            LoginHistoryProperty  histProp  = user.getProperty(LoginHistoryProperty.class);
 
-            String userType  = (entraProp != null) ? "Entra" : "Legacy";
+            String userType  = (entraProp != null) ? "Entra" : "Native";
             String lastLogin = resolveLastLogin(entraProp, loginProp);
             LastJobInfo lastJob = lastJobMap.get(user.getId());
             String status = deriveStatus(lastLogin, lastJob);
 
-            result.add(new UserStatusInfo(
+            UserStatusInfo info = new UserStatusInfo(
                     user.getId(),
                     user.getFullName(),
                     userType,
                     lastLogin,
-                    lastJob != null ? lastJob.jobName  : null,
+                    lastJob != null ? lastJob.jobName    : null,
                     lastJob != null ? lastJob.triggeredAt : null,
                     status
-            ));
+            );
+            if (histProp != null) info.setLatestEvent(histProp.getLatestEvent());
+            result.add(info);
         }
 
         // Sort: active first, then by last login descending
@@ -290,6 +293,11 @@ public class OmniAuthManagementLink extends ManagementLink {
         // Authorization strategy name — shown in UI to help diagnose per-job permission support
         String authStrategy = Jenkins.get().getAuthorizationStrategy().getClass().getSimpleName();
 
+        // Login history
+        LoginHistoryProperty histProp = user.getProperty(LoginHistoryProperty.class);
+        List<LoginEvent> loginHistory = histProp != null
+                ? new ArrayList<>(histProp.getEvents()) : Collections.emptyList();
+
         return new AccessInfo(
                 userId,
                 user.getFullName(),
@@ -299,7 +307,8 @@ public class OmniAuthManagementLink extends ManagementLink {
                 lastLogin,
                 jobAccess,
                 authStrategy,
-                isAdmin, canRead, canBuild, canCreate, canConfigure
+                isAdmin, canRead, canBuild, canCreate, canConfigure,
+                loginHistory
         );
     }
 
@@ -491,6 +500,10 @@ public class OmniAuthManagementLink extends ManagementLink {
         public String getRelativeLastJobTriggeredAt() { return relativeTime(lastJobTriggeredAt); }
         public String getFormattedLastLoginAt()       { return formatDate(lastLoginAt); }
         public String getFormattedLastJobTriggeredAt(){ return formatDate(lastJobTriggeredAt); }
+
+        private LoginEvent latestEvent; // set externally after construction
+        public void setLatestEvent(LoginEvent e) { this.latestEvent = e; }
+        public LoginEvent getLatestEvent()        { return latestEvent; }
     }
 
     static String relativeTime(String isoStr) {
@@ -563,41 +576,45 @@ public class OmniAuthManagementLink extends ManagementLink {
         private final boolean canBuild;
         private final boolean canCreate;
         private final boolean canConfigure;
+        private final List<LoginEvent> loginHistory;
 
         public AccessInfo(String userId, String fullName, String userType,
                           String entraOid, String entraUpn, String lastLoginAt,
                           List<JobAccessInfo> jobAccess, String authStrategy,
                           boolean isAdmin, boolean canRead, boolean canBuild,
-                          boolean canCreate, boolean canConfigure) {
-            this.userId       = userId;
-            this.fullName     = fullName;
-            this.userType     = userType;
-            this.entraOid     = entraOid;
-            this.entraUpn     = entraUpn;
-            this.lastLoginAt  = lastLoginAt;
-            this.jobAccess    = jobAccess != null ? jobAccess : Collections.emptyList();
-            this.authStrategy = authStrategy;
-            this.isAdmin      = isAdmin;
-            this.canRead      = canRead;
-            this.canBuild     = canBuild;
-            this.canCreate    = canCreate;
-            this.canConfigure = canConfigure;
+                          boolean canCreate, boolean canConfigure,
+                          List<LoginEvent> loginHistory) {
+            this.userId        = userId;
+            this.fullName      = fullName;
+            this.userType      = userType;
+            this.entraOid      = entraOid;
+            this.entraUpn      = entraUpn;
+            this.lastLoginAt   = lastLoginAt;
+            this.jobAccess     = jobAccess != null ? jobAccess : Collections.emptyList();
+            this.authStrategy  = authStrategy;
+            this.isAdmin       = isAdmin;
+            this.canRead       = canRead;
+            this.canBuild      = canBuild;
+            this.canCreate     = canCreate;
+            this.canConfigure  = canConfigure;
+            this.loginHistory  = loginHistory != null ? loginHistory : Collections.emptyList();
         }
 
-        public String getUserId()              { return userId; }
-        public String getFullName()            { return fullName; }
-        public String getUserType()            { return userType; }
-        public String getEntraOid()            { return entraOid; }
-        public String getEntraUpn()            { return entraUpn; }
-        public String getLastLoginAt()         { return lastLoginAt; }
-        public List<JobAccessInfo> getJobAccess() { return jobAccess; }
-        public String getAuthStrategy()        { return authStrategy; }
-        public boolean isAdmin()               { return isAdmin; }
-        public boolean isCanRead()             { return canRead; }
-        public boolean isCanBuild()            { return canBuild; }
-        public boolean isCanCreate()           { return canCreate; }
-        public boolean isCanConfigure()        { return canConfigure; }
-        public boolean isEntraUser()           { return "Entra".equals(userType); }
+        public String getUserId()                  { return userId; }
+        public String getFullName()                { return fullName; }
+        public String getUserType()                { return userType; }
+        public String getEntraOid()                { return entraOid; }
+        public String getEntraUpn()                { return entraUpn; }
+        public String getLastLoginAt()             { return lastLoginAt; }
+        public List<JobAccessInfo> getJobAccess()  { return jobAccess; }
+        public String getAuthStrategy()            { return authStrategy; }
+        public boolean isAdmin()                   { return isAdmin; }
+        public boolean isCanRead()                 { return canRead; }
+        public boolean isCanBuild()                { return canBuild; }
+        public boolean isCanCreate()               { return canCreate; }
+        public boolean isCanConfigure()            { return canConfigure; }
+        public List<LoginEvent> getLoginHistory()  { return loginHistory; }
+        public boolean isEntraUser()               { return "Entra".equals(userType); }
         public boolean isPerJobSupported() {
             return authStrategy != null && authStrategy.toLowerCase().contains("projectmatrix");
         }

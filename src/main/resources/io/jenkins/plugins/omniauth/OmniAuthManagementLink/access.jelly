@@ -116,9 +116,118 @@
               </j:choose>
             </div>
 
+            <!-- Login History -->
+            <div class="jenkins-card" style="margin-top:16px;padding:16px;">
+              <h3 style="margin-top:0;display:flex;align-items:center;gap:8px;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--blue,#0078d4);">
+                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+                Login History
+                <span style="font-size:0.75em;color:#6c757d;font-weight:400;">(last 10)</span>
+              </h3>
+
+              <j:choose>
+                <j:when test="${info.loginHistory.isEmpty()}">
+                  <em style="color:#6c757d;">No login history recorded yet. History is captured from the next login onwards.</em>
+                </j:when>
+                <j:otherwise>
+                  <table class="jenkins-table" style="width:100%;">
+                    <thead>
+                      <tr>
+                        <th>When</th>
+                        <th>IP Address</th>
+                        <th>Browser</th>
+                        <th>OS</th>
+                        <th>Method</th>
+                        <th style="text-align:center;">Result</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <j:forEach var="ev" items="${info.loginHistory}">
+                        <tr>
+                          <td>
+                            <span style="display:inline-flex;align-items:center;gap:4px;">
+                              <span>${ev.relativeTimestamp}</span>
+                              <span class="oau-info-wrap">
+                                <span class="oau-info-btn">i</span>
+                                <span class="oau-info-tip">${ev.formattedTimestamp}</span>
+                              </span>
+                            </span>
+                          </td>
+                          <td style="font-family:monospace;font-size:0.88em;">${ev.ipAddress}</td>
+                          <td>
+                            <span style="display:inline-flex;align-items:center;gap:4px;">
+                              <span>${ev.browser}</span>
+                              <j:if test="${ev.userAgent != null}">
+                                <span class="oau-info-wrap">
+                                  <span class="oau-info-btn">i</span>
+                                  <span class="oau-info-tip" style="left:0;transform:none;white-space:normal;width:300px;word-break:break-word;line-height:1.5;">
+                                    <span style="display:block;font-weight:700;margin-bottom:3px;opacity:0.7;font-size:0.75em;text-transform:uppercase;letter-spacing:0.5px;">User Agent</span>
+                                    ${ev.userAgent}
+                                  </span>
+                                </span>
+                              </j:if>
+                            </span>
+                          </td>
+                          <td>${ev.os}</td>
+                          <td>
+                            <j:choose>
+                              <j:when test="${ev.method == 'Entra'}">
+                                <span style="background:#e8f0fe;color:#0078d4;padding:2px 8px;border-radius:4px;font-size:0.82em;">Entra</span>
+                              </j:when>
+                              <j:otherwise>
+                                <span style="background:#f0f0f0;color:#6c757d;padding:2px 8px;border-radius:4px;font-size:0.82em;">Native</span>
+                              </j:otherwise>
+                            </j:choose>
+                          </td>
+                          <td style="text-align:center;">
+                            <j:choose>
+                              <j:when test="${ev.success}">
+                                <span style="background:#d4edda;color:#155724;padding:2px 8px;border-radius:4px;font-size:0.82em;">Success</span>
+                              </j:when>
+                              <j:otherwise>
+                                <span style="background:#f8d7da;color:#721c24;padding:2px 8px;border-radius:4px;font-size:0.82em;">Failed</span>
+                              </j:otherwise>
+                            </j:choose>
+                          </td>
+                        </tr>
+                      </j:forEach>
+                    </tbody>
+                  </table>
+                </j:otherwise>
+              </j:choose>
+            </div>
+
           </j:otherwise>
         </j:choose>
       </div>
+
+      <style>
+        .oau-info-wrap { position: relative; display: inline-flex; align-items: center; }
+        .oau-info-btn {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 14px; height: 14px; border-radius: 50%;
+          background: var(--text-color-secondary,#6c757d); color: #fff;
+          font-size: 9px; font-weight: 700; font-style: normal;
+          cursor: default; user-select: none; flex-shrink: 0;
+          font-family: serif; line-height: 1;
+        }
+        .oau-info-tip {
+          display: none; position: absolute; bottom: calc(100% + 6px); left: 50%;
+          transform: translateX(-50%);
+          background: #333; color: #fff; font-size: 0.78em;
+          padding: 4px 8px; border-radius: 4px; white-space: nowrap;
+          z-index: 100; pointer-events: none;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+        }
+        .oau-info-tip::after {
+          content: ''; position: absolute; top: 100%; left: 50%;
+          transform: translateX(-50%);
+          border: 4px solid transparent; border-top-color: #333;
+        }
+        .oau-info-wrap:hover .oau-info-tip { display: block; }
+      </style>
+
     </l:main-panel>
   </l:layout>
 

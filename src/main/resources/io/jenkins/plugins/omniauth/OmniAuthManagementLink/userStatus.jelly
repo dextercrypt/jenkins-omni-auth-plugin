@@ -62,7 +62,14 @@
                         <span>${u.relativeLastLoginAt}</span>
                         <span class="oau-info-wrap">
                           <span class="oau-info-btn">i</span>
-                          <span class="oau-info-tip">${u.formattedLastLoginAt}</span>
+                          <span class="oau-info-tip">
+                            <strong>${u.formattedLastLoginAt}</strong>
+                            <j:if test="${u.latestEvent != null}">
+                              <br/>${u.latestEvent.browser} · ${u.latestEvent.os}
+                              <br/>${u.latestEvent.ipAddress}
+                              <br/>via ${u.latestEvent.method}
+                            </j:if>
+                          </span>
                         </span>
                       </span>
                     </j:otherwise>
@@ -129,8 +136,8 @@
           display: none; position: absolute; bottom: calc(100% + 6px); left: 50%;
           transform: translateX(-50%);
           background: #333; color: #fff; font-size: 0.78em;
-          padding: 4px 8px; border-radius: 4px; white-space: nowrap;
-          z-index: 100; pointer-events: none;
+          padding: 6px 10px; border-radius: 4px; white-space: nowrap;
+          z-index: 100; pointer-events: none; line-height: 1.6;
           box-shadow: 0 2px 6px rgba(0,0,0,0.25);
         }
         .oau-info-tip::after {
