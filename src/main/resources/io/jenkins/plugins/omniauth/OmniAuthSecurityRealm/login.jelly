@@ -103,17 +103,11 @@
                   </j:if>
                 </form>
 
-                <j:forEach var="fls" items="${it.getFederatedLoginServices()}">
-                  <div>
-                    <st:include page="loginFragment.jelly" it="${fls}"/>
-                  </div>
-                </j:forEach>
-
                 <!-- ============================================================
                      MICROSOFT ENTRA LOGIN — added by dual-auth plugin
                      ============================================================ -->
                 <j:if test="${it.entraConfig != null}">
-                  <div class="app-sign-in-register__separator" style="display:flex;align-items:center;margin:16px 0;gap:8px;">
+                  <div style="display:flex;align-items:center;margin:16px 0;gap:8px;">
                     <hr style="flex:1;border:none;border-top:1px solid var(--text-color-secondary,#888);"/>
                     <span style="font-size:12px;color:var(--text-color-secondary,#888);white-space:nowrap;">or</span>
                     <hr style="flex:1;border:none;border-top:1px solid var(--text-color-secondary,#888);"/>
@@ -134,7 +128,6 @@
                        font-size:14px;font-weight:500;
                        text-decoration:none;cursor:pointer;
                        transition:box-shadow .15s ease;">
-                    <!-- Official Microsoft logo squares -->
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 21 21" style="flex-shrink:0;">
                       <rect x="1"  y="1"  width="9" height="9" fill="#f25022"/>
                       <rect x="11" y="1"  width="9" height="9" fill="#00a4ef"/>

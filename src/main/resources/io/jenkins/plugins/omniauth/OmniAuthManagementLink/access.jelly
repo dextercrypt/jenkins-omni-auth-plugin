@@ -1,0 +1,125 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:l="/lib/layout">
+
+  <l:layout title="OmniAuth — Check Access" norefresh="true">
+    <l:side-panel>
+      <st:include page="sidepanel.jelly"/>
+    </l:side-panel>
+    <l:main-panel>
+
+      <div class="jenkins-app-bar">
+        <div class="jenkins-app-bar__content">
+          <h1 class="jenkins-app-bar__heading">Check Access</h1>
+        </div>
+      </div>
+
+      <div style="padding: 16px;">
+
+        <j:set var="info" value="${it.getAccessInfo(request)}"/>
+
+        <j:choose>
+          <j:when test="${info == null}">
+            <div class="jenkins-alert jenkins-alert-danger">User not found.</div>
+          </j:when>
+          <j:otherwise>
+
+            <a href="userStatus" style="color:#0078d4;text-decoration:none;">&#8592; Back to User Status</a>
+
+            <div style="margin-top:16px;display:flex;gap:16px;flex-wrap:wrap;">
+
+              <div class="jenkins-card" style="flex:1;min-width:280px;padding:16px;">
+                <h3 style="margin-top:0;">Identity</h3>
+                <table style="width:100%;border-collapse:collapse;">
+                  <tr><td style="color:#6c757d;padding:4px 0;width:120px;">Username</td><td><strong>${info.userId}</strong></td></tr>
+                  <tr><td style="color:#6c757d;padding:4px 0;">Full Name</td><td>${info.fullName}</td></tr>
+                  <tr><td style="color:#6c757d;padding:4px 0;">Type</td>
+                    <td>
+                      <j:choose>
+                        <j:when test="${info.entraUser}">
+                          <span style="background:#e8f0fe;color:#0078d4;padding:2px 8px;border-radius:4px;font-size:0.85em;">Entra</span>
+                        </j:when>
+                        <j:otherwise>
+                          <span style="background:#f0f0f0;color:#6c757d;padding:2px 8px;border-radius:4px;font-size:0.85em;">Legacy</span>
+                        </j:otherwise>
+                      </j:choose>
+                    </td>
+                  </tr>
+                  <tr><td style="color:#6c757d;padding:4px 0;">Last Login</td>
+                    <td><j:choose>
+                      <j:when test="${info.lastLoginAt == null}"><em>Never</em></j:when>
+                      <j:otherwise>${info.lastLoginAt}</j:otherwise>
+                    </j:choose></td>
+                  </tr>
+                  <j:if test="${info.entraUser}">
+                    <tr><td style="color:#6c757d;padding:4px 0;">Entra UPN</td><td>${info.entraUpn}</td></tr>
+                    <tr><td style="color:#6c757d;padding:4px 0;">Object ID</td><td style="font-size:0.8em;word-break:break-all;">${info.entraOid}</td></tr>
+                  </j:if>
+                </table>
+              </div>
+
+              <div class="jenkins-card" style="flex:1;min-width:280px;padding:16px;">
+                <h3 style="margin-top:0;">Jenkins Permissions</h3>
+                <table style="width:100%;border-collapse:collapse;">
+                  <tr><td style="padding:6px 0;">Overall / Administer</td><td><j:if test="${info.admin}">&#9989; Yes</j:if><j:if test="${!info.admin}">&#10060; No</j:if></td></tr>
+                  <tr><td style="padding:6px 0;">Overall / Read</td><td><j:if test="${info.canRead}">&#9989; Yes</j:if><j:if test="${!info.canRead}">&#10060; No</j:if></td></tr>
+                  <tr><td style="padding:6px 0;">Job / Build</td><td><j:if test="${info.canBuild}">&#9989; Yes</j:if><j:if test="${!info.canBuild}">&#10060; No</j:if></td></tr>
+                  <tr><td style="padding:6px 0;">Job / Create</td><td><j:if test="${info.canCreate}">&#9989; Yes</j:if><j:if test="${!info.canCreate}">&#10060; No</j:if></td></tr>
+                  <tr><td style="padding:6px 0;">Job / Configure</td><td><j:if test="${info.canConfigure}">&#9989; Yes</j:if><j:if test="${!info.canConfigure}">&#10060; No</j:if></td></tr>
+                </table>
+                <p style="font-size:0.8em;color:#6c757d;margin-top:8px;">
+                  Permissions checked against the Jenkins root ACL using the active authorization strategy.
+                </p>
+              </div>
+
+            </div>
+
+            <div class="jenkins-card" style="margin-top:16px;padding:16px;">
+              <h3 style="margin-top:0;">Job / Pipeline Access</h3>
+
+              <j:if test="${!info.perJobSupported}">
+                <div style="background:#fff3cd;color:#856404;padding:10px 14px;border-radius:4px;margin-bottom:12px;font-size:0.9em;">
+                  Authorization strategy: <strong>${info.authStrategy}</strong> —
+                  per-job permissions are only enforced with <strong>Project-based Matrix Authorization Strategy</strong>.
+                  All jobs inherit the global permission set, so every job will reflect the same access.
+                </div>
+              </j:if>
+
+              <j:choose>
+                <j:when test="${info.jobAccess.isEmpty()}">
+                  <em style="color:#6c757d;">No jobs or pipelines found — user may have no item-level permissions, or Jenkins has no jobs yet.</em>
+                </j:when>
+                <j:otherwise>
+                  <table class="jenkins-table sortable" style="width:100%;">
+                    <thead>
+                      <tr>
+                        <th>Job / Pipeline</th>
+                        <th style="width:80px;text-align:center;">Read</th>
+                        <th style="width:80px;text-align:center;">Build</th>
+                        <th style="width:100px;text-align:center;">Configure</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <j:forEach var="ja" items="${info.jobAccess}">
+                        <tr>
+                          <td>${ja.jobName}</td>
+                          <td style="text-align:center;"><j:if test="${ja.canRead}">&#10003;</j:if></td>
+                          <td style="text-align:center;"><j:if test="${ja.canBuild}">&#10003;</j:if></td>
+                          <td style="text-align:center;"><j:if test="${ja.canConfigure}">&#10003;</j:if></td>
+                        </tr>
+                      </j:forEach>
+                    </tbody>
+                  </table>
+                  <p style="font-size:0.8em;color:#6c757d;margin-top:8px;">
+                    Showing up to 200 jobs.
+                  </p>
+                </j:otherwise>
+              </j:choose>
+            </div>
+
+          </j:otherwise>
+        </j:choose>
+      </div>
+    </l:main-panel>
+  </l:layout>
+
+</j:jelly>

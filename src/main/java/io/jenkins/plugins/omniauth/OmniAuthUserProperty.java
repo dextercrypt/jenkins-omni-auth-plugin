@@ -26,6 +26,9 @@ public class OmniAuthUserProperty extends UserProperty {
     /** ISO-8601 timestamp of last successful group sync. */
     private String groupsLastSynced;
 
+    /** ISO-8601 timestamp of last successful Entra login. */
+    private String lastLoginAt;
+
     /** Display names of groups cached from the last successful Entra login. */
     private List<String> cachedGroups;
 
@@ -50,6 +53,14 @@ public class OmniAuthUserProperty extends UserProperty {
 
     public void setGroupsLastSynced(String groupsLastSynced) {
         this.groupsLastSynced = groupsLastSynced;
+    }
+
+    public String getLastLoginAt() {
+        return lastLoginAt;
+    }
+
+    public void setLastLoginAt(String lastLoginAt) {
+        this.lastLoginAt = lastLoginAt;
     }
 
     public List<String> getCachedGroups() {

@@ -1,0 +1,277 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:l="/lib/layout">
+
+  <l:layout title="OmniAuth — Stale Users" norefresh="true">
+    <l:side-panel>
+      <st:include page="sidepanel.jelly"/>
+    </l:side-panel>
+    <l:main-panel>
+
+      <div class="jenkins-app-bar">
+        <div class="jenkins-app-bar__content">
+          <h1 class="jenkins-app-bar__heading">Stale Users</h1>
+        </div>
+        <div class="jenkins-app-bar__controls">
+          <form method="post" action="runCleanupNow" style="margin:0;">
+            <input type="hidden" name="${app.crumbRequestField}" value="${app.crumb}"/>
+            <j:choose>
+              <j:when test="${it.omniAuthGlobalConfig.cleanupDryRun}">
+                <button type="submit" class="jenkins-button jenkins-button--primary"
+                        onclick="return confirm('Run stale user cleanup now?\n\nCurrently in DRY-RUN mode — no users will be deleted.\nDisable dry-run in Settings to perform live deletions.');"
+                        title="Dry-run mode is ON — no users will be deleted">
+                  Run Cleanup Now
+                  <span style="font-size:0.78em;font-weight:500;opacity:0.85;">(Dry-run)</span>
+                </button>
+              </j:when>
+              <j:otherwise>
+                <button type="submit" class="jenkins-button jenkins-button--primary"
+                        onclick="return confirm('Run stale user cleanup now?\n\nLIVE mode — stale users will be permanently deleted!');">
+                  Run Cleanup Now
+                </button>
+              </j:otherwise>
+            </j:choose>
+          </form>
+        </div>
+      </div>
+
+      <div style="padding: 16px; max-width: 1100px;">
+
+        <!-- Banners -->
+        <j:if test="${request2.getParameter('error') == 'protected'}">
+          <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom: 16px;">
+            Deletion blocked — that user is protected. Remove protection first on the
+            <a href="protectedUsers">Protected Users</a> page.
+          </div>
+        </j:if>
+        <j:if test="${request2.getParameter('ran') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom: 16px;">
+            Cleanup run complete. Results recorded in the history below.
+          </div>
+        </j:if>
+
+        <j:set var="cfg" value="${it.omniAuthGlobalConfig}"/>
+        <j:set var="threshold" value="${cfg.staleThresholdDays}"/>
+
+        <!-- Info bar -->
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
+          <p style="color:#6c757d;margin:0;font-size:0.9em;">
+            Users inactive for more than <strong>${threshold} days</strong>.
+            Deleting removes their Jenkins account; Entra users re-provision on next login.
+          </p>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+            <j:choose>
+              <j:when test="${cfg.cleanupEnabled}">
+                <span style="background:#d4edda;color:#155724;padding:3px 10px;border-radius:10px;font-size:0.8em;font-weight:600;">
+                  Auto-cleanup ON
+                </span>
+                <j:choose>
+                  <j:when test="${cfg.cleanupDryRun}">
+                    <span style="background:#fff3cd;color:#856404;padding:3px 10px;border-radius:10px;font-size:0.8em;">Dry-run</span>
+                  </j:when>
+                  <j:otherwise>
+                    <span style="background:#f8d7da;color:#721c24;padding:3px 10px;border-radius:10px;font-size:0.8em;">Live</span>
+                  </j:otherwise>
+                </j:choose>
+                <span style="color:#6c757d;font-size:0.8em;">${cfg.cleanupCron}</span>
+              </j:when>
+              <j:otherwise>
+                <span style="background:#e9ecef;color:#6c757d;padding:3px 10px;border-radius:10px;font-size:0.8em;">Auto-cleanup OFF</span>
+              </j:otherwise>
+            </j:choose>
+          </div>
+        </div>
+
+        <!-- Stale users table -->
+        <j:set var="staleUsers" value="${it.getStaleUsers(threshold)}"/>
+        <j:choose>
+          <j:when test="${staleUsers.isEmpty()}">
+            <div class="jenkins-alert jenkins-alert-success" style="margin-bottom: 24px;">
+              No stale users found. All users have logged in within the last ${threshold} days.
+            </div>
+          </j:when>
+          <j:otherwise>
+            <div class="jenkins-card" style="padding:0;margin-bottom:24px;overflow:hidden;">
+              <table class="jenkins-table sortable" style="margin:0;">
+                <thead>
+                  <tr>
+                    <th>Username</th>
+                    <th>Full Name</th>
+                    <th>Type</th>
+                    <th>Last Login</th>
+                    <th>Access</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <j:forEach var="u" items="${staleUsers}">
+                    <j:set var="isProtected" value="${cfg.isProtected(u.userId)}"/>
+                    <tr>
+                      <td>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                          ${u.userId}
+                          <j:if test="${isProtected}">
+                            <span title="Protected — cannot be deleted"
+                                  style="display:inline-flex;align-items:center;gap:4px;background:#e8f0fe;color:#0078d4;padding:1px 7px;border-radius:10px;font-size:0.73em;font-weight:600;white-space:nowrap;">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                              </svg>
+                              Protected
+                            </span>
+                          </j:if>
+                        </div>
+                      </td>
+                      <td>${u.fullName}</td>
+                      <td>
+                        <j:choose>
+                          <j:when test="${u.userType == 'Entra'}">
+                            <span style="background:#e8f0fe;color:#0078d4;padding:2px 8px;border-radius:4px;font-size:0.85em;">Entra</span>
+                          </j:when>
+                          <j:otherwise>
+                            <span style="background:#f0f0f0;color:#6c757d;padding:2px 8px;border-radius:4px;font-size:0.85em;">Legacy</span>
+                          </j:otherwise>
+                        </j:choose>
+                      </td>
+                      <td>
+                        <j:choose>
+                          <j:when test="${u.neverLoggedIn}"><em style="color:#6c757d;">Never</em></j:when>
+                          <j:otherwise>
+                            <span class="oau-reltime" data-iso="${u.lastLoginAt}" title="${u.lastLoginAt}">${u.lastLoginAt}</span>
+                          </j:otherwise>
+                        </j:choose>
+                      </td>
+                      <td>
+                        <a href="access?userId=${u.userId}" class="jenkins-button jenkins-button--small">Check Access</a>
+                      </td>
+                      <td>
+                        <j:choose>
+                          <j:when test="${isProtected}">
+                            <span title="Remove protection first"
+                                  style="display:inline-flex;align-items:center;gap:5px;color:var(--text-color-secondary,#999);font-size:0.82em;padding:4px 2px;">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                              </svg>
+                              Protected
+                            </span>
+                          </j:when>
+                          <j:otherwise>
+                            <form method="post" action="deleteUser" style="margin:0;"
+                                  onsubmit="return confirm('Delete ${u.userId}? This cannot be undone.');">
+                              <input type="hidden" name="userId" value="${u.userId}"/>
+                              <st:crumb field="Jenkins-Crumb"/>
+                              <button type="submit" class="jenkins-button jenkins-button--danger jenkins-button--small">Delete</button>
+                            </form>
+                          </j:otherwise>
+                        </j:choose>
+                      </td>
+                    </tr>
+                  </j:forEach>
+                </tbody>
+              </table>
+            </div>
+          </j:otherwise>
+        </j:choose>
+
+        <!-- ================================================================
+             CLEANUP HISTORY
+             ================================================================ -->
+        <h3 style="font-size:0.95em;font-weight:600;margin:0 0 12px 0;">Cleanup History <span style="font-weight:400;color:#6c757d;font-size:0.85em;">(last 10 runs)</span></h3>
+
+        <j:set var="history" value="${cfg.cleanupHistory}"/>
+        <j:choose>
+          <j:when test="${history.isEmpty()}">
+            <div class="jenkins-card" style="padding:20px;color:var(--text-color-secondary,#6c757d);font-size:0.9em;text-align:center;">
+              No cleanup runs yet. Use "Run Cleanup Now" above or enable auto-cleanup in
+              <a href="settings">Settings</a>.
+            </div>
+          </j:when>
+          <j:otherwise>
+            <div class="jenkins-card" style="padding:0;overflow:hidden;">
+              <table class="jenkins-table" style="margin:0;">
+                <thead>
+                  <tr>
+                    <th>Run At</th>
+                    <th>Mode</th>
+                    <th>Scanned</th>
+                    <th>Affected</th>
+                    <th>Protected Skipped</th>
+                    <th>Users</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <j:forEach var="r" items="${history}">
+                    <tr>
+                      <td>
+                        <span class="oau-reltime" data-iso="${r.timestamp}" title="${r.timestamp}">${r.timestamp}</span>
+                      </td>
+                      <td>
+                        <j:choose>
+                          <j:when test="${r.dryRun}">
+                            <span style="background:#fff3cd;color:#856404;padding:1px 8px;border-radius:10px;font-size:0.78em;font-weight:600;">Dry-run</span>
+                          </j:when>
+                          <j:otherwise>
+                            <span style="background:#f8d7da;color:#721c24;padding:1px 8px;border-radius:10px;font-size:0.78em;font-weight:600;">Live</span>
+                          </j:otherwise>
+                        </j:choose>
+                      </td>
+                      <td>${r.usersScanned}</td>
+                      <td>
+                        <j:choose>
+                          <j:when test="${r.usersAffected == 0}">
+                            <span style="color:#6c757d;">0</span>
+                          </j:when>
+                          <j:otherwise>
+                            <strong style="color:${r.dryRun ? '#856404' : '#721c24'};">${r.usersAffected}</strong>
+                          </j:otherwise>
+                        </j:choose>
+                      </td>
+                      <td>${r.skippedProtected}</td>
+                      <td>
+                        <j:choose>
+                          <j:when test="${r.affectedUserIds.isEmpty()}">
+                            <span style="color:#6c757d;font-size:0.85em;">—</span>
+                          </j:when>
+                          <j:otherwise>
+                            <details>
+                              <summary style="cursor:pointer;font-size:0.85em;color:var(--blue,#0078d4);">
+                                ${r.usersAffected} user(s)
+                              </summary>
+                              <ul style="margin:4px 0 0 16px;padding:0;font-size:0.82em;">
+                                <j:forEach var="uid" items="${r.affectedUserIds}">
+                                  <li>${uid}</li>
+                                </j:forEach>
+                              </ul>
+                            </details>
+                          </j:otherwise>
+                        </j:choose>
+                      </td>
+                    </tr>
+                  </j:forEach>
+                </tbody>
+              </table>
+            </div>
+          </j:otherwise>
+        </j:choose>
+
+      </div>
+
+      <script>//<![CDATA[
+        document.querySelectorAll('.oau-reltime').forEach(function (el) {
+          var iso = el.dataset.iso;
+          if (!iso) return;
+          try {
+            var days = Math.floor((Date.now() - new Date(iso)) / 86400000);
+            var txt = days === 0 ? 'Today'
+                    : days === 1 ? 'Yesterday'
+                    : days < 30  ? days + 'd ago'
+                    : days < 365 ? Math.floor(days / 30) + 'mo ago'
+                    :              Math.floor(days / 365) + 'y ago';
+            el.textContent = txt;
+            el.title = new Date(iso).toLocaleString();
+          } catch (_) {}
+        });
+      //]]></script>
+
+    </l:main-panel>
+  </l:layout>
+
+</j:jelly>

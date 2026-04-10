@@ -1,0 +1,51 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:l="/lib/layout">
+
+  <l:layout title="OmniAuth — Entra User Management" norefresh="true">
+    <l:side-panel>
+      <st:include page="sidepanel.jelly"/>
+    </l:side-panel>
+    <l:main-panel>
+
+      <div class="jenkins-app-bar">
+        <div class="jenkins-app-bar__content">
+          <h1 class="jenkins-app-bar__heading">OmniAuth Overview</h1>
+        </div>
+      </div>
+
+      <div style="padding: 16px;">
+
+        <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px;">
+
+          <div class="jenkins-card" style="flex: 1; min-width: 150px; padding: 16px; text-align: center;">
+            <div style="font-size: 2em; font-weight: bold;">${it.totalUserCount}</div>
+            <div style="color: #6c757d;">Total Users</div>
+          </div>
+
+          <div class="jenkins-card" style="flex: 1; min-width: 150px; padding: 16px; text-align: center;">
+            <div style="font-size: 2em; font-weight: bold; color: #0078d4;">${it.entraUserCount}</div>
+            <div style="color: #6c757d;">Entra Users</div>
+          </div>
+
+          <div class="jenkins-card" style="flex: 1; min-width: 150px; padding: 16px; text-align: center;">
+            <div style="font-size: 2em; font-weight: bold; color: #6c757d;">${it.legacyUserCount}</div>
+            <div style="color: #6c757d;">Legacy Users</div>
+          </div>
+
+          <div class="jenkins-card" style="flex: 1; min-width: 150px; padding: 16px; text-align: center;">
+            <div style="font-size: 2em; font-weight: bold; color: #e74c3c;">${it.staleUserCount}</div>
+            <div style="color: #6c757d;">Stale Users (90d)</div>
+          </div>
+
+        </div>
+
+        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+          <a href="userStatus" class="jenkins-button">View All Users</a>
+          <a href="staleUsers" class="jenkins-button jenkins-button--primary">Review Stale Users</a>
+        </div>
+
+      </div>
+    </l:main-panel>
+  </l:layout>
+
+</j:jelly>
