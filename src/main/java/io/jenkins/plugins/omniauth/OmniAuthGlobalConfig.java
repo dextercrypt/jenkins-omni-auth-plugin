@@ -88,7 +88,8 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
         staleThresholdDays  = jsonInt(json, "staleThresholdDays",  90);
         activeThresholdDays = jsonInt(json, "activeThresholdDays", 30);
         cleanupEnabled      = json.optBoolean("cleanupEnabled",  false);
-        cleanupDryRun       = json.optBoolean("cleanupDryRun",   true);
+        // If auto-cleanup is disabled, always force dry-run ON (safety default)
+        cleanupDryRun       = !cleanupEnabled || json.optBoolean("cleanupDryRun", true);
         cleanupCron         = jsonStr(json, "cleanupCron",         "0 2 * * 0");
         cleanupMaxDeletions = jsonInt(json, "cleanupMaxDeletions", 50);
         cleanupNotifyEmail  = jsonStr(json, "cleanupNotifyEmail",  "");

@@ -120,8 +120,11 @@ public class OmniAuthManagementLink extends ManagementLink {
             if (stale  != null) json.put("staleThresholdDays",  stale.trim());
             if (active != null) json.put("activeThresholdDays", active.trim());
             // cleanup
-            json.put("cleanupEnabled",      req.getParameter("cleanupEnabled") != null);
-            json.put("cleanupDryRun",       req.getParameter("cleanupDryRun")  != null);
+            boolean cleanupEnabled = req.getParameter("cleanupEnabled") != null;
+            json.put("cleanupEnabled", cleanupEnabled);
+            // If auto-cleanup is disabled, always force dry-run ON (safety default)
+            boolean dryRun = !cleanupEnabled || req.getParameter("cleanupDryRun") != null;
+            json.put("cleanupDryRun", dryRun);
             String cron  = req.getParameter("cleanupCron");
             String maxD  = req.getParameter("cleanupMaxDeletions");
             String email = req.getParameter("cleanupNotifyEmail");

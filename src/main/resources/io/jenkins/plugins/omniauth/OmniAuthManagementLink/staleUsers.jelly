@@ -12,27 +12,29 @@
           <h1 class="jenkins-app-bar__heading">Stale Users</h1>
         </div>
         <div class="jenkins-app-bar__controls">
-          <form method="post" action="runCleanupNow" style="margin:0;">
-            <input type="hidden" name="${app.crumbRequestField}" value="${app.crumb}"/>
-            <j:choose>
-              <j:when test="${it.omniAuthGlobalConfig.cleanupDryRun}">
-                <button type="submit" class="jenkins-button jenkins-button--primary"
-                        onclick="return confirm('Run stale user cleanup now?\n\nCurrently in DRY-RUN mode — no users will be deleted.\nDisable dry-run in Settings to perform live deletions.');"
-                        title="Dry-run mode is ON — no users will be deleted">
-                  Run Cleanup Now
-                  <span style="font-size:0.78em;font-weight:500;opacity:0.85;">(Dry-run)</span>
-                </button>
-              </j:when>
-              <j:otherwise>
-                <button type="submit" class="jenkins-button jenkins-button--primary"
-                        onclick="return confirm('Run stale user cleanup now?\n\nLIVE mode — stale users will be permanently deleted!');">
-                  Run Cleanup Now
-                </button>
-              </j:otherwise>
-            </j:choose>
-          </form>
+          <j:choose>
+            <j:when test="${it.omniAuthGlobalConfig.cleanupDryRun}">
+              <button type="button" class="jenkins-button jenkins-button--primary"
+                      onclick="oauShowCleanupModal(true)"
+                      title="Dry-run mode is ON — no users will be deleted">
+                Run Cleanup Now
+                <span style="font-size:0.78em;font-weight:500;opacity:0.85;">(Dry-run)</span>
+              </button>
+            </j:when>
+            <j:otherwise>
+              <button type="button" class="jenkins-button jenkins-button--primary"
+                      onclick="oauShowCleanupModal(false)">
+                Run Cleanup Now
+              </button>
+            </j:otherwise>
+          </j:choose>
         </div>
       </div>
+
+      <!-- Hidden cleanup form — submitted by modal -->
+      <form id="oauCleanupForm" method="post" action="runCleanupNow" style="display:none;">
+        <input type="hidden" name="${app.crumbRequestField}" value="${app.crumb}"/>
+      </form>
 
       <div style="padding: 16px; max-width: 1100px;">
 
@@ -61,9 +63,7 @@
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
             <j:choose>
               <j:when test="${cfg.cleanupEnabled}">
-                <span style="background:#d4edda;color:#155724;padding:3px 10px;border-radius:10px;font-size:0.8em;font-weight:600;">
-                  Auto-cleanup ON
-                </span>
+                <span style="background:#d4edda;color:#155724;padding:3px 10px;border-radius:10px;font-size:0.8em;font-weight:600;">Auto-cleanup ON</span>
                 <j:choose>
                   <j:when test="${cfg.cleanupDryRun}">
                     <span style="background:#fff3cd;color:#856404;padding:3px 10px;border-radius:10px;font-size:0.8em;">Dry-run</span>
@@ -154,12 +154,14 @@
                             </span>
                           </j:when>
                           <j:otherwise>
-                            <form method="post" action="deleteUser" style="margin:0;"
-                                  onsubmit="return confirm('Delete ${u.userId}? This cannot be undone.');">
-                              <input type="hidden" name="userId" value="${u.userId}"/>
-                              <st:crumb field="Jenkins-Crumb"/>
-                              <button type="submit" class="jenkins-button jenkins-button--danger jenkins-button--small">Delete</button>
-                            </form>
+                            <button type="button"
+                                    class="jenkins-button jenkins-button--danger jenkins-button--small"
+                                    onclick="oauShowDeleteModal(this)"
+                                    data-userid="${u.userId}"
+                                    data-crumb-field="${app.crumbRequestField}"
+                                    data-crumb-value="${app.crumb}">
+                              Delete
+                            </button>
                           </j:otherwise>
                         </j:choose>
                       </td>
@@ -171,11 +173,8 @@
           </j:otherwise>
         </j:choose>
 
-        <!-- ================================================================
-             CLEANUP HISTORY
-             ================================================================ -->
+        <!-- Cleanup history -->
         <h3 style="font-size:0.95em;font-weight:600;margin:0 0 12px 0;">Cleanup History <span style="font-weight:400;color:#6c757d;font-size:0.85em;">(last 10 runs)</span></h3>
-
         <j:set var="history" value="${cfg.cleanupHistory}"/>
         <j:choose>
           <j:when test="${history.isEmpty()}">
@@ -200,9 +199,7 @@
                 <tbody>
                   <j:forEach var="r" items="${history}">
                     <tr>
-                      <td>
-                        <span class="oau-reltime" data-iso="${r.timestamp}" title="${r.timestamp}">${r.timestamp}</span>
-                      </td>
+                      <td><span class="oau-reltime" data-iso="${r.timestamp}" title="${r.timestamp}">${r.timestamp}</span></td>
                       <td>
                         <j:choose>
                           <j:when test="${r.dryRun}">
@@ -216,12 +213,8 @@
                       <td>${r.usersScanned}</td>
                       <td>
                         <j:choose>
-                          <j:when test="${r.usersAffected == 0}">
-                            <span style="color:#6c757d;">0</span>
-                          </j:when>
-                          <j:otherwise>
-                            <strong style="color:${r.dryRun ? '#856404' : '#721c24'};">${r.usersAffected}</strong>
-                          </j:otherwise>
+                          <j:when test="${r.usersAffected == 0}"><span style="color:#6c757d;">0</span></j:when>
+                          <j:otherwise><strong style="color:${r.dryRun ? '#856404' : '#721c24'};">${r.usersAffected}</strong></j:otherwise>
                         </j:choose>
                       </td>
                       <td>${r.skippedProtected}</td>
@@ -232,9 +225,7 @@
                           </j:when>
                           <j:otherwise>
                             <details>
-                              <summary style="cursor:pointer;font-size:0.85em;color:var(--blue,#0078d4);">
-                                ${r.usersAffected} user(s)
-                              </summary>
+                              <summary style="cursor:pointer;font-size:0.85em;color:var(--blue,#0078d4);">${r.usersAffected} user(s)</summary>
                               <ul style="margin:4px 0 0 16px;padding:0;font-size:0.82em;">
                                 <j:forEach var="uid" items="${r.affectedUserIds}">
                                   <li>${uid}</li>
@@ -254,8 +245,169 @@
 
       </div>
 
+      <!-- ================================================================
+           CLEANUP MODAL
+           ================================================================ -->
+      <div id="oauCleanupModal" class="oau-modal-backdrop" style="display:none;" onclick="if(event.target===this)oauCloseCleanupModal()">
+        <div class="oau-modal">
+          <!-- Dry-run variant -->
+          <div id="oauModalDryRun">
+            <div class="oau-modal-header oau-modal-header--warn">
+              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              Run Cleanup — Dry-run Mode
+            </div>
+            <div class="oau-modal-body">
+              <p style="margin:0 0 12px 0;">This will scan all users and log which ones <strong>would</strong> be deleted — but <strong>no accounts will be removed</strong>.</p>
+              <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:10px 14px;font-size:0.85em;color:#856404;">
+                Dry-run mode is ON. To perform live deletions, disable it in
+                <a href="settings" style="color:#856404;font-weight:600;">Settings → Automated Cleanup</a>.
+              </div>
+            </div>
+            <div class="oau-modal-footer">
+              <button type="button" class="jenkins-button" onclick="oauCloseCleanupModal()">Cancel</button>
+              <button type="button" class="jenkins-button jenkins-button--primary" onclick="oauSubmitCleanup()">Run Dry-run</button>
+            </div>
+          </div>
+          <!-- Live variant -->
+          <div id="oauModalLive">
+            <div class="oau-modal-header oau-modal-header--danger">
+              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                <path d="M10 11v6"/><path d="M14 11v6"/>
+                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+              </svg>
+              Run Cleanup — Live Mode
+            </div>
+            <div class="oau-modal-body">
+              <p style="margin:0 0 12px 0;">This will <strong>permanently delete</strong> all stale users that have not logged in within the configured threshold.</p>
+              <div style="background:#f8d7da;border:1px solid #f5c6cb;border-radius:6px;padding:10px 14px;font-size:0.85em;color:#721c24;">
+                <strong>This action cannot be undone.</strong> Protected users will be skipped.
+                Entra users will be re-provisioned on their next login.
+              </div>
+            </div>
+            <div class="oau-modal-footer">
+              <button type="button" class="jenkins-button" onclick="oauCloseCleanupModal()">Cancel</button>
+              <button type="button" class="jenkins-button jenkins-button--danger" onclick="oauSubmitCleanup()">Delete Stale Users</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================================================================
+           DELETE USER MODAL
+           ================================================================ -->
+      <div id="oauDeleteModal" class="oau-modal-backdrop" style="display:none;" onclick="if(event.target===this)oauCloseDeleteModal()">
+        <div class="oau-modal">
+          <div class="oau-modal-header oau-modal-header--danger">
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <path d="M10 11v6"/><path d="M14 11v6"/>
+              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+            </svg>
+            Delete User
+          </div>
+          <div class="oau-modal-body">
+            <p style="margin:0 0 12px 0;">
+              Are you sure you want to delete <strong id="oauDeleteUserId"></strong>?
+            </p>
+            <div style="background:#f8d7da;border:1px solid #f5c6cb;border-radius:6px;padding:10px 14px;font-size:0.85em;color:#721c24;">
+              <strong>This cannot be undone.</strong> The user's Jenkins account and permissions will be permanently removed.
+            </div>
+          </div>
+          <div class="oau-modal-footer">
+            <button type="button" class="jenkins-button" onclick="oauCloseDeleteModal()">Cancel</button>
+            <button type="button" class="jenkins-button jenkins-button--danger" id="oauDeleteConfirmBtn">Delete</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hidden delete form -->
+      <form id="oauDeleteForm" method="post" action="deleteUser" style="display:none;">
+        <input type="hidden" name="userId" id="oauDeleteUserIdInput"/>
+        <input type="hidden" id="oauDeleteCrumbField"/>
+        <input type="hidden" id="oauDeleteCrumbValue"/>
+      </form>
+
+      <style>
+        .oau-modal-backdrop {
+          position: fixed; inset: 0; z-index: 9999;
+          background: rgba(0,0,0,0.45);
+          display: flex; align-items: center; justify-content: center;
+        }
+        .oau-modal {
+          background: var(--background, #fff);
+          border-radius: 8px;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.22);
+          width: 100%; max-width: 440px;
+          overflow: hidden;
+          animation: oauModalIn 0.15s ease;
+        }
+        @keyframes oauModalIn {
+          from { transform: scale(0.95); opacity: 0; }
+          to   { transform: scale(1);    opacity: 1; }
+        }
+        .oau-modal-header {
+          display: flex; align-items: center; gap: 10px;
+          padding: 16px 20px; font-weight: 600; font-size: 0.95em;
+        }
+        .oau-modal-header--warn   { background: #fff8e1; color: #7a5c00; border-bottom: 1px solid #ffe082; }
+        .oau-modal-header--danger { background: #fdecea; color: #7f1f1f; border-bottom: 1px solid #f5c6cb; }
+        .oau-modal-body   { padding: 20px; font-size: 0.88em; line-height: 1.6; }
+        .oau-modal-footer {
+          display: flex; justify-content: flex-end; gap: 8px;
+          padding: 12px 20px; border-top: 1px solid var(--panel-border-color, #e0e0e0);
+          background: var(--background-color, #fafafa);
+        }
+      </style>
+
       <script>//<![CDATA[
-        document.querySelectorAll('.oau-reltime').forEach(function (el) {
+        // ── Cleanup modal ──────────────────────────────────────────────────
+        function oauShowCleanupModal(isDryRun) {
+          document.getElementById('oauModalDryRun').style.display = isDryRun ? '' : 'none';
+          document.getElementById('oauModalLive').style.display   = isDryRun ? 'none' : '';
+          document.getElementById('oauCleanupModal').style.display = 'flex';
+        }
+        function oauCloseCleanupModal() {
+          document.getElementById('oauCleanupModal').style.display = 'none';
+        }
+        function oauSubmitCleanup() {
+          oauCloseCleanupModal();
+          document.getElementById('oauCleanupForm').submit();
+        }
+
+        // ── Delete modal ───────────────────────────────────────────────────
+        function oauShowDeleteModal(btn) {
+          var userId     = btn.dataset.userid;
+          var crumbField = btn.dataset.crumbField;
+          var crumbValue = btn.dataset.crumbValue;
+
+          document.getElementById('oauDeleteUserId').textContent    = userId;
+          document.getElementById('oauDeleteUserIdInput').value      = userId;
+          document.getElementById('oauDeleteCrumbField').name        = crumbField;
+          document.getElementById('oauDeleteCrumbField').value       = crumbField;
+          document.getElementById('oauDeleteCrumbValue').name        = crumbField;
+          document.getElementById('oauDeleteCrumbValue').value       = crumbValue;
+          document.getElementById('oauDeleteModal').style.display    = 'flex';
+
+          document.getElementById('oauDeleteConfirmBtn').onclick = function() {
+            oauCloseDeleteModal();
+            document.getElementById('oauDeleteForm').submit();
+          };
+        }
+        function oauCloseDeleteModal() {
+          document.getElementById('oauDeleteModal').style.display = 'none';
+        }
+
+        // Close on Escape
+        document.addEventListener('keydown', function(e) {
+          if (e.key === 'Escape') { oauCloseCleanupModal(); oauCloseDeleteModal(); }
+        });
+
+        // ── Relative timestamps ────────────────────────────────────────────
+        document.querySelectorAll('.oau-reltime').forEach(function(el) {
           var iso = el.dataset.iso;
           if (!iso) return;
           try {
@@ -267,7 +419,7 @@
                     :              Math.floor(days / 365) + 'y ago';
             el.textContent = txt;
             el.title = new Date(iso).toLocaleString();
-          } catch (_) {}
+          } catch(_) {}
         });
       //]]></script>
 
