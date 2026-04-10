@@ -152,10 +152,23 @@ public class OmniAuthManagementLink extends ManagementLink {
     // Overview stats (used by index.jelly)
     // -------------------------------------------------------------------------
 
-    public int getTotalUserCount()  { return User.getAll().size(); }
-    public int getEntraUserCount()  { return (int) User.getAll().stream().filter(u -> u.getProperty(OmniAuthUserProperty.class) != null).count(); }
-    public int getLegacyUserCount() { return getTotalUserCount() - getEntraUserCount(); }
-    public int getStaleUserCount()  { return getStaleUsers(staleThresholdDays()).size(); }
+    public int getTotalUserCount()     { return User.getAll().size(); }
+    public int getEntraUserCount()     { return (int) User.getAll().stream().filter(u -> u.getProperty(OmniAuthUserProperty.class) != null).count(); }
+    public int getLegacyUserCount()    { return getTotalUserCount() - getEntraUserCount(); }
+    public int getStaleUserCount()     { return getStaleUsers(staleThresholdDays()).size(); }
+    public int getProtectedUserCount() { OmniAuthGlobalConfig c = OmniAuthGlobalConfig.get(); return c == null ? 0 : c.getProtectedUsers().size(); }
+    public int getActiveUserCount() {
+        int threshold = activeThresholdDays();
+        Instant cutoff = Instant.now().minus(threshold, ChronoUnit.DAYS);
+        int count = 0;
+        for (User user : User.getAll()) {
+            OmniAuthUserProperty entraProp = user.getProperty(OmniAuthUserProperty.class);
+            LastLoginProperty    loginProp  = user.getProperty(LastLoginProperty.class);
+            String lastLogin = resolveLastLogin(entraProp, loginProp);
+            if (lastLogin != null && Instant.parse(lastLogin).isAfter(cutoff)) count++;
+        }
+        return count;
+    }
 
     // -------------------------------------------------------------------------
     // User Status list (used by userStatus.jelly)
