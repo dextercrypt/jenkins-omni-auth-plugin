@@ -1,0 +1,23 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:l="/lib/layout" xmlns:st="jelly:stapler">
+  <l:tasks>
+    <l:task icon="symbol-overview"
+            href="${rootURL}/manage/omniauth-management/"
+            title="Overview"/>
+    <l:task icon="symbol-people"
+            href="${rootURL}/manage/omniauth-management/userStatus"
+            title="User Status"/>
+    <l:task icon="symbol-warning"
+            href="${rootURL}/manage/omniauth-management/staleUsers"
+            title="Stale Users"/>
+    <l:task icon="symbol-lock-closed"
+            href="${rootURL}/manage/omniauth-management/protectedUsers"
+            title="Protected Users"/>
+    <l:task icon="symbol-settings"
+            href="${rootURL}/manage/omniauth-management/settings"
+            title="Settings"/>
+    <l:task icon="symbol-information-circle"
+            href="${rootURL}/manage/omniauth-management/about"
+            title="Info"/>
+  </l:tasks>
+</j:jelly>

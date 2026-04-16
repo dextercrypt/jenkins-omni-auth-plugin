@@ -338,8 +338,10 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
 
     private void updateUserProperty(User user, String oid, String upn,
                                     List<EntraGroupDetails> groups) throws IOException {
+        String now = Instant.now().toString();
         OmniAuthUserProperty prop = new OmniAuthUserProperty(oid, upn);
-        prop.setGroupsLastSynced(Instant.now().toString());
+        prop.setGroupsLastSynced(now);
+        prop.setLastLoginAt(now);
         List<String> names = new ArrayList<>();
         for (EntraGroupDetails g : groups) names.add(g.getDisplayName());
         prop.setCachedGroups(names);

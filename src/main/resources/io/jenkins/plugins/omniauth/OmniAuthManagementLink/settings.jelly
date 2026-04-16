@@ -1,0 +1,252 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:l="/lib/layout">
+
+  <l:layout title="OmniAuth — Settings" norefresh="true">
+    <l:side-panel>
+      <st:include page="sidepanel.jelly"/>
+    </l:side-panel>
+    <l:main-panel>
+
+      <div class="jenkins-app-bar">
+        <div class="jenkins-app-bar__content">
+          <h1 class="jenkins-app-bar__heading">Settings</h1>
+        </div>
+      </div>
+
+      <div style="padding: 16px 24px; max-width: 860px;">
+
+        <j:if test="${request2.getParameter('saved') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom: 20px;">
+            Settings saved successfully.
+          </div>
+        </j:if>
+
+        <form method="post" action="saveSettings">
+          <input type="hidden" name="${app.crumbRequestField}" value="${app.crumb}"/>
+
+          <j:set var="cfg" value="${it.omniAuthGlobalConfig}"/>
+
+          <!-- ================================================================
+               USER STATUS
+               ================================================================ -->
+          <div class="jenkins-card" style="padding: 0; margin-bottom: 20px; overflow: hidden;">
+            <div style="padding: 14px 20px; border-bottom: 1px solid var(--panel-border-color, #e0e0e0); display: flex; align-items: center; gap: 10px;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--blue,#0078d4);flex-shrink:0;">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+              <h3 style="margin: 0; font-size: 0.95em; font-weight: 600;">User Status</h3>
+            </div>
+            <div style="padding: 16px 20px;">
+              <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+                <label style="flex: 1; min-width: 200px;">
+                  <div style="font-weight: 600; font-size: 0.88em; margin-bottom: 4px;">Active threshold (days)</div>
+                  <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.8em; margin-bottom: 8px;">
+                    Logins within this window are considered active. Affects the Active / Inactive status on the User Status page.
+                  </div>
+                  <input type="number" name="activeThresholdDays" min="1" max="365"
+                         value="${cfg.activeThresholdDays}"
+                         class="jenkins-input" style="width: 100px;"/>
+                  <span style="margin-left: 8px; color: var(--text-color-secondary,#888); font-size: 0.85em;">days</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- ================================================================
+               STALE USERS
+               ================================================================ -->
+          <div class="jenkins-card" style="padding: 0; margin-bottom: 20px; overflow: hidden;">
+            <div style="padding: 14px 20px; border-bottom: 1px solid var(--panel-border-color, #e0e0e0); display: flex; align-items: center; gap: 10px;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#e67e22;flex-shrink:0;">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <h3 style="margin: 0; font-size: 0.95em; font-weight: 600;">Stale Users</h3>
+            </div>
+            <div style="padding: 16px 20px;">
+              <label style="display: block;">
+                <div style="font-weight: 600; font-size: 0.88em; margin-bottom: 4px;">Stale threshold (days)</div>
+                <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.8em; margin-bottom: 8px;">
+                  Users who have not logged in for longer than this are listed as stale and eligible for cleanup.
+                </div>
+                <input type="number" name="staleThresholdDays" min="1" max="3650"
+                       value="${cfg.staleThresholdDays}"
+                       class="jenkins-input" style="width: 100px;"/>
+                <span style="margin-left: 8px; color: var(--text-color-secondary,#888); font-size: 0.85em;">days</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- ================================================================
+               AUTOMATED CLEANUP
+               ================================================================ -->
+          <div class="jenkins-card" style="padding: 0; margin-bottom: 20px; overflow: hidden;">
+            <div style="padding: 14px 20px; border-bottom: 1px solid var(--panel-border-color, #e0e0e0); display: flex; align-items: center; gap: 10px;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#e74c3c;flex-shrink:0;">
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+              </svg>
+              <h3 style="margin: 0; font-size: 0.95em; font-weight: 600;">Automated Cleanup</h3>
+            </div>
+            <div style="padding: 16px 20px; display: flex; flex-direction: column; gap: 16px;">
+
+              <!-- Enable toggle -->
+              <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;">
+                <div style="flex: 1;">
+                  <div style="font-weight: 600; font-size: 0.88em; margin-bottom: 2px;">Enable automated cleanup</div>
+                  <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.8em;">
+                    Automatically delete stale users on a schedule. Respects protected users list.
+                  </div>
+                </div>
+                <label class="oau-toggle-wrap">
+                  <j:choose>
+                    <j:when test="${cfg.cleanupEnabled}">
+                      <input type="checkbox" name="cleanupEnabled" id="cleanupEnabled" class="oau-toggle-chk" checked="checked" onchange="toggleCleanupFields()"/>
+                    </j:when>
+                    <j:otherwise>
+                      <input type="checkbox" name="cleanupEnabled" id="cleanupEnabled" class="oau-toggle-chk" onchange="toggleCleanupFields()"/>
+                    </j:otherwise>
+                  </j:choose>
+                  <div class="oau-toggle-track" id="cleanupTrack">
+                    <div class="oau-toggle-thumb"></div>
+                  </div>
+                </label>
+              </div>
+
+              <!-- Fields — greyed out when cleanup disabled -->
+              <div id="cleanupFields" style="display: flex; flex-direction: column; gap: 16px; padding-top: 4px; border-top: 1px solid var(--panel-border-color,#f0f0f0); transition: opacity 0.2s;">
+
+                <!-- Dry run -->
+                <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;">
+                  <div style="flex: 1;">
+                    <div style="font-weight: 600; font-size: 0.88em; margin-bottom: 2px;">Dry-run mode</div>
+                    <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.8em;">
+                      When enabled, cleanup logs what it would delete but does not actually delete. Safe to enable first.
+                    </div>
+                  </div>
+                  <label class="oau-toggle-wrap">
+                    <j:choose>
+                      <j:when test="${cfg.cleanupDryRun}">
+                        <input type="checkbox" name="cleanupDryRun" class="oau-toggle-chk" checked="checked"/>
+                      </j:when>
+                      <j:otherwise>
+                        <input type="checkbox" name="cleanupDryRun" class="oau-toggle-chk"/>
+                      </j:otherwise>
+                    </j:choose>
+                    <div class="oau-toggle-track">
+                      <div class="oau-toggle-thumb"></div>
+                    </div>
+                  </label>
+                </div>
+
+                <!-- Cron schedule -->
+                <div>
+                  <div style="font-weight: 600; font-size: 0.88em; margin-bottom: 4px;">Schedule (cron)</div>
+                  <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.8em; margin-bottom: 6px;">
+                    Standard 5-field cron. Default: <code>0 2 * * 0</code> (02:00 every Sunday).
+                  </div>
+                  <input type="text" name="cleanupCron" id="cleanupCron" value="${cfg.cleanupCron}"
+                         class="jenkins-input" style="width: 200px;" placeholder="0 2 * * 0"
+                         oninput="validateCron(this)"/>
+                  <div id="cronError" style="margin-top: 6px; font-size: 0.78em; color: #e74c3c; display: none;">
+                    Invalid cron — must be 5 fields: minute hour day month weekday (e.g. <code>0 2 * * 0</code>)
+                  </div>
+                  <div id="cronOk" style="margin-top: 6px; font-size: 0.78em; color: #27ae60; display: none;">
+                    Valid cron expression.
+                  </div>
+                </div>
+
+                <!-- Max deletions -->
+                <div>
+                  <div style="font-weight: 600; font-size: 0.88em; margin-bottom: 4px;">Max deletions per run</div>
+                  <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.8em; margin-bottom: 6px;">
+                    Safety cap. Cleanup stops after this many deletions even if more stale users exist.
+                  </div>
+                  <input type="number" name="cleanupMaxDeletions" min="1" max="500"
+                         value="${cfg.cleanupMaxDeletions}"
+                         class="jenkins-input" style="width: 100px;"/>
+                  <span style="margin-left: 8px; color: var(--text-color-secondary,#888); font-size: 0.85em;">users</span>
+                </div>
+
+                <!-- Notify email -->
+                <div>
+                  <div style="font-weight: 600; font-size: 0.88em; margin-bottom: 4px;">Notification email</div>
+                  <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.8em; margin-bottom: 6px;">
+                    Send a cleanup report to this address after each run. Leave blank to disable.
+                  </div>
+                  <input type="email" name="cleanupNotifyEmail" value="${cfg.cleanupNotifyEmail}"
+                         class="jenkins-input" style="width: 300px;" placeholder="admin@example.com"/>
+                  <div style="margin-top: 6px; font-size: 0.78em; color: #e67e22; display: flex; align-items: center; gap: 4px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    Email notifications are not yet implemented. This field is saved but no emails will be sent.
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <button type="submit" class="jenkins-button jenkins-button--primary">Save Settings</button>
+            <a href="." class="jenkins-button">Cancel</a>
+          </div>
+
+        </form>
+      </div>
+
+      <style>
+        .oau-toggle-wrap { display: flex; align-items: center; cursor: pointer; flex-shrink: 0; }
+        .oau-toggle-chk  { display: none; }
+        .oau-toggle-track {
+          width: 42px; height: 22px; border-radius: 11px;
+          background: var(--panel-border-color, #ccc);
+          position: relative; transition: background 0.2s;
+        }
+        .oau-toggle-track--on { background: var(--blue, #0078d4); }
+        .oau-toggle-thumb {
+          width: 18px; height: 18px; background: #fff; border-radius: 50%;
+          position: absolute; top: 2px; left: 2px;
+          transition: left 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+        }
+        .oau-toggle-chk:checked + .oau-toggle-track { background: var(--blue, #0078d4); }
+        .oau-toggle-chk:checked + .oau-toggle-track .oau-toggle-thumb { left: 22px; }
+      </style>
+
+      <script>//<![CDATA[
+        function toggleCleanupFields() {
+          var enabled  = document.getElementById('cleanupEnabled').checked;
+          var fields   = document.getElementById('cleanupFields');
+          var dryRunCh = fields.querySelector('input[name="cleanupDryRun"]');
+
+          // Force dry-run ON whenever auto-cleanup is disabled (safety default)
+          if (!enabled && dryRunCh) dryRunCh.checked = true;
+
+          // Grey out visually + block interaction, but do NOT set disabled=true
+          // (disabled inputs are excluded from form submission, so dry-run would never save)
+          fields.style.opacity       = enabled ? '1'  : '0.4';
+          fields.style.pointerEvents = enabled ? ''   : 'none';
+        }
+
+        function validateCron(input) {
+          var val    = input.value.trim();
+          var errEl  = document.getElementById('cronError');
+          var okEl   = document.getElementById('cronOk');
+          if (!val) { errEl.style.display = 'none'; okEl.style.display = 'none'; return; }
+          var parts  = val.split(/\s+/);
+          var valid  = parts.length === 5 && parts.every(function(p) {
+            return /^(\*|(\d+)(-\d+)?|\*\/\d+)$/.test(p);
+          });
+          errEl.style.display = valid ? 'none' : 'block';
+          okEl.style.display  = valid ? 'block' : 'none';
+        }
+
+        // Init on load
+        toggleCleanupFields();
+        var cronInput = document.getElementById('cleanupCron');
+        if (cronInput) validateCron(cronInput);
+      //]]></script>
+
+    </l:main-panel>
+  </l:layout>
+
+</j:jelly>

@@ -1,0 +1,23 @@
+<?jelly escape-by-default='true'?>
+<!--
+  Overrides Jenkins core loginError.jelly to route through OmniAuthSecurityRealm/login.jelly
+  so the "Sign in with Microsoft" button is preserved on the error page.
+  The only change from the original: it="${it}" → it="${app.securityRealm}"
+-->
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler">
+  <j:choose>
+    <j:new var="h" className="hudson.Functions" />
+    <j:when test="${app.setupWizard.isUsingSecurityToken()}">
+      <j:set var="error" value="true"/>
+      <st:include it="${app.setupWizard}" page="authenticate-security-token"/>
+    </j:when>
+    <j:when test="${app.isUseSecurity() and h.isAnonymous()}">
+      <st:statusCode value="401" />
+      <j:set var="error" value="true"/>
+      <st:include it="${app.securityRealm}" page="login.jelly"/>
+    </j:when>
+    <j:otherwise>
+      <st:redirect url="." />
+    </j:otherwise>
+  </j:choose>
+</j:jelly>
