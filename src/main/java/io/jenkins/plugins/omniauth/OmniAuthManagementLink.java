@@ -86,6 +86,11 @@ public class OmniAuthManagementLink extends ManagementLink {
         req.getView(this, "settings.jelly").forward(req, rsp);
     }
 
+    public void doAbout(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        req.getView(this, "about.jelly").forward(req, rsp);
+    }
+
     public void doProtectedUsers(StaplerRequest req, StaplerResponse rsp) throws Exception {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
         req.getView(this, "protectedUsers.jelly").forward(req, rsp);
@@ -148,12 +153,41 @@ public class OmniAuthManagementLink extends ManagementLink {
         return OmniAuthGlobalConfig.get();
     }
 
+    public EntraOAuthConfig getEntraConfig() {
+        jenkins.model.Jenkins j = jenkins.model.Jenkins.get();
+        if (j.getSecurityRealm() instanceof OmniAuthSecurityRealm) {
+            return ((OmniAuthSecurityRealm) j.getSecurityRealm()).getEntraConfig();
+        }
+        return null;
+    }
+
+    public String getEntraRedirectUri() {
+        String root = jenkins.model.Jenkins.get().getRootUrl();
+        if (root == null) return "(Jenkins root URL not configured)";
+        if (root.endsWith("/")) root = root.substring(0, root.length() - 1);
+        return root + "/omniauth/finishLogin";
+    }
+
+    // -------------------------------------------------------------------------
+    // Internal Jenkins users that must never appear in plugin user lists
+    // -------------------------------------------------------------------------
+
+    // Well-known Jenkins internal/virtual users that must never appear in plugin user lists.
+    // SYSTEM  — Jenkins itself (runs internal tasks, scheduled jobs)
+    // anonymous — unauthenticated visitors
+    private static final java.util.Set<String> INTERNAL_USERS = new java.util.HashSet<>(
+            java.util.Arrays.asList("SYSTEM", "anonymous"));
+
+    private static boolean isInternalUser(User u) {
+        return INTERNAL_USERS.contains(u.getId());
+    }
+
     // -------------------------------------------------------------------------
     // Overview stats (used by index.jelly)
     // -------------------------------------------------------------------------
 
-    public int getTotalUserCount()     { return User.getAll().size(); }
-    public int getEntraUserCount()     { return (int) User.getAll().stream().filter(u -> u.getProperty(OmniAuthUserProperty.class) != null).count(); }
+    public int getTotalUserCount()     { return (int) User.getAll().stream().filter(u -> !isInternalUser(u)).count(); }
+    public int getEntraUserCount()     { return (int) User.getAll().stream().filter(u -> !isInternalUser(u) && u.getProperty(OmniAuthUserProperty.class) != null).count(); }
     public int getLegacyUserCount()    { return getTotalUserCount() - getEntraUserCount(); }
     public int getStaleUserCount()     { return getStaleUsers(staleThresholdDays()).size(); }
     public int getProtectedUserCount() { OmniAuthGlobalConfig c = OmniAuthGlobalConfig.get(); return c == null ? 0 : c.getProtectedUsers().size(); }
@@ -162,6 +196,7 @@ public class OmniAuthManagementLink extends ManagementLink {
         Instant cutoff = Instant.now().minus(threshold, ChronoUnit.DAYS);
         int count = 0;
         for (User user : User.getAll()) {
+            if (isInternalUser(user)) continue;
             OmniAuthUserProperty entraProp = user.getProperty(OmniAuthUserProperty.class);
             LastLoginProperty    loginProp  = user.getProperty(LastLoginProperty.class);
             String lastLogin = resolveLastLogin(entraProp, loginProp);
@@ -179,6 +214,7 @@ public class OmniAuthManagementLink extends ManagementLink {
         List<UserStatusInfo> result = new ArrayList<>();
 
         for (User user : User.getAll()) {
+            if (isInternalUser(user)) continue;
             OmniAuthUserProperty  entraProp = user.getProperty(OmniAuthUserProperty.class);
             LastLoginProperty     loginProp = user.getProperty(LastLoginProperty.class);
             LoginHistoryProperty  histProp  = user.getProperty(LoginHistoryProperty.class);
@@ -224,6 +260,7 @@ public class OmniAuthManagementLink extends ManagementLink {
         List<UserInfo> result = new ArrayList<>();
 
         for (User user : User.getAll()) {
+            if (isInternalUser(user)) continue;
             OmniAuthUserProperty entraProp = user.getProperty(OmniAuthUserProperty.class);
             LastLoginProperty    loginProp = user.getProperty(LastLoginProperty.class);
 
@@ -330,20 +367,22 @@ public class OmniAuthManagementLink extends ManagementLink {
     public void doDeleteUser(StaplerRequest req, StaplerResponse rsp) throws Exception {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
         String userId = req.getParameter("userId");
+        String from   = req.getParameter("from");
+        String back   = ("userStatus".equals(from)) ? "userStatus" : "staleUsers";
         if (userId != null && !userId.isEmpty()) {
             OmniAuthGlobalConfig config = OmniAuthGlobalConfig.get();
             if (config != null && config.isProtected(userId)) {
                 LOGGER.warning("Deletion blocked — user is protected: " + userId);
-                rsp.sendRedirect("staleUsers?error=protected");
+                rsp.sendRedirect(back + "?error=protected");
                 return;
             }
             User user = User.getById(userId, false);
             if (user != null) {
-                LOGGER.info("Manual stale user deletion by admin: " + userId);
+                LOGGER.info("Manual user deletion by admin: " + userId + " (from " + back + ")");
                 user.delete();
             }
         }
-        rsp.sendRedirect("staleUsers");
+        rsp.sendRedirect(back + "?deleted=true");
     }
 
     // -------------------------------------------------------------------------

@@ -50,6 +50,11 @@
             Cleanup run complete. Results recorded in the history below.
           </div>
         </j:if>
+        <j:if test="${request2.getParameter('deleted') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom: 16px;">
+            User deleted successfully.
+          </div>
+        </j:if>
 
         <j:set var="cfg" value="${it.omniAuthGlobalConfig}"/>
         <j:set var="threshold" value="${cfg.staleThresholdDays}"/>
@@ -127,7 +132,7 @@
                             <span style="background:#e8f0fe;color:#0078d4;padding:2px 8px;border-radius:4px;font-size:0.85em;">Entra</span>
                           </j:when>
                           <j:otherwise>
-                            <span style="background:#f0f0f0;color:#6c757d;padding:2px 8px;border-radius:4px;font-size:0.85em;">Legacy</span>
+                            <span style="background:#f0f0f0;color:#6c757d;padding:2px 8px;border-radius:4px;font-size:0.85em;">Native</span>
                           </j:otherwise>
                         </j:choose>
                       </td>
@@ -310,16 +315,25 @@
             Delete User
           </div>
           <div class="oau-modal-body">
-            <p style="margin:0 0 12px 0;">
-              Are you sure you want to delete <strong id="oauDeleteUserId"></strong>?
+            <p style="margin:0 0 8px 0;">
+              You are about to permanently delete <strong id="oauDeleteUserId"></strong>.
             </p>
-            <div style="background:#f8d7da;border:1px solid #f5c6cb;border-radius:6px;padding:10px 14px;font-size:0.85em;color:#721c24;">
-              <strong>This cannot be undone.</strong> The user's Jenkins account and permissions will be permanently removed.
+            <div style="background:#f8d7da;border:1px solid #f5c6cb;border-radius:6px;padding:10px 14px;font-size:0.85em;color:#721c24;margin-bottom:16px;">
+              <strong>This cannot be undone.</strong> The user's Jenkins account and all permissions will be permanently removed.
             </div>
+            <label style="display:block;font-size:0.85em;font-weight:600;margin-bottom:6px;">
+              Type <code id="oauDeleteUserIdHint" style="background:#f0f0f0;padding:1px 5px;border-radius:3px;font-size:0.95em;"></code> to confirm:
+            </label>
+            <input type="text" id="oauDeleteConfirmInput"
+                   class="jenkins-input"
+                   placeholder="Type username to confirm"
+                   autocomplete="off"
+                   oninput="oauCheckDeleteConfirm()"
+                   style="width:100%;box-sizing:border-box;"/>
           </div>
           <div class="oau-modal-footer">
             <button type="button" class="jenkins-button" onclick="oauCloseDeleteModal()">Cancel</button>
-            <button type="button" class="jenkins-button jenkins-button--danger" id="oauDeleteConfirmBtn">Delete</button>
+            <button type="button" class="jenkins-button jenkins-button--danger" id="oauDeleteConfirmBtn" disabled="true">Delete</button>
           </div>
         </div>
       </div>
@@ -327,6 +341,7 @@
       <!-- Hidden delete form -->
       <form id="oauDeleteForm" method="post" action="deleteUser" style="display:none;">
         <input type="hidden" name="userId" id="oauDeleteUserIdInput"/>
+        <input type="hidden" name="from" value="staleUsers"/>
         <input type="hidden" id="oauDeleteCrumbField"/>
         <input type="hidden" id="oauDeleteCrumbValue"/>
       </form>
@@ -384,13 +399,17 @@
           var crumbField = btn.dataset.crumbField;
           var crumbValue = btn.dataset.crumbValue;
 
-          document.getElementById('oauDeleteUserId').textContent    = userId;
-          document.getElementById('oauDeleteUserIdInput').value      = userId;
-          document.getElementById('oauDeleteCrumbField').name        = crumbField;
-          document.getElementById('oauDeleteCrumbField').value       = crumbField;
-          document.getElementById('oauDeleteCrumbValue').name        = crumbField;
-          document.getElementById('oauDeleteCrumbValue').value       = crumbValue;
-          document.getElementById('oauDeleteModal').style.display    = 'flex';
+          document.getElementById('oauDeleteUserId').textContent     = userId;
+          document.getElementById('oauDeleteUserIdHint').textContent  = userId;
+          document.getElementById('oauDeleteUserIdInput').value       = userId;
+          document.getElementById('oauDeleteCrumbField').name         = crumbField;
+          document.getElementById('oauDeleteCrumbField').value        = crumbField;
+          document.getElementById('oauDeleteCrumbValue').name         = crumbField;
+          document.getElementById('oauDeleteCrumbValue').value        = crumbValue;
+          document.getElementById('oauDeleteConfirmInput').value      = '';
+          document.getElementById('oauDeleteConfirmBtn').disabled     = true;
+          document.getElementById('oauDeleteModal').style.display     = 'flex';
+          setTimeout(function(){ document.getElementById('oauDeleteConfirmInput').focus(); }, 100);
 
           document.getElementById('oauDeleteConfirmBtn').onclick = function() {
             oauCloseDeleteModal();
@@ -399,6 +418,13 @@
         }
         function oauCloseDeleteModal() {
           document.getElementById('oauDeleteModal').style.display = 'none';
+          document.getElementById('oauDeleteConfirmInput').value  = '';
+          document.getElementById('oauDeleteConfirmBtn').disabled = true;
+        }
+        function oauCheckDeleteConfirm() {
+          var input    = document.getElementById('oauDeleteConfirmInput').value;
+          var expected = document.getElementById('oauDeleteUserIdInput').value;
+          document.getElementById('oauDeleteConfirmBtn').disabled = (input !== expected);
         }
 
         // Close on Escape

@@ -17,6 +17,18 @@
 
         <j:set var="cfg" value="${it.omniAuthGlobalConfig}"/>
 
+        <j:if test="${request2.getParameter('error') == 'protected'}">
+          <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom: 16px;">
+            Deletion blocked — that user is protected. Remove protection first on the
+            <a href="protectedUsers">Protected Users</a> page.
+          </div>
+        </j:if>
+        <j:if test="${request2.getParameter('deleted') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom: 16px;">
+            User deleted successfully.
+          </div>
+        </j:if>
+
         <p style="color: #6c757d; margin-bottom: 16px;">
           All Jenkins users. Active = logged in within <strong>${cfg.activeThresholdDays} days</strong>.
           Stale threshold is <strong>${cfg.staleThresholdDays} days</strong>.
@@ -35,6 +47,7 @@
               <th>Last Job Triggered</th>
               <th>Status</th>
               <th>Access</th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -114,11 +127,145 @@
                     Check Access
                   </a>
                 </td>
+                <td>
+                  <j:choose>
+                    <j:when test="${cfg.isProtected(u.userId)}">
+                      <span title="Remove protection first"
+                            style="color:var(--text-color-secondary,#999);font-size:0.82em;">
+                        Protected
+                      </span>
+                    </j:when>
+                    <j:otherwise>
+                      <button type="button"
+                              class="jenkins-button jenkins-button--danger jenkins-button--small"
+                              onclick="oauShowDeleteModal(this)"
+                              data-userid="${u.userId}"
+                              data-crumb-field="${app.crumbRequestField}"
+                              data-crumb-value="${app.crumb}">
+                        Delete
+                      </button>
+                    </j:otherwise>
+                  </j:choose>
+                </td>
               </tr>
             </j:forEach>
           </tbody>
         </table>
       </div>
+
+      <!-- ================================================================
+           DELETE USER MODAL
+           ================================================================ -->
+      <div id="oauDeleteModal" class="oau-modal-backdrop" style="display:none;" onclick="if(event.target===this)oauCloseDeleteModal()">
+        <div class="oau-modal">
+          <div class="oau-modal-header oau-modal-header--danger">
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <path d="M10 11v6"/><path d="M14 11v6"/>
+              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+            </svg>
+            Delete User
+          </div>
+          <div class="oau-modal-body">
+            <p style="margin:0 0 8px 0;">
+              You are about to permanently delete <strong id="oauDeleteUserId"></strong>.
+            </p>
+            <div style="background:#f8d7da;border:1px solid #f5c6cb;border-radius:6px;padding:10px 14px;font-size:0.85em;color:#721c24;margin-bottom:16px;">
+              <strong>This cannot be undone.</strong> The user's Jenkins account and all permissions will be permanently removed.
+            </div>
+            <label style="display:block;font-size:0.85em;font-weight:600;margin-bottom:6px;">
+              Type <code id="oauDeleteUserIdHint" style="background:#f0f0f0;padding:1px 5px;border-radius:3px;font-size:0.95em;"></code> to confirm:
+            </label>
+            <input type="text" id="oauDeleteConfirmInput"
+                   class="jenkins-input"
+                   placeholder="Type username to confirm"
+                   autocomplete="off"
+                   oninput="oauCheckDeleteConfirm()"
+                   style="width:100%;box-sizing:border-box;"/>
+          </div>
+          <div class="oau-modal-footer">
+            <button type="button" class="jenkins-button" onclick="oauCloseDeleteModal()">Cancel</button>
+            <button type="button" class="jenkins-button jenkins-button--danger" id="oauDeleteConfirmBtn" disabled="true">Delete</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hidden delete form -->
+      <form id="oauDeleteForm" method="post" action="deleteUser" style="display:none;">
+        <input type="hidden" name="userId" id="oauDeleteUserIdInput"/>
+        <input type="hidden" name="from" value="userStatus"/>
+        <input type="hidden" id="oauDeleteCrumbField"/>
+        <input type="hidden" id="oauDeleteCrumbValue"/>
+      </form>
+
+      <script>//<![CDATA[
+        function oauShowDeleteModal(btn) {
+          var userId     = btn.dataset.userid;
+          var crumbField = btn.dataset.crumbField;
+          var crumbValue = btn.dataset.crumbValue;
+
+          document.getElementById('oauDeleteUserId').textContent     = userId;
+          document.getElementById('oauDeleteUserIdHint').textContent  = userId;
+          document.getElementById('oauDeleteUserIdInput').value       = userId;
+          document.getElementById('oauDeleteCrumbField').name         = crumbField;
+          document.getElementById('oauDeleteCrumbField').value        = crumbField;
+          document.getElementById('oauDeleteCrumbValue').name         = crumbField;
+          document.getElementById('oauDeleteCrumbValue').value        = crumbValue;
+          document.getElementById('oauDeleteConfirmInput').value      = '';
+          document.getElementById('oauDeleteConfirmBtn').disabled     = true;
+          document.getElementById('oauDeleteModal').style.display     = 'flex';
+          setTimeout(function(){ document.getElementById('oauDeleteConfirmInput').focus(); }, 100);
+
+          document.getElementById('oauDeleteConfirmBtn').onclick = function() {
+            oauCloseDeleteModal();
+            document.getElementById('oauDeleteForm').submit();
+          };
+        }
+        function oauCloseDeleteModal() {
+          document.getElementById('oauDeleteModal').style.display = 'none';
+          document.getElementById('oauDeleteConfirmInput').value  = '';
+          document.getElementById('oauDeleteConfirmBtn').disabled = true;
+        }
+        function oauCheckDeleteConfirm() {
+          var input    = document.getElementById('oauDeleteConfirmInput').value;
+          var expected = document.getElementById('oauDeleteUserIdInput').value;
+          document.getElementById('oauDeleteConfirmBtn').disabled = (input !== expected);
+        }
+        document.addEventListener('keydown', function(e) {
+          if (e.key === 'Escape') oauCloseDeleteModal();
+        });
+      //]]></script>
+
+      <style>
+        .oau-modal-backdrop {
+          position: fixed; inset: 0; z-index: 9999;
+          background: rgba(0,0,0,0.45);
+          display: flex; align-items: center; justify-content: center;
+        }
+        .oau-modal {
+          background: var(--background, #fff);
+          border-radius: 8px;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.22);
+          width: 100%; max-width: 440px;
+          overflow: hidden;
+          animation: oauModalIn 0.15s ease;
+        }
+        @keyframes oauModalIn {
+          from { transform: scale(0.95); opacity: 0; }
+          to   { transform: scale(1);    opacity: 1; }
+        }
+        .oau-modal-header {
+          display: flex; align-items: center; gap: 10px;
+          padding: 16px 20px; font-weight: 600; font-size: 0.95em;
+        }
+        .oau-modal-header--danger { background: #fdecea; color: #7f1f1f; border-bottom: 1px solid #f5c6cb; }
+        .oau-modal-body   { padding: 20px; font-size: 0.88em; line-height: 1.6; }
+        .oau-modal-footer {
+          display: flex; justify-content: flex-end; gap: 8px;
+          padding: 12px 20px; border-top: 1px solid var(--panel-border-color, #e0e0e0);
+          background: var(--background-color, #fafafa);
+        }
+      </style>
 
       <style>
         .oau-info-wrap {
