@@ -91,6 +91,63 @@ public class OmniAuthManagementLink extends ManagementLink {
         req.getView(this, "about.jelly").forward(req, rsp);
     }
 
+    public void doNotifications(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        req.getView(this, "notifications.jelly").forward(req, rsp);
+    }
+
+    @POST
+    public void doSaveNotifications(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        OmniAuthGlobalConfig config = OmniAuthGlobalConfig.get();
+        if (config != null) {
+            net.sf.json.JSONObject json = new net.sf.json.JSONObject();
+            // master + channels
+            json.put("notificationsEnabled", req.getParameter("notificationsEnabled") != null);
+            json.put("smtpEnabled",          req.getParameter("smtpEnabled")          != null);
+            // SMTP fields
+            putParam(json, req, "smtpHost");
+            putParam(json, req, "smtpPort");
+            putParam(json, req, "smtpUsername");
+            putParam(json, req, "smtpPassword");
+            json.put("smtpTls", req.getParameter("smtpTls") != null);
+            putParam(json, req, "smtpFromAddress");
+            putParam(json, req, "smtpFromName");
+            putParam(json, req, "smtpReplyTo");
+            putParam(json, req, "notifyEmails");
+            // brute force
+            String bft = req.getParameter("bruteForceThreshold");
+            if (bft != null) json.put("bruteForceThreshold", bft.trim());
+            // stale warning
+            json.put("staleWarningEnabled", req.getParameter("staleWarningEnabled") != null);
+            String swCron = req.getParameter("staleWarningCron");
+            String swWin  = req.getParameter("staleWarningWindowDays");
+            if (swCron != null) json.put("staleWarningCron",       swCron.trim());
+            if (swWin  != null) json.put("staleWarningWindowDays", swWin.trim());
+            // event toggles
+            json.put("notifyOnCleanup",             req.getParameter("notifyOnCleanup")             != null);
+            json.put("notifyOnUserDeleted",         req.getParameter("notifyOnUserDeleted")         != null);
+            json.put("notifyOnConfigChange",        req.getParameter("notifyOnConfigChange")        != null);
+            json.put("notifyOnProtectedListChange", req.getParameter("notifyOnProtectedListChange") != null);
+            json.put("notifyOnGraphApiFailure",     req.getParameter("notifyOnGraphApiFailure")     != null);
+            json.put("notifyOnBruteForce",          req.getParameter("notifyOnBruteForce")          != null);
+            json.put("notifyOnStaleWarning",        req.getParameter("notifyOnStaleWarning")        != null);
+            json.put("notifyOnAdminGranted",        req.getParameter("notifyOnAdminGranted")        != null);
+            // preserve fields managed by other forms
+            net.sf.json.JSONArray arr = new net.sf.json.JSONArray();
+            for (String u : config.getProtectedUsers()) arr.add(u);
+            json.put("protectedUsers", arr);
+            json.put("staleThresholdDays",  config.getStaleThresholdDays());
+            json.put("activeThresholdDays", config.getActiveThresholdDays());
+            json.put("cleanupEnabled",      config.isCleanupEnabled());
+            json.put("cleanupDryRun",       config.isCleanupDryRun());
+            json.put("cleanupCron",         config.getCleanupCron());
+            json.put("cleanupMaxDeletions", config.getCleanupMaxDeletions());
+            config.configure(req, json);
+        }
+        rsp.sendRedirect("notifications?saved=true");
+    }
+
     public void doProtectedUsers(StaplerRequest req, StaplerResponse rsp) throws Exception {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
         req.getView(this, "protectedUsers.jelly").forward(req, rsp);
@@ -102,6 +159,8 @@ public class OmniAuthManagementLink extends ManagementLink {
         String[] selected = req.getParameterValues("protectedUsers");
         OmniAuthGlobalConfig config = OmniAuthGlobalConfig.get();
         if (config != null) {
+            List<String> oldProtected = new ArrayList<>(config.getProtectedUsers());
+
             net.sf.json.JSONObject json = new net.sf.json.JSONObject();
             if (selected != null && selected.length > 0) {
                 net.sf.json.JSONArray arr = new net.sf.json.JSONArray();
@@ -109,6 +168,14 @@ public class OmniAuthManagementLink extends ManagementLink {
                 json.put("protectedUsers", arr);
             }
             config.configure(req, json);
+
+            List<String> newProtected = new ArrayList<>(config.getProtectedUsers());
+            List<String> added   = new ArrayList<>(newProtected);
+            added.removeAll(oldProtected);
+            List<String> removed = new ArrayList<>(oldProtected);
+            removed.removeAll(newProtected);
+
+            EmailHelper.sendProtectedListChanged(config, currentUserId(), added, removed);
         }
         rsp.sendRedirect("protectedUsers");
     }
@@ -127,22 +194,146 @@ public class OmniAuthManagementLink extends ManagementLink {
             // cleanup
             boolean cleanupEnabled = req.getParameter("cleanupEnabled") != null;
             json.put("cleanupEnabled", cleanupEnabled);
-            // If auto-cleanup is disabled, always force dry-run ON (safety default)
             boolean dryRun = !cleanupEnabled || req.getParameter("cleanupDryRun") != null;
             json.put("cleanupDryRun", dryRun);
-            String cron  = req.getParameter("cleanupCron");
-            String maxD  = req.getParameter("cleanupMaxDeletions");
-            String email = req.getParameter("cleanupNotifyEmail");
-            if (cron  != null) json.put("cleanupCron",          cron.trim());
-            if (maxD  != null) json.put("cleanupMaxDeletions",   maxD.trim());
-            if (email != null) json.put("cleanupNotifyEmail",    email.trim());
-            // preserve protected users — don't touch them from this form
+            String cron = req.getParameter("cleanupCron");
+            String maxD = req.getParameter("cleanupMaxDeletions");
+            if (cron != null) json.put("cleanupCron",         cron.trim());
+            if (maxD != null) json.put("cleanupMaxDeletions", maxD.trim());
+            // SMTP
+            putParam(json, req, "smtpHost");
+            putParam(json, req, "smtpPort");
+            putParam(json, req, "smtpUsername");
+            putParam(json, req, "smtpPassword");
+            json.put("smtpTls", req.getParameter("smtpTls") != null);
+            putParam(json, req, "smtpFromAddress");
+            putParam(json, req, "smtpFromName");
+            putParam(json, req, "smtpReplyTo");
+            putParam(json, req, "notifyEmails");
+            // brute force
+            String bft = req.getParameter("bruteForceThreshold");
+            if (bft != null) json.put("bruteForceThreshold", bft.trim());
+            // stale warning
+            json.put("staleWarningEnabled", req.getParameter("staleWarningEnabled") != null);
+            String swCron = req.getParameter("staleWarningCron");
+            String swWin  = req.getParameter("staleWarningWindowDays");
+            if (swCron != null) json.put("staleWarningCron",       swCron.trim());
+            if (swWin  != null) json.put("staleWarningWindowDays", swWin.trim());
+            // notification toggles
+            json.put("notifyOnCleanup",             req.getParameter("notifyOnCleanup")             != null);
+            json.put("notifyOnUserDeleted",         req.getParameter("notifyOnUserDeleted")         != null);
+            json.put("notifyOnConfigChange",        req.getParameter("notifyOnConfigChange")        != null);
+            json.put("notifyOnProtectedListChange", req.getParameter("notifyOnProtectedListChange") != null);
+            json.put("notifyOnGraphApiFailure",     req.getParameter("notifyOnGraphApiFailure")     != null);
+            json.put("notifyOnBruteForce",          req.getParameter("notifyOnBruteForce")          != null);
+            json.put("notifyOnStaleWarning",        req.getParameter("notifyOnStaleWarning")        != null);
+            json.put("notifyOnAdminGranted",        req.getParameter("notifyOnAdminGranted")        != null);
+            // preserve fields managed by the Notifications page
+            json.put("notificationsEnabled", config.isNotificationsEnabled());
+            json.put("smtpEnabled",          config.isSmtpEnabled());
+            json.put("smtpHost",             config.getSmtpHost());
+            json.put("smtpPort",             config.getSmtpPort());
+            json.put("smtpUsername",         config.getSmtpUsername());
+            json.put("smtpTls",              config.isSmtpTls());
+            json.put("smtpFromAddress",      config.getSmtpFromAddress());
+            json.put("smtpFromName",         config.getSmtpFromName());
+            json.put("smtpReplyTo",         config.getSmtpReplyTo());
+            json.put("notifyEmails",         config.getNotifyEmails());
+            json.put("bruteForceThreshold",  config.getBruteForceThreshold());
+            json.put("staleWarningEnabled",    config.isStaleWarningEnabled());
+            json.put("staleWarningCron",       config.getStaleWarningCron());
+            json.put("staleWarningWindowDays", config.getStaleWarningWindowDays());
+            json.put("notifyOnCleanup",             config.isNotifyOnCleanup());
+            json.put("notifyOnUserDeleted",         config.isNotifyOnUserDeleted());
+            json.put("notifyOnConfigChange",        config.isNotifyOnConfigChange());
+            json.put("notifyOnProtectedListChange", config.isNotifyOnProtectedListChange());
+            json.put("notifyOnGraphApiFailure",     config.isNotifyOnGraphApiFailure());
+            json.put("notifyOnBruteForce",          config.isNotifyOnBruteForce());
+            json.put("notifyOnStaleWarning",        config.isNotifyOnStaleWarning());
+            json.put("notifyOnAdminGranted",        config.isNotifyOnAdminGranted());
+            // preserve protected users
             net.sf.json.JSONArray arr = new net.sf.json.JSONArray();
             for (String u : config.getProtectedUsers()) arr.add(u);
             json.put("protectedUsers", arr);
             config.configure(req, json);
         }
         rsp.sendRedirect("settings?saved=true");
+    }
+
+    @POST
+    public void doSendTestEmail(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+
+        // Read current form values — no save needed
+        OmniAuthGlobalConfig saved = OmniAuthGlobalConfig.get();
+
+        String host     = param(req, "smtpHost",    saved != null ? saved.getSmtpHost()        : "");
+        String portStr  = param(req, "smtpPort",    saved != null ? String.valueOf(saved.getSmtpPort()) : "587");
+        String username = param(req, "smtpUsername",saved != null ? saved.getSmtpUsername()    : "");
+        String fromAddr = param(req, "smtpFromAddress", saved != null ? saved.getSmtpFromAddress() : "");
+        String fromName = param(req, "smtpFromName",saved != null ? saved.getSmtpFromName()    : "Jenkins OmniAuth");
+        String replyTo  = param(req, "smtpReplyTo", saved != null ? saved.getSmtpReplyTo()     : "");
+        String to       = param(req, "notifyEmails",saved != null ? saved.getNotifyEmails()    : "");
+        boolean tls     = "1".equals(req.getParameter("smtpTls"));
+
+        // Split host:port if user pasted a combined value (e.g. from Grafana config)
+        if (host.contains(":")) {
+            String[] parts = host.split(":", 2);
+            host = parts[0].trim();
+            if (portStr.isEmpty() || portStr.equals("587")) portStr = parts[1].trim();
+        }
+
+        // Password: use form value if provided, else fall back to saved
+        String password = req.getParameter("smtpPassword");
+        if (password == null || password.trim().isEmpty()) {
+            password = (saved != null && saved.getSmtpPassword() != null)
+                    ? saved.getSmtpPassword().getPlainText() : "";
+        } else {
+            password = password.trim(); // remove accidental trailing whitespace/newlines from paste
+        }
+
+        int port = 587;
+        try { port = Integer.parseInt(portStr.trim()); } catch (NumberFormatException ignored) {}
+
+        String json;
+        if (host.isEmpty() || fromAddr.isEmpty() || username.isEmpty() || password.isEmpty()) {
+            json = "{\"ok\":false,\"msg\":\"Fill in host, username, password and from address first\"}";
+        } else if (to.isEmpty()) {
+            json = "{\"ok\":false,\"msg\":\"Fill in at least one notification recipient\"}";
+        } else {
+            try {
+                EmailHelper.testSmtp(host, port, username, password, tls, fromAddr, fromName, replyTo, to);
+                json = "{\"ok\":true,\"msg\":\"Test email sent to " + escapeJson(to) + "\"}";
+            } catch (Exception e) {
+                String msg = e.getMessage() != null ? e.getMessage() : "Unknown error";
+                json = "{\"ok\":false,\"msg\":\"" + escapeJson(msg) + "\"}";
+            }
+        }
+
+        rsp.setContentType("application/json;charset=UTF-8");
+        byte[] bytes = json.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        rsp.setContentLength(bytes.length);
+        rsp.getOutputStream().write(bytes);
+    }
+
+    private static String param(StaplerRequest req, String name, String fallback) {
+        String v = req.getParameter(name);
+        return (v != null && !v.trim().isEmpty()) ? v.trim() : fallback;
+    }
+
+    private static String escapeJson(String s) {
+        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "");
+    }
+
+    private static void putParam(net.sf.json.JSONObject json, StaplerRequest req, String name) {
+        String v = req.getParameter(name);
+        if (v != null) json.put(name, v.trim());
+    }
+
+    private static String currentUserId() {
+        Authentication auth = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication();
+        return (auth != null && auth.getName() != null) ? auth.getName() : "unknown";
     }
 
     // -------------------------------------------------------------------------
@@ -378,8 +569,10 @@ public class OmniAuthManagementLink extends ManagementLink {
             }
             User user = User.getById(userId, false);
             if (user != null) {
-                LOGGER.info("Manual user deletion by admin: " + userId + " (from " + back + ")");
+                String deletedBy = currentUserId();
+                LOGGER.info("Manual user deletion by " + deletedBy + ": " + userId + " (from " + back + ")");
                 user.delete();
+                EmailHelper.sendUserDeleted(config, userId, deletedBy);
             }
         }
         rsp.sendRedirect(back + "?deleted=true");

@@ -2,6 +2,7 @@ package io.jenkins.plugins.omniauth;
 
 import hudson.Extension;
 import hudson.model.User;
+import hudson.util.Secret;
 import jenkins.model.GlobalConfiguration;
 import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
@@ -28,7 +29,40 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     private boolean cleanupDryRun       = true;
     private String  cleanupCron         = "0 2 * * 0";
     private int     cleanupMaxDeletions = 50;
-    private String  cleanupNotifyEmail  = "";
+    private String  cleanupNotifyEmail  = ""; // legacy — kept for migration, replaced by notifyEmails
+
+    // ── Notifications master + channels ──────────────────────────────────────
+    private boolean notificationsEnabled = false;
+    private boolean smtpEnabled          = false;
+
+    // ── SMTP configuration ────────────────────────────────────────────────────
+    private String  smtpHost        = "";
+    private int     smtpPort        = 587;
+    private String  smtpUsername    = "";
+    private Secret  smtpPassword    = null;
+    private boolean smtpTls         = true;
+    private String  smtpFromAddress = "";
+    private String  smtpFromName    = "Jenkins OmniAuth";
+    private String  smtpReplyTo     = "";
+    private String  notifyEmails    = ""; // comma-separated recipients
+
+    // ── Brute force detection ─────────────────────────────────────────────────
+    private int bruteForceThreshold = 5;
+
+    // ── Stale warning ─────────────────────────────────────────────────────────
+    private boolean staleWarningEnabled    = false;
+    private String  staleWarningCron       = "0 9 * * 1";
+    private int     staleWarningWindowDays = 14;
+
+    // ── Notification event toggles ────────────────────────────────────────────
+    private boolean notifyOnCleanup             = true;
+    private boolean notifyOnUserDeleted         = true;
+    private boolean notifyOnConfigChange        = true;
+    private boolean notifyOnProtectedListChange = false;
+    private boolean notifyOnGraphApiFailure     = true;
+    private boolean notifyOnBruteForce          = true;
+    private boolean notifyOnStaleWarning        = true;
+    private boolean notifyOnAdminGranted        = true;
 
     // ── Cleanup history ───────────────────────────────────────────────────────
     private List<CleanupRunRecord> cleanupHistory = new ArrayList<>();
@@ -52,6 +86,47 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     public String getCleanupCron()           { return cleanupCron; }
     public int getCleanupMaxDeletions()      { return cleanupMaxDeletions; }
     public String getCleanupNotifyEmail()    { return cleanupNotifyEmail; }
+
+    // SMTP
+    public String  getSmtpHost()        { return smtpHost; }
+    public int     getSmtpPort()        { return smtpPort; }
+    public String  getSmtpUsername()    { return smtpUsername; }
+    public Secret  getSmtpPassword()    { return smtpPassword; }
+    public boolean isSmtpTls()          { return smtpTls; }
+    public String  getSmtpFromAddress() { return smtpFromAddress; }
+    public String  getSmtpFromName()    { return smtpFromName; }
+    public String  getSmtpReplyTo()     { return smtpReplyTo; }
+    public String  getNotifyEmails()    { return notifyEmails; }
+
+    public boolean isSmtpConfigured() {
+        return smtpHost != null && !smtpHost.isEmpty()
+            && smtpFromAddress != null && !smtpFromAddress.isEmpty()
+            && smtpUsername != null && !smtpUsername.isEmpty()
+            && smtpPassword != null;
+    }
+
+    // Notifications master + channels
+    public boolean isNotificationsEnabled() { return notificationsEnabled; }
+    public boolean isSmtpEnabled()          { return smtpEnabled; }
+
+    // Brute force
+    public int getBruteForceThreshold() { return bruteForceThreshold; }
+
+    // Stale warning
+    public boolean isStaleWarningEnabled()    { return staleWarningEnabled; }
+    public String  getStaleWarningCron()      { return staleWarningCron; }
+    public int     getStaleWarningWindowDays(){ return staleWarningWindowDays; }
+
+    // Notification toggles
+    public boolean isNotifyOnCleanup()             { return notifyOnCleanup; }
+    public boolean isNotifyOnUserDeleted()         { return notifyOnUserDeleted; }
+    public boolean isNotifyOnConfigChange()        { return notifyOnConfigChange; }
+    public boolean isNotifyOnProtectedListChange() { return notifyOnProtectedListChange; }
+    public boolean isNotifyOnGraphApiFailure()     { return notifyOnGraphApiFailure; }
+    public boolean isNotifyOnBruteForce()          { return notifyOnBruteForce; }
+    public boolean isNotifyOnStaleWarning()        { return notifyOnStaleWarning; }
+    public boolean isNotifyOnAdminGranted()        { return notifyOnAdminGranted; }
+
     public List<CleanupRunRecord> getCleanupHistory() {
         return Collections.unmodifiableList(cleanupHistory);
     }
@@ -88,11 +163,50 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
         staleThresholdDays  = jsonInt(json, "staleThresholdDays",  90);
         activeThresholdDays = jsonInt(json, "activeThresholdDays", 30);
         cleanupEnabled      = json.optBoolean("cleanupEnabled",  false);
-        // If auto-cleanup is disabled, always force dry-run ON (safety default)
         cleanupDryRun       = !cleanupEnabled || json.optBoolean("cleanupDryRun", true);
         cleanupCron         = jsonStr(json, "cleanupCron",         "0 2 * * 0");
         cleanupMaxDeletions = jsonInt(json, "cleanupMaxDeletions", 50);
-        cleanupNotifyEmail  = jsonStr(json, "cleanupNotifyEmail",  "");
+
+        // SMTP — split host:port if user pasted a combined value
+        String rawHost  = jsonStr(json, "smtpHost", "");
+        if (rawHost.contains(":")) {
+            String[] hp = rawHost.split(":", 2);
+            smtpHost = hp[0].trim();
+            try { smtpPort = Integer.parseInt(hp[1].trim()); } catch (NumberFormatException ignored) { smtpPort = 587; }
+        } else {
+            smtpHost = rawHost;
+            smtpPort = jsonInt(json, "smtpPort", 587);
+        }
+        smtpUsername    = jsonStr(json, "smtpUsername",    "");
+        String rawPass  = jsonStr(json, "smtpPassword",    "");
+        if (!rawPass.isEmpty()) smtpPassword = Secret.fromString(rawPass);
+        smtpTls         = json.optBoolean("smtpTls", true);
+        smtpFromAddress = jsonStr(json, "smtpFromAddress", "");
+        smtpFromName    = jsonStr(json, "smtpFromName",    "Jenkins OmniAuth");
+        smtpReplyTo     = jsonStr(json, "smtpReplyTo",     "");
+        notifyEmails    = jsonStr(json, "notifyEmails",    "");
+
+        // Notifications master + channels
+        notificationsEnabled = json.optBoolean("notificationsEnabled", false);
+        smtpEnabled          = json.optBoolean("smtpEnabled",          false);
+
+        // Brute force
+        bruteForceThreshold = jsonInt(json, "bruteForceThreshold", 5);
+
+        // Stale warning
+        staleWarningEnabled    = json.optBoolean("staleWarningEnabled", false);
+        staleWarningCron       = jsonStr(json, "staleWarningCron",       "0 9 * * 1");
+        staleWarningWindowDays = jsonInt(json, "staleWarningWindowDays", 14);
+
+        // Notification toggles
+        notifyOnCleanup             = json.optBoolean("notifyOnCleanup",             true);
+        notifyOnUserDeleted         = json.optBoolean("notifyOnUserDeleted",         true);
+        notifyOnConfigChange        = json.optBoolean("notifyOnConfigChange",        true);
+        notifyOnProtectedListChange = json.optBoolean("notifyOnProtectedListChange", false);
+        notifyOnGraphApiFailure     = json.optBoolean("notifyOnGraphApiFailure",     true);
+        notifyOnBruteForce          = json.optBoolean("notifyOnBruteForce",          true);
+        notifyOnStaleWarning        = json.optBoolean("notifyOnStaleWarning",        true);
+        notifyOnAdminGranted        = json.optBoolean("notifyOnAdminGranted",        true);
 
         save();
         return true;

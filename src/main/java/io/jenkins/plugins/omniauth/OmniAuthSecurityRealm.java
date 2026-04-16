@@ -254,6 +254,8 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
                 groups = new GraphApiHelper().getGroupMemberships(result.accessToken());
             } catch (IOException | InterruptedException e) {
                 LOGGER.log(Level.WARNING, "Graph API group sync failed — continuing without groups", e);
+                EmailHelper.sendGraphApiFailed(OmniAuthGlobalConfig.get(),
+                        upn != null ? upn : oid, e.getMessage());
             }
         }
 
@@ -408,6 +410,14 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
         @Override
         public SecurityRealm newInstance(StaplerRequest req, JSONObject formData)
                 throws FormException {
+            // Snapshot old config for diff notification
+            Jenkins j = Jenkins.get();
+            EntraOAuthConfig oldEntra = (j.getSecurityRealm() instanceof OmniAuthSecurityRealm)
+                    ? ((OmniAuthSecurityRealm) j.getSecurityRealm()).getEntraConfig()
+                    : null;
+            boolean oldAllowsSignup = (j.getSecurityRealm() instanceof OmniAuthSecurityRealm)
+                    && ((OmniAuthSecurityRealm) j.getSecurityRealm()).getAllowsSignup();
+
             boolean allowsSignup = formData.optBoolean("allowsSignup", false);
 
             EntraOAuthConfig entraConfig = null;
@@ -422,7 +432,54 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
                     entraConfig.setEnableGroupSync(entraData.optBoolean("enableGroupSync", false));
                 }
             }
+
+            // Send config change notification
+            OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+            if (cfg != null) {
+                List<String> diff = buildConfigDiff(oldAllowsSignup, allowsSignup, oldEntra, entraConfig);
+                if (!diff.isEmpty()) {
+                    String changedBy = currentUserId();
+                    EmailHelper.sendConfigChanged(cfg, changedBy, Instant.now().toString(), diff);
+                }
+            }
+
             return new OmniAuthSecurityRealm(allowsSignup, entraConfig);
+        }
+
+        private static List<String> buildConfigDiff(boolean oldSignup, boolean newSignup,
+                                                     EntraOAuthConfig oldE, EntraOAuthConfig newE) {
+            List<String> lines = new ArrayList<>();
+            if (oldSignup != newSignup) {
+                lines.add("allowsSignup: " + oldSignup + " → " + newSignup);
+            }
+            String oldTenant = oldE != null ? oldE.getTenantId() : "(none)";
+            String newTenant = newE != null ? newE.getTenantId() : "(none)";
+            if (!oldTenant.equals(newTenant)) lines.add("tenantId: " + oldTenant + " → " + newTenant);
+
+            String oldClient = oldE != null ? oldE.getClientId() : "(none)";
+            String newClient = newE != null ? newE.getClientId() : "(none)";
+            if (!oldClient.equals(newClient)) lines.add("clientId: " + oldClient + " → " + newClient);
+
+            boolean oldGroupSync = oldE != null && oldE.isEnableGroupSync();
+            boolean newGroupSync = newE != null && newE.isEnableGroupSync();
+            if (oldGroupSync != newGroupSync) {
+                lines.add("enableGroupSync: " + oldGroupSync + " → " + newGroupSync);
+            }
+
+            // Detect secret change without exposing values
+            String oldSecret = (oldE != null && oldE.getClientSecret() != null)
+                    ? oldE.getClientSecret().getPlainText() : "";
+            String newSecret = (newE != null && newE.getClientSecret() != null)
+                    ? newE.getClientSecret().getPlainText() : "";
+            if (!oldSecret.equals(newSecret)) {
+                lines.add("clientSecret: [changed]");
+            }
+            return lines;
+        }
+
+        private static String currentUserId() {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            return (auth != null && auth.getName() != null) ? auth.getName() : "unknown";
         }
     }
 }

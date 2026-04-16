@@ -1,0 +1,567 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:l="/lib/layout">
+
+  <l:layout title="OmniAuth — Notifications" norefresh="true">
+    <l:side-panel>
+      <st:include page="sidepanel.jelly"/>
+    </l:side-panel>
+    <l:main-panel>
+
+      <div class="jenkins-app-bar">
+        <div class="jenkins-app-bar__content">
+          <h1 class="jenkins-app-bar__heading">Notifications</h1>
+        </div>
+      </div>
+
+      <div style="padding: 16px 24px; max-width: 860px;">
+
+        <j:if test="${request2.getParameter('saved') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom: 20px;">
+            Notification settings saved.
+          </div>
+        </j:if>
+
+        <j:set var="cfg" value="${it.omniAuthGlobalConfig}"/>
+
+        <form method="post" action="saveNotifications">
+          <input type="hidden" name="${app.crumbRequestField}" value="${app.crumb}"/>
+
+          <!-- ================================================================
+               MASTER TOGGLE
+               ================================================================ -->
+          <div class="jenkins-card" style="padding: 0; margin-bottom: 20px; overflow: hidden;">
+            <div style="padding: 16px 20px; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;">
+              <div style="flex: 1;">
+                <div style="font-weight: 700; font-size: 0.95em; margin-bottom: 4px;">Enable notifications</div>
+                <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.82em;">
+                  Master switch. When off, no notifications are sent regardless of channel or event settings.
+                </div>
+              </div>
+              <label class="oau-toggle-wrap" style="flex-shrink:0;">
+                <j:choose>
+                  <j:when test="${cfg.notificationsEnabled}">
+                    <input type="checkbox" name="notificationsEnabled" id="notificationsEnabled"
+                           class="oau-toggle-chk" checked="checked" onchange="oauToggleMaster()"/>
+                  </j:when>
+                  <j:otherwise>
+                    <input type="checkbox" name="notificationsEnabled" id="notificationsEnabled"
+                           class="oau-toggle-chk" onchange="oauToggleMaster()"/>
+                  </j:otherwise>
+                </j:choose>
+                <div class="oau-toggle-track"><div class="oau-toggle-thumb"></div></div>
+              </label>
+            </div>
+          </div>
+
+          <!-- ================================================================
+               CHANNELS
+               ================================================================ -->
+          <div id="oauChannelsSection">
+
+            <div style="font-size: 0.75em; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+                        color: var(--text-color-secondary,#888); margin-bottom: 10px; padding-left: 4px;">
+              Channels
+            </div>
+
+            <!-- SMTP -->
+            <div class="jenkins-card" style="padding: 0; margin-bottom: 16px; overflow: hidden;">
+              <div style="padding: 14px 20px; border-bottom: 1px solid var(--panel-border-color,#e0e0e0);
+                          display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                       style="color:#27ae60;flex-shrink:0;">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                    <polyline points="22,6 12,13 2,6"/>
+                  </svg>
+                  <h3 style="margin: 0; font-size: 0.95em; font-weight: 600;">Email (SMTP)</h3>
+                </div>
+                <label class="oau-toggle-wrap" style="flex-shrink:0;">
+                  <j:choose>
+                    <j:when test="${cfg.smtpEnabled}">
+                      <input type="checkbox" name="smtpEnabled" id="smtpEnabled"
+                             class="oau-toggle-chk" checked="checked" onchange="oauToggleSmtp()"/>
+                    </j:when>
+                    <j:otherwise>
+                      <input type="checkbox" name="smtpEnabled" id="smtpEnabled"
+                             class="oau-toggle-chk" onchange="oauToggleSmtp()"/>
+                    </j:otherwise>
+                  </j:choose>
+                  <div class="oau-toggle-track"><div class="oau-toggle-thumb"></div></div>
+                </label>
+              </div>
+
+              <div id="smtpConfig" style="padding: 16px 20px; display: flex; flex-direction: column; gap: 16px;">
+
+                <div style="font-size: 0.82em; color: var(--text-color-secondary,#6c757d);
+                            background: var(--panel-header-bg,#f8f9fa);
+                            border: 1px solid var(--panel-border-color,#e0e0e0);
+                            border-radius: 6px; padding: 10px 14px;">
+                  Works with any SMTP relay — Gmail, Outlook, SendGrid, AWS SES, or your own server.
+                  Independent of Jenkins' own email configuration.
+                </div>
+
+                <!-- Host + Port -->
+                <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end;">
+                  <label style="flex: 2; min-width: 200px;">
+                    <div style="font-weight: 600; font-size: 0.88em; margin-bottom: 4px;">SMTP host</div>
+                    <input type="text" name="smtpHost" value="${cfg.smtpHost}"
+                           class="jenkins-input" style="width: 100%;" placeholder="smtp.example.com"/>
+                  </label>
+                  <label style="flex: 0 0 100px;">
+                    <div style="font-weight: 600; font-size: 0.88em; margin-bottom: 4px;">Port</div>
+                    <input type="number" name="smtpPort" min="1" max="65535"
+                           value="${cfg.smtpPort}" class="jenkins-input" style="width: 100%;"/>
+                  </label>
+                </div>
+
+                <!-- Username + Password -->
+                <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end;">
+                  <label style="flex: 1; min-width: 200px;">
+                    <div style="font-weight: 600; font-size: 0.88em; margin-bottom: 4px;">Username</div>
+                    <input type="text" name="smtpUsername" value="${cfg.smtpUsername}"
+                           class="jenkins-input" style="width: 100%;"
+                           autocomplete="off" placeholder="smtp-username"/>
+                  </label>
+                  <label style="flex: 1; min-width: 200px;">
+                    <div style="font-weight: 600; font-size: 0.88em; margin-bottom: 4px;">Password</div>
+                    <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.78em; margin-bottom: 4px;">
+                      Leave blank to keep existing.
+                    </div>
+                    <input type="password" name="smtpPassword" value=""
+                           class="jenkins-input" style="width: 100%;"
+                           autocomplete="new-password" placeholder="••••••••"/>
+                  </label>
+                </div>
+
+                <!-- STARTTLS -->
+                <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;">
+                  <div style="flex: 1;">
+                    <div style="font-weight: 600; font-size: 0.88em; margin-bottom: 2px;">Enable STARTTLS</div>
+                    <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.8em;">
+                      Required for port 587. Disable only for port 25 or SSL-wrapped port 465.
+                    </div>
+                  </div>
+                  <label class="oau-toggle-wrap">
+                    <j:choose>
+                      <j:when test="${cfg.smtpTls}">
+                        <input type="checkbox" name="smtpTls" class="oau-toggle-chk" checked="checked"/>
+                      </j:when>
+                      <j:otherwise>
+                        <input type="checkbox" name="smtpTls" class="oau-toggle-chk"/>
+                      </j:otherwise>
+                    </j:choose>
+                    <div class="oau-toggle-track"><div class="oau-toggle-thumb"></div></div>
+                  </label>
+                </div>
+
+                <!-- From address + name -->
+                <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end;">
+                  <label style="flex: 1; min-width: 200px;">
+                    <div style="font-weight: 600; font-size: 0.88em; margin-bottom: 4px;">From address</div>
+                    <input type="email" name="smtpFromAddress" value="${cfg.smtpFromAddress}"
+                           class="jenkins-input" style="width: 100%;" placeholder="no-reply@example.com"/>
+                  </label>
+                  <label style="flex: 1; min-width: 200px;">
+                    <div style="font-weight: 600; font-size: 0.88em; margin-bottom: 4px;">From name</div>
+                    <input type="text" name="smtpFromName" value="${cfg.smtpFromName}"
+                           class="jenkins-input" style="width: 100%;" placeholder="Jenkins OmniAuth"/>
+                  </label>
+                </div>
+
+                <!-- Reply-To -->
+                <label>
+                  <div style="font-weight: 600; font-size: 0.88em; margin-bottom: 4px;">
+                    Reply-To <span style="font-weight:400; color:var(--text-color-secondary,#888);">(optional)</span>
+                  </div>
+                  <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.8em; margin-bottom: 6px;">
+                    Replies go here instead of the From address. Useful for no-reply senders.
+                  </div>
+                  <input type="email" name="smtpReplyTo" value="${cfg.smtpReplyTo}"
+                         class="jenkins-input" style="width: 340px;" placeholder="team@example.com"/>
+                </label>
+
+                <!-- Recipients -->
+                <label>
+                  <div style="font-weight: 600; font-size: 0.88em; margin-bottom: 4px;">Notification recipients</div>
+                  <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.8em; margin-bottom: 6px;">
+                    Comma-separated. All enabled event emails go to these addresses.
+                  </div>
+                  <input type="text" name="notifyEmails" value="${cfg.notifyEmails}"
+                         class="jenkins-input" style="width: 100%;"
+                         placeholder="admin@example.com, team@example.com"/>
+                </label>
+
+                <!-- Test button -->
+                <div style="padding-top: 4px; border-top: 1px solid var(--panel-border-color,#f0f0f0);">
+                  <button type="button" class="jenkins-button" onclick="oauSendTestEmail(this)">
+                    Send Test Email
+                  </button>
+                  <span id="smtpTestResult" style="margin-left: 12px; font-size: 0.85em;"></span>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- Slack (coming soon) -->
+            <div class="jenkins-card" style="padding: 0; margin-bottom: 16px; overflow: hidden; opacity: 0.5;">
+              <div style="padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                       style="color:#4a154b;flex-shrink:0;">
+                    <path d="M14.5 10c-.83 0-1.5-.67-1.5-1.5v-5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5z"/>
+                    <path d="M20.5 10H19V8.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
+                    <path d="M9.5 14c.83 0 1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5S8 21.33 8 20.5v-5c0-.83.67-1.5 1.5-1.5z"/>
+                    <path d="M3.5 14H5v1.5c0 .83-.67 1.5-1.5 1.5S2 16.33 2 15.5 2.67 14 3.5 14z"/>
+                    <path d="M14 14.5c0-.83.67-1.5 1.5-1.5h5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-5c-.83 0-1.5-.67-1.5-1.5z"/>
+                    <path d="M15.5 19H14v1.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5-.67-1.5-1.5-1.5z"/>
+                    <path d="M10 9.5C10 8.67 9.33 8 8.5 8h-5C2.67 8 2 8.67 2 9.5S2.67 11 3.5 11h5c.83 0 1.5-.67 1.5-1.5z"/>
+                    <path d="M8.5 5H10V3.5C10 2.67 9.33 2 8.5 2S7 2.67 7 3.5 7.67 5 8.5 5z"/>
+                  </svg>
+                  <div>
+                    <h3 style="margin: 0; font-size: 0.95em; font-weight: 600;">Slack</h3>
+                    <span style="font-size: 0.78em; color: var(--text-color-secondary,#888);">Coming soon</span>
+                  </div>
+                </div>
+                <label class="oau-toggle-wrap" style="pointer-events:none;">
+                  <input type="checkbox" class="oau-toggle-chk" disabled="disabled"/>
+                  <div class="oau-toggle-track"><div class="oau-toggle-thumb"></div></div>
+                </label>
+              </div>
+            </div>
+
+            <!-- Teams (coming soon) -->
+            <div class="jenkins-card" style="padding: 0; margin-bottom: 20px; overflow: hidden; opacity: 0.5;">
+              <div style="padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                       style="color:#6264a7;flex-shrink:0;">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                  </svg>
+                  <div>
+                    <h3 style="margin: 0; font-size: 0.95em; font-weight: 600;">Microsoft Teams</h3>
+                    <span style="font-size: 0.78em; color: var(--text-color-secondary,#888);">Coming soon</span>
+                  </div>
+                </div>
+                <label class="oau-toggle-wrap" style="pointer-events:none;">
+                  <input type="checkbox" class="oau-toggle-chk" disabled="disabled"/>
+                  <div class="oau-toggle-track"><div class="oau-toggle-thumb"></div></div>
+                </label>
+              </div>
+            </div>
+
+            <!-- ================================================================
+                 EVENTS
+                 ================================================================ -->
+            <div style="font-size: 0.75em; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+                        color: var(--text-color-secondary,#888); margin-bottom: 10px; padding-left: 4px;">
+              Events
+            </div>
+
+            <div class="jenkins-card" style="padding: 0; margin-bottom: 20px; overflow: hidden;">
+              <div style="padding: 16px 20px; display: flex; flex-direction: column; gap: 0;">
+
+                <!-- Stale cleanup ran -->
+                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:12px 0; border-bottom:1px solid var(--panel-border-color,#f0f0f0);">
+                  <div style="flex:1;">
+                    <div style="font-weight:600; font-size:0.88em; margin-bottom:2px;">Stale cleanup ran</div>
+                    <div style="color:var(--text-color-secondary,#6c757d); font-size:0.8em;">Report after each automated cleanup run (dry-run or live).</div>
+                  </div>
+                  <label class="oau-toggle-wrap">
+                    <j:choose>
+                      <j:when test="${cfg.notifyOnCleanup}">
+                        <input type="checkbox" name="notifyOnCleanup" class="oau-toggle-chk" checked="checked"/>
+                      </j:when>
+                      <j:otherwise>
+                        <input type="checkbox" name="notifyOnCleanup" class="oau-toggle-chk"/>
+                      </j:otherwise>
+                    </j:choose>
+                    <div class="oau-toggle-track"><div class="oau-toggle-thumb"></div></div>
+                  </label>
+                </div>
+
+                <!-- User manually deleted -->
+                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:12px 0; border-bottom:1px solid var(--panel-border-color,#f0f0f0);">
+                  <div style="flex:1;">
+                    <div style="font-weight:600; font-size:0.88em; margin-bottom:2px;">User manually deleted</div>
+                    <div style="color:var(--text-color-secondary,#6c757d); font-size:0.8em;">Alert when an admin manually deletes a user via the OmniAuth UI.</div>
+                  </div>
+                  <label class="oau-toggle-wrap">
+                    <j:choose>
+                      <j:when test="${cfg.notifyOnUserDeleted}">
+                        <input type="checkbox" name="notifyOnUserDeleted" class="oau-toggle-chk" checked="checked"/>
+                      </j:when>
+                      <j:otherwise>
+                        <input type="checkbox" name="notifyOnUserDeleted" class="oau-toggle-chk"/>
+                      </j:otherwise>
+                    </j:choose>
+                    <div class="oau-toggle-track"><div class="oau-toggle-thumb"></div></div>
+                  </label>
+                </div>
+
+                <!-- Config changed -->
+                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:12px 0; border-bottom:1px solid var(--panel-border-color,#f0f0f0);">
+                  <div style="flex:1;">
+                    <div style="font-weight:600; font-size:0.88em; margin-bottom:2px;">OmniAuth configuration changed</div>
+                    <div style="color:var(--text-color-secondary,#6c757d); font-size:0.8em;">Diff email when Entra credentials or security realm settings are saved.</div>
+                  </div>
+                  <label class="oau-toggle-wrap">
+                    <j:choose>
+                      <j:when test="${cfg.notifyOnConfigChange}">
+                        <input type="checkbox" name="notifyOnConfigChange" class="oau-toggle-chk" checked="checked"/>
+                      </j:when>
+                      <j:otherwise>
+                        <input type="checkbox" name="notifyOnConfigChange" class="oau-toggle-chk"/>
+                      </j:otherwise>
+                    </j:choose>
+                    <div class="oau-toggle-track"><div class="oau-toggle-thumb"></div></div>
+                  </label>
+                </div>
+
+                <!-- Protected list changed -->
+                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:12px 0; border-bottom:1px solid var(--panel-border-color,#f0f0f0);">
+                  <div style="flex:1;">
+                    <div style="font-weight:600; font-size:0.88em; margin-bottom:2px;">Protected users list changed</div>
+                    <div style="color:var(--text-color-secondary,#6c757d); font-size:0.8em;">Alert when users are added to or removed from the protected list.</div>
+                  </div>
+                  <label class="oau-toggle-wrap">
+                    <j:choose>
+                      <j:when test="${cfg.notifyOnProtectedListChange}">
+                        <input type="checkbox" name="notifyOnProtectedListChange" class="oau-toggle-chk" checked="checked"/>
+                      </j:when>
+                      <j:otherwise>
+                        <input type="checkbox" name="notifyOnProtectedListChange" class="oau-toggle-chk"/>
+                      </j:otherwise>
+                    </j:choose>
+                    <div class="oau-toggle-track"><div class="oau-toggle-thumb"></div></div>
+                  </label>
+                </div>
+
+                <!-- Graph API failure -->
+                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:12px 0; border-bottom:1px solid var(--panel-border-color,#f0f0f0);">
+                  <div style="flex:1;">
+                    <div style="font-weight:600; font-size:0.88em; margin-bottom:2px;">Graph API failure</div>
+                    <div style="color:var(--text-color-secondary,#6c757d); font-size:0.8em;">Alert when Microsoft Graph API calls fail (breaks Entra group sync).</div>
+                  </div>
+                  <label class="oau-toggle-wrap">
+                    <j:choose>
+                      <j:when test="${cfg.notifyOnGraphApiFailure}">
+                        <input type="checkbox" name="notifyOnGraphApiFailure" class="oau-toggle-chk" checked="checked"/>
+                      </j:when>
+                      <j:otherwise>
+                        <input type="checkbox" name="notifyOnGraphApiFailure" class="oau-toggle-chk"/>
+                      </j:otherwise>
+                    </j:choose>
+                    <div class="oau-toggle-track"><div class="oau-toggle-thumb"></div></div>
+                  </label>
+                </div>
+
+                <!-- Admin granted -->
+                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:12px 0; border-bottom:1px solid var(--panel-border-color,#f0f0f0);">
+                  <div style="flex:1;">
+                    <div style="font-weight:600; font-size:0.88em; margin-bottom:2px;">Admin permission granted</div>
+                    <div style="color:var(--text-color-secondary,#6c757d); font-size:0.8em;">Alert when a user is granted Jenkins ADMINISTER permission (GlobalMatrix / ProjectMatrix only).</div>
+                  </div>
+                  <label class="oau-toggle-wrap">
+                    <j:choose>
+                      <j:when test="${cfg.notifyOnAdminGranted}">
+                        <input type="checkbox" name="notifyOnAdminGranted" class="oau-toggle-chk" checked="checked"/>
+                      </j:when>
+                      <j:otherwise>
+                        <input type="checkbox" name="notifyOnAdminGranted" class="oau-toggle-chk"/>
+                      </j:otherwise>
+                    </j:choose>
+                    <div class="oau-toggle-track"><div class="oau-toggle-thumb"></div></div>
+                  </label>
+                </div>
+
+                <!-- Brute force — with inline threshold -->
+                <div style="padding:12px 0; border-bottom:1px solid var(--panel-border-color,#f0f0f0);">
+                  <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px;">
+                    <div style="flex:1;">
+                      <div style="font-weight:600; font-size:0.88em; margin-bottom:2px;">Brute force attempt detected</div>
+                      <div style="color:var(--text-color-secondary,#6c757d); font-size:0.8em;">Alert when consecutive login failures for a user hit the configured threshold.</div>
+                    </div>
+                    <label class="oau-toggle-wrap">
+                      <j:choose>
+                        <j:when test="${cfg.notifyOnBruteForce}">
+                          <input type="checkbox" name="notifyOnBruteForce" id="notifyOnBruteForce"
+                                 class="oau-toggle-chk" checked="checked" onchange="oauToggleSection('notifyOnBruteForce','bruteForceConfig')"/>
+                        </j:when>
+                        <j:otherwise>
+                          <input type="checkbox" name="notifyOnBruteForce" id="notifyOnBruteForce"
+                                 class="oau-toggle-chk" onchange="oauToggleSection('notifyOnBruteForce','bruteForceConfig')"/>
+                        </j:otherwise>
+                      </j:choose>
+                      <div class="oau-toggle-track"><div class="oau-toggle-thumb"></div></div>
+                    </label>
+                  </div>
+                  <div id="bruteForceConfig" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--panel-border-color,#f0f0f0);">
+                    <div style="font-weight:600; font-size:0.85em; margin-bottom:4px;">Alert after N consecutive failures</div>
+                    <div style="color:var(--text-color-secondary,#6c757d); font-size:0.78em; margin-bottom:8px;">
+                      Counter resets on a successful login.
+                    </div>
+                    <input type="number" name="bruteForceThreshold" min="1" max="100"
+                           value="${cfg.bruteForceThreshold}"
+                           class="jenkins-input" style="width:100px;"/>
+                    <span style="margin-left:8px; color:var(--text-color-secondary,#888); font-size:0.85em;">failures</span>
+                  </div>
+                </div>
+
+                <!-- Stale warning — with inline cron + window -->
+                <div style="padding:12px 0;">
+                  <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px;">
+                    <div style="flex:1;">
+                      <div style="font-weight:600; font-size:0.88em; margin-bottom:2px;">Users approaching stale threshold</div>
+                      <div style="color:var(--text-color-secondary,#6c757d); font-size:0.8em;">Digest email listing users who will become stale within the warning window.</div>
+                    </div>
+                    <label class="oau-toggle-wrap">
+                      <j:choose>
+                        <j:when test="${cfg.staleWarningEnabled}">
+                          <input type="checkbox" name="staleWarningEnabled" id="staleWarningEnabled"
+                                 class="oau-toggle-chk" checked="checked" onchange="oauToggleSection('staleWarningEnabled','staleWarningConfig')"/>
+                        </j:when>
+                        <j:otherwise>
+                          <input type="checkbox" name="staleWarningEnabled" id="staleWarningEnabled"
+                                 class="oau-toggle-chk" onchange="oauToggleSection('staleWarningEnabled','staleWarningConfig')"/>
+                        </j:otherwise>
+                      </j:choose>
+                      <div class="oau-toggle-track"><div class="oau-toggle-thumb"></div></div>
+                    </label>
+                  </div>
+                  <div id="staleWarningConfig" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--panel-border-color,#f0f0f0); display:flex; flex-direction:column; gap:12px;">
+                    <div>
+                      <div style="font-weight:600; font-size:0.85em; margin-bottom:4px;">Warning window</div>
+                      <div style="color:var(--text-color-secondary,#6c757d); font-size:0.78em; margin-bottom:8px;">
+                        Warn about users last seen within this many days of the stale threshold.
+                        E.g. threshold=90, window=14 → warns about users last seen 76–90 days ago.
+                      </div>
+                      <input type="number" name="staleWarningWindowDays" min="1" max="365"
+                             value="${cfg.staleWarningWindowDays}"
+                             class="jenkins-input" style="width:100px;"/>
+                      <span style="margin-left:8px; color:var(--text-color-secondary,#888); font-size:0.85em;">days before stale</span>
+                    </div>
+                    <div>
+                      <div style="font-weight:600; font-size:0.85em; margin-bottom:4px;">Schedule (cron)</div>
+                      <div style="color:var(--text-color-secondary,#6c757d); font-size:0.78em; margin-bottom:6px;">
+                        Default: <code>0 9 * * 1</code> (Monday 09:00).
+                      </div>
+                      <input type="text" name="staleWarningCron" value="${cfg.staleWarningCron}"
+                             class="jenkins-input" style="width:200px;" placeholder="0 9 * * 1"/>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+          </div><!-- end #oauChannelsSection -->
+
+          <div style="display:flex; gap:10px; align-items:center;">
+            <button type="submit" class="jenkins-button jenkins-button--primary">Save</button>
+            <a href="." class="jenkins-button">Cancel</a>
+          </div>
+
+        </form>
+      </div>
+
+      <style>
+        .oau-toggle-wrap { display: flex; align-items: center; cursor: pointer; flex-shrink: 0; }
+        .oau-toggle-chk  { display: none; }
+        .oau-toggle-track {
+          width: 42px; height: 22px; border-radius: 11px;
+          background: var(--panel-border-color, #ccc);
+          position: relative; transition: background 0.2s;
+        }
+        .oau-toggle-thumb {
+          width: 18px; height: 18px; background: #fff; border-radius: 50%;
+          position: absolute; top: 2px; left: 2px;
+          transition: left 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+        }
+        .oau-toggle-chk:checked + .oau-toggle-track { background: var(--blue, #0078d4); }
+        .oau-toggle-chk:checked + .oau-toggle-track .oau-toggle-thumb { left: 22px; }
+      </style>
+
+      <script>//<![CDATA[
+        function oauToggleMaster() {
+          var on = document.getElementById('notificationsEnabled').checked;
+          var section = document.getElementById('oauChannelsSection');
+          section.style.opacity       = on ? '1'    : '0.4';
+          section.style.pointerEvents = on ? ''     : 'none';
+        }
+
+        function oauToggleSmtp() {
+          var on = document.getElementById('smtpEnabled').checked;
+          var cfg = document.getElementById('smtpConfig');
+          cfg.style.opacity       = on ? '1'  : '0.4';
+          cfg.style.pointerEvents = on ? ''   : 'none';
+        }
+
+        function oauToggleSection(checkboxId, sectionId) {
+          var on = document.getElementById(checkboxId).checked;
+          var el = document.getElementById(sectionId);
+          if (!el) return;
+          el.style.display = on ? '' : 'none';
+        }
+
+        // Init on load
+        oauToggleMaster();
+        oauToggleSmtp();
+        oauToggleSection('notifyOnBruteForce', 'bruteForceConfig');
+        oauToggleSection('staleWarningEnabled', 'staleWarningConfig');
+
+        function oauSendTestEmail(btn) {
+          var resultEl = document.getElementById('smtpTestResult');
+          resultEl.style.color = '#888';
+          resultEl.textContent = 'Sending…';
+          btn.disabled = true;
+
+          var form    = btn.closest('form');
+          var tlsEl   = form.querySelector('[name="smtpTls"]');
+          var headers = {};
+          var head = document.querySelector('head');
+          var cf = head ? head.getAttribute('data-crumb-header') : '';
+          var cv = head ? head.getAttribute('data-crumb-value')  : '';
+          if (cf) headers[cf] = cv;
+
+          var params = new URLSearchParams({
+            smtpHost:        form.querySelector('[name="smtpHost"]').value,
+            smtpPort:        form.querySelector('[name="smtpPort"]').value,
+            smtpUsername:    form.querySelector('[name="smtpUsername"]').value,
+            smtpPassword:    form.querySelector('[name="smtpPassword"]').value,
+            smtpTls:         (tlsEl && tlsEl.checked) ? '1' : '',
+            smtpFromAddress: form.querySelector('[name="smtpFromAddress"]').value,
+            smtpFromName:    form.querySelector('[name="smtpFromName"]').value,
+            smtpReplyTo:     form.querySelector('[name="smtpReplyTo"]').value,
+            notifyEmails:    form.querySelector('[name="notifyEmails"]').value
+          });
+
+          fetch('${rootURL}/manage/omniauth-management/sendTestEmail', {
+            method:      'POST',
+            credentials: 'same-origin',
+            headers:     headers,
+            body:        params
+          })
+            .then(function(r) { return r.text(); })
+            .then(function(text) {
+              var data = JSON.parse(text);
+              resultEl.style.color = data.ok ? '#27ae60' : '#e74c3c';
+              resultEl.textContent = data.msg;
+            })
+            .catch(function(err) {
+              resultEl.style.color = '#e74c3c';
+              resultEl.textContent = 'Request failed: ' + err.message;
+            })
+            .finally(function() { btn.disabled = false; });
+        }
+      //]]></script>
+
+    </l:main-panel>
+  </l:layout>
+
+</j:jelly>

@@ -16,6 +16,9 @@
     <l:task icon="symbol-settings"
             href="${rootURL}/manage/omniauth-management/settings"
             title="Settings"/>
+    <l:task icon="symbol-notifications-outline plugin-ionicons-api"
+            href="${rootURL}/manage/omniauth-management/notifications"
+            title="Notifications"/>
     <l:task icon="symbol-information-circle"
             href="${rootURL}/manage/omniauth-management/about"
             title="Info"/>

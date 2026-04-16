@@ -35,6 +35,8 @@ public class LastLoginListener extends SecurityListener {
             user.addProperty(prop);
             user.save();
 
+            BruteForceTracker.recordSuccess(details.getUsername());
+
             // Flag for LoginContextFilter to record the full event with IP/UA
             LoginContextFilter.FRESH_LOGINS.put(details.getUsername(), Boolean.TRUE);
 
@@ -45,7 +47,7 @@ public class LastLoginListener extends SecurityListener {
 
     @Override
     protected void failedToAuthenticate(String username) {
-        // Failed logins: flag with a special key so filter can record as failed
         LoginContextFilter.FRESH_LOGINS.put("__failed__" + username, Boolean.TRUE);
+        BruteForceTracker.recordFailure(username);
     }
 }
