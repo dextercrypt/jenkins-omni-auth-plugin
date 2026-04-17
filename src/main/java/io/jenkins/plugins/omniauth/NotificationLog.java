@@ -70,6 +70,17 @@ public class NotificationLog {
         return Collections.unmodifiableList(entries);
     }
 
+    public synchronized NotificationLogEntry lastForChannel(String prefix) {
+        for (NotificationLogEntry e : entries) {
+            if (e.getDescription().startsWith(prefix)) return e;
+        }
+        return null;
+    }
+
+    public NotificationLogEntry lastSmtpEntry()  { return lastForChannel("[Email] "); }
+    public NotificationLogEntry lastSlackEntry() { return lastForChannel("[Slack] "); }
+    public NotificationLogEntry lastTeamsEntry() { return lastForChannel("[Teams] "); }
+
     public synchronized void clear() {
         entries.clear();
         persist();

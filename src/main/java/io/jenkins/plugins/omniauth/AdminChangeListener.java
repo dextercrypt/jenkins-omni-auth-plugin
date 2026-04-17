@@ -41,7 +41,7 @@ public class AdminChangeListener extends SaveableListener {
         if (!(o instanceof Jenkins)) return;
 
         OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
-        if (cfg == null || !cfg.isNotifyOnAdminGranted()) return;
+        if (cfg == null) return;
 
         Set<String> current = currentAdminSet();
         Set<String> last    = lastKnownAdmins;

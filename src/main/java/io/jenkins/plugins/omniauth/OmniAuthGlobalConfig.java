@@ -58,15 +58,18 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     private String  staleWarningCron       = "0 9 * * 1";
     private int     staleWarningWindowDays = 14;
 
-    // ── Notification event toggles ────────────────────────────────────────────
-    private boolean notifyOnCleanup             = true;
-    private boolean notifyOnUserDeleted         = true;
-    private boolean notifyOnConfigChange        = true;
-    private boolean notifyOnProtectedListChange = false;
-    private boolean notifyOnGraphApiFailure     = true;
-    private boolean notifyOnBruteForce          = true;
-    private boolean notifyOnStaleWarning        = true;
-    private boolean notifyOnAdminGranted        = true;
+    // ── Notification branding ─────────────────────────────────────────────────
+    private String notificationLogoUrl = "";
+
+    // ── Per-channel event subscriptions ──────────────────────────────────────
+    private List<String> smtpEvents  = new ArrayList<>(java.util.Arrays.asList(ALL_EVENTS));
+    private List<String> slackEvents = new ArrayList<>();
+    private List<String> teamsEvents = new ArrayList<>();
+
+    public static final String[] ALL_EVENTS = {
+        "cleanup", "userDeleted", "configChanged", "protectedListChanged",
+        "graphApiFailure", "adminGranted", "bruteForce", "staleWarning"
+    };
 
     // ── Cleanup history ───────────────────────────────────────────────────────
     private List<CleanupRunRecord> cleanupHistory = new ArrayList<>();
@@ -99,6 +102,9 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     public boolean isSmtpTls()          { return smtpTls; }
     public String  getSmtpFromAddress() { return smtpFromAddress; }
     public String  getSmtpFromName()    { return smtpFromName; }
+    public String  getNotificationLogoUrl() {
+        return notificationLogoUrl != null ? notificationLogoUrl.trim() : "";
+    }
     public String  getSmtpReplyTo()     { return smtpReplyTo; }
     public String  getNotifyEmails()    { return notifyEmails; }
 
@@ -125,15 +131,18 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     public String  getStaleWarningCron()      { return staleWarningCron; }
     public int     getStaleWarningWindowDays(){ return staleWarningWindowDays; }
 
-    // Notification toggles
-    public boolean isNotifyOnCleanup()             { return notifyOnCleanup; }
-    public boolean isNotifyOnUserDeleted()         { return notifyOnUserDeleted; }
-    public boolean isNotifyOnConfigChange()        { return notifyOnConfigChange; }
-    public boolean isNotifyOnProtectedListChange() { return notifyOnProtectedListChange; }
-    public boolean isNotifyOnGraphApiFailure()     { return notifyOnGraphApiFailure; }
-    public boolean isNotifyOnBruteForce()          { return notifyOnBruteForce; }
-    public boolean isNotifyOnStaleWarning()        { return notifyOnStaleWarning; }
-    public boolean isNotifyOnAdminGranted()        { return notifyOnAdminGranted; }
+    // Per-channel event subscriptions
+    public List<String> getSmtpEvents()  { return Collections.unmodifiableList(smtpEvents); }
+    public List<String> getSlackEvents() { return Collections.unmodifiableList(slackEvents); }
+    public List<String> getTeamsEvents() { return Collections.unmodifiableList(teamsEvents); }
+
+    public boolean isSmtpEvent(String event)  { return smtpEvents.contains(event); }
+    public boolean isSlackEvent(String event) { return slackEvents.contains(event); }
+    public boolean isTeamsEvent(String event) { return teamsEvents.contains(event); }
+
+    public String getSmtpEventsJoined()  { return String.join(",", smtpEvents); }
+    public String getSlackEventsJoined() { return String.join(",", slackEvents); }
+    public String getTeamsEventsJoined() { return String.join(",", teamsEvents); }
 
     public List<CleanupRunRecord> getCleanupHistory() {
         return Collections.unmodifiableList(cleanupHistory);
@@ -192,7 +201,8 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
         smtpFromAddress = jsonStr(json, "smtpFromAddress", "");
         smtpFromName    = jsonStr(json, "smtpFromName",    "Jenkins OmniAuth");
         smtpReplyTo     = jsonStr(json, "smtpReplyTo",     "");
-        notifyEmails    = jsonStr(json, "notifyEmails",    "");
+        notifyEmails          = jsonStr(json, "notifyEmails",          "");
+        notificationLogoUrl   = jsonStr(json, "notificationLogoUrl",   "");
 
         // Notifications master + channels
         notificationsEnabled = json.optBoolean("notificationsEnabled", false);
@@ -210,15 +220,10 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
         staleWarningCron       = jsonStr(json, "staleWarningCron",       "0 9 * * 1");
         staleWarningWindowDays = jsonInt(json, "staleWarningWindowDays", 14);
 
-        // Notification toggles
-        notifyOnCleanup             = json.optBoolean("notifyOnCleanup",             true);
-        notifyOnUserDeleted         = json.optBoolean("notifyOnUserDeleted",         true);
-        notifyOnConfigChange        = json.optBoolean("notifyOnConfigChange",        true);
-        notifyOnProtectedListChange = json.optBoolean("notifyOnProtectedListChange", false);
-        notifyOnGraphApiFailure     = json.optBoolean("notifyOnGraphApiFailure",     true);
-        notifyOnBruteForce          = json.optBoolean("notifyOnBruteForce",          true);
-        notifyOnStaleWarning        = json.optBoolean("notifyOnStaleWarning",        true);
-        notifyOnAdminGranted        = json.optBoolean("notifyOnAdminGranted",        true);
+        // Per-channel event subscriptions
+        smtpEvents  = jsonStringList(json, "smtpEvents");
+        slackEvents = jsonStringList(json, "slackEvents");
+        teamsEvents = jsonStringList(json, "teamsEvents");
 
         save();
         return true;
@@ -231,6 +236,17 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
             Object v = json.opt(key);
             return v == null ? fallback : Integer.parseInt(v.toString().trim());
         } catch (NumberFormatException e) { return fallback; }
+    }
+
+    private static List<String> jsonStringList(JSONObject json, String key) {
+        List<String> result = new ArrayList<>();
+        Object raw = json.opt(key);
+        if (raw instanceof JSONArray) {
+            for (Object o : (JSONArray) raw) if (o != null) result.add(o.toString());
+        } else if (raw instanceof String && !((String) raw).isEmpty()) {
+            result.add(raw.toString());
+        }
+        return result;
     }
 
     private static String jsonStr(JSONObject json, String key, String fallback) {

@@ -43,7 +43,7 @@
                   <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.8em; margin-bottom: 8px;">
                     Logins within this window are considered active. Affects the Active / Inactive status on the User Status page.
                   </div>
-                  <input type="number" name="activeThresholdDays" min="1" max="365"
+                  <input type="number" onwheel="this.blur()" name="activeThresholdDays" min="1" max="365"
                          value="${cfg.activeThresholdDays}"
                          class="jenkins-input" style="width: 100px;"/>
                   <span style="margin-left: 8px; color: var(--text-color-secondary,#888); font-size: 0.85em;">days</span>
@@ -68,7 +68,7 @@
                 <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.8em; margin-bottom: 8px;">
                   Users who have not logged in for longer than this are listed as stale and eligible for cleanup.
                 </div>
-                <input type="number" name="staleThresholdDays" min="1" max="3650"
+                <input type="number" onwheel="this.blur()" name="staleThresholdDays" min="1" max="3650"
                        value="${cfg.staleThresholdDays}"
                        class="jenkins-input" style="width: 100px;"/>
                 <span style="margin-left: 8px; color: var(--text-color-secondary,#888); font-size: 0.85em;">days</span>
@@ -160,7 +160,7 @@
                   <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.8em; margin-bottom: 6px;">
                     Safety cap. Cleanup stops after this many deletions even if more stale users exist.
                   </div>
-                  <input type="number" name="cleanupMaxDeletions" min="1" max="500"
+                  <input type="number" onwheel="this.blur()" name="cleanupMaxDeletions" min="1" max="500"
                          value="${cfg.cleanupMaxDeletions}"
                          class="jenkins-input" style="width: 100px;"/>
                   <span style="margin-left: 8px; color: var(--text-color-secondary,#888); font-size: 0.85em;">users</span>
