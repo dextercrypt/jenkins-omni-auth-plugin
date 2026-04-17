@@ -23,7 +23,7 @@ public class BruteForceTracker {
         LOGGER.fine("Login failure #" + count + " for: " + username);
         if (count == threshold) {
             LOGGER.warning("Brute force threshold (" + threshold + ") reached for user: " + username);
-            EmailHelper.sendBruteForceAlert(cfg, username, count);
+            NotificationService.sendBruteForceAlert(cfg, username, count);
         }
     }
 

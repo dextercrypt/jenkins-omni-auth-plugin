@@ -111,7 +111,7 @@ public class StaleUserCleanupWork extends AsyncPeriodicWork {
                 + " skippedProtected=" + skippedProt
                 + " dryRun=" + dryRun);
 
-        EmailHelper.sendCleanupReport(config, record);
+        NotificationService.sendCleanupReport(config, record);
     }
 
     // ── Cron matching ─────────────────────────────────────────────────────────

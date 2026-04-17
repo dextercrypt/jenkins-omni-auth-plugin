@@ -254,7 +254,7 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
                 groups = new GraphApiHelper().getGroupMemberships(result.accessToken());
             } catch (IOException | InterruptedException e) {
                 LOGGER.log(Level.WARNING, "Graph API group sync failed — continuing without groups", e);
-                EmailHelper.sendGraphApiFailed(OmniAuthGlobalConfig.get(),
+                NotificationService.sendGraphApiFailed(OmniAuthGlobalConfig.get(),
                         upn != null ? upn : oid, e.getMessage());
             }
         }
@@ -439,7 +439,7 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
                 List<String> diff = buildConfigDiff(oldAllowsSignup, allowsSignup, oldEntra, entraConfig);
                 if (!diff.isEmpty()) {
                     String changedBy = currentUserId();
-                    EmailHelper.sendConfigChanged(cfg, changedBy, Instant.now().toString(), diff);
+                    NotificationService.sendConfigChanged(cfg, changedBy, Instant.now().toString(), diff);
                 }
             }
 

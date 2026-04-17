@@ -1,146 +1,18 @@
 package io.jenkins.plugins.omniauth;
 
 import java.util.List;
-import java.util.Properties;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import jakarta.mail.Authenticator;
-import jakarta.mail.Message;
-import jakarta.mail.PasswordAuthentication;
-import jakarta.mail.Session;
-import jakarta.mail.Transport;
-import jakarta.mail.internet.InternetAddress;
-import jakarta.mail.internet.MimeMessage;
 
 /**
- * Sends OmniAuth notification emails via plain SMTP.
- * All SMTP settings come from OmniAuthGlobalConfig — independent of Jenkins' own email config.
+ * Dispatches OmniAuth notification events to all enabled channels (SMTP, Slack, Teams).
  */
-public class EmailHelper {
+public class NotificationService {
 
-    private static final Logger LOGGER = Logger.getLogger(EmailHelper.class.getName());
+    private NotificationService() {}
 
-    private EmailHelper() {}
-
-    // -------------------------------------------------------------------------
-    // Core send method
-    // -------------------------------------------------------------------------
-
-    private static void send(OmniAuthGlobalConfig cfg, String subject, String body) {
-        if (cfg == null) return;
-        if (!cfg.isNotificationsEnabled()) return;
-        if (!cfg.isSmtpEnabled()) return;
-        if (!cfg.isSmtpConfigured()) {
-            LOGGER.warning("OmniAuth email: SMTP not configured — skipping notification: " + subject);
-            return;
-        }
-
-        String recipients = cfg.getNotifyEmails();
-        if (recipients == null || recipients.trim().isEmpty()) {
-            LOGGER.warning("OmniAuth email: No recipient emails configured — skipping: " + subject);
-            return;
-        }
-
-        // Capture config values before handing off to background thread
-        final String smtpHost     = cfg.getSmtpHost();
-        final int    smtpPort     = cfg.getSmtpPort();
-        final String smtpUsername = cfg.getSmtpUsername();
-        final String smtpPassword = cfg.getSmtpPassword() != null ? cfg.getSmtpPassword().getPlainText() : "";
-        final boolean smtpTls     = cfg.isSmtpTls();
-        final String fromAddress  = cfg.getSmtpFromAddress();
-        final String fromName     = cfg.getSmtpFromName() != null ? cfg.getSmtpFromName() : "Jenkins OmniAuth";
-        final String replyTo      = cfg.getSmtpReplyTo();
-        final String to           = recipients;
-
-        Thread t = new Thread(() -> sendNow(
-                smtpHost, smtpPort, smtpUsername, smtpPassword, smtpTls,
-                fromAddress, fromName, replyTo, to, subject, body));
-        t.setDaemon(true);
-        t.setName("omniauth-email");
-        t.start();
-    }
-
-    private static void sendNow(String host, int port, String username, String password,
-                                 boolean tls, String fromAddress, String fromName,
-                                 String replyTo, String recipients, String subject, String body) {
-        try {
-            Properties props = new Properties();
-            props.put("mail.smtp.host", host);
-            props.put("mail.smtp.port", String.valueOf(port));
-            props.put("mail.smtp.auth", "true");
-            props.put("mail.smtp.auth.mechanisms", "PLAIN LOGIN");
-            if (tls) {
-                props.put("mail.smtp.starttls.enable",   "true");
-                props.put("mail.smtp.starttls.required", "true");
-            }
-
-            Session session = Session.getInstance(props, new Authenticator() {
-                @Override protected PasswordAuthentication getPasswordAuthentication() {
-                    return new PasswordAuthentication(username, password);
-                }
-            });
-
-            MimeMessage msg = new MimeMessage(session);
-            msg.setFrom(new InternetAddress(fromAddress, fromName));
-            msg.setRecipients(Message.RecipientType.TO, InternetAddress.parse(recipients));
-            msg.setSubject(subject);
-            msg.setText(body, "UTF-8");
-
-            if (replyTo != null && !replyTo.trim().isEmpty()) {
-                msg.setReplyTo(InternetAddress.parse(replyTo));
-            }
-
-            Transport.send(msg);
-            LOGGER.info("OmniAuth email sent: " + subject + " → " + recipients);
-
-        } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "OmniAuth email failed: " + subject, e);
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Test email — throws on failure so the caller can surface the error
-    // -------------------------------------------------------------------------
-
-    public static void testSmtp(String host, int port, String username, String password,
-                                 boolean tls, String fromAddress, String fromName, String replyTo, String to)
-            throws Exception {
-        Properties props = new Properties();
-        props.put("mail.smtp.host", host);
-        props.put("mail.smtp.port", String.valueOf(port));
-        props.put("mail.smtp.auth", "true");
-        props.put("mail.smtp.auth.mechanisms", "PLAIN LOGIN");
-        props.put("mail.smtp.connectiontimeout", "8000");
-        props.put("mail.smtp.timeout", "8000");
-        if (tls) {
-            props.put("mail.smtp.starttls.enable",   "true");
-            props.put("mail.smtp.starttls.required", "true");
-        }
-
-        final String u = username, p = password;
-        Session session = Session.getInstance(props, new Authenticator() {
-            @Override protected PasswordAuthentication getPasswordAuthentication() {
-                return new PasswordAuthentication(u, p);
-            }
-        });
-
-        MimeMessage msg = new MimeMessage(session);
-        String name = (fromName != null && !fromName.isEmpty()) ? fromName : "Jenkins OmniAuth";
-        msg.setFrom(new InternetAddress(fromAddress, name));
-        msg.setRecipients(Message.RecipientType.TO, InternetAddress.parse(to));
-        msg.setSubject("[Jenkins OmniAuth] Test email — SMTP is working");
-        msg.setText("OmniAuth SMTP Test\n==================\n\n"
-                + "If you received this, your SMTP configuration is correct.\n\n"
-                + "Host: " + host + ":" + port + "\n"
-                + "From: " + fromAddress + "\n"
-                + "To:   " + to + "\n\n"
-                + "---\nJenkins OmniAuth Plugin", "UTF-8");
-
-        if (replyTo != null && !replyTo.trim().isEmpty()) {
-            msg.setReplyTo(InternetAddress.parse(replyTo));
-        }
-
-        Transport.send(msg); // throws MessagingException on failure — do NOT catch here
+    private static void dispatch(OmniAuthGlobalConfig cfg, String subject, String body) {
+        SmtpHelper.send(cfg, subject, body);
+        SlackHelper.send(cfg, subject, body);
+        TeamsHelper.send(cfg, subject, body);
     }
 
     // -------------------------------------------------------------------------
@@ -171,7 +43,7 @@ public class EmailHelper {
         }
 
         body.append("\n---\nJenkins OmniAuth Plugin");
-        send(cfg, subject, body.toString());
+        dispatch(cfg, subject, body.toString());
     }
 
     // -------------------------------------------------------------------------
@@ -187,7 +59,7 @@ public class EmailHelper {
                 + "Deleted user: " + deletedUserId + "\n"
                 + "Deleted by:   " + deletedBy + "\n\n"
                 + "---\nJenkins OmniAuth Plugin";
-        send(cfg, subject, body);
+        dispatch(cfg, subject, body);
     }
 
     // -------------------------------------------------------------------------
@@ -207,7 +79,7 @@ public class EmailHelper {
         body.append("Changes:\n");
         for (String line : diffLines) body.append("  ").append(line).append("\n");
         body.append("\n---\nJenkins OmniAuth Plugin");
-        send(cfg, subject, body.toString());
+        dispatch(cfg, subject, body.toString());
     }
 
     // -------------------------------------------------------------------------
@@ -233,7 +105,7 @@ public class EmailHelper {
             for (String u : removed) body.append("  - ").append(u).append("\n");
         }
         body.append("\n---\nJenkins OmniAuth Plugin");
-        send(cfg, subject, body.toString());
+        dispatch(cfg, subject, body.toString());
     }
 
     // -------------------------------------------------------------------------
@@ -252,7 +124,7 @@ public class EmailHelper {
                 + "This may indicate a brute force or credential stuffing attempt.\n\n"
                 + "The counter resets after a successful login.\n\n"
                 + "---\nJenkins OmniAuth Plugin";
-        send(cfg, subject, body);
+        dispatch(cfg, subject, body);
     }
 
     // -------------------------------------------------------------------------
@@ -275,7 +147,7 @@ public class EmailHelper {
         for (String uid : approachingUsers) body.append("  - ").append(uid).append("\n");
         body.append("\nConsider reaching out or adding them to the protected list if they should be kept.\n");
         body.append("\n---\nJenkins OmniAuth Plugin");
-        send(cfg, subject, body.toString());
+        dispatch(cfg, subject, body.toString());
     }
 
     // -------------------------------------------------------------------------
@@ -295,7 +167,7 @@ public class EmailHelper {
         for (String uid : newAdmins) body.append("  + ").append(uid).append("\n");
         body.append("\nThese users now have full Jenkins ADMINISTER permission.\n");
         body.append("\n---\nJenkins OmniAuth Plugin");
-        send(cfg, subject, body.toString());
+        dispatch(cfg, subject, body.toString());
     }
 
     // -------------------------------------------------------------------------
@@ -313,6 +185,6 @@ public class EmailHelper {
                 + "Group sync is not working. Check your Entra app registration permissions.\n"
                 + "Required: GroupMember.Read.All with admin consent.\n\n"
                 + "---\nJenkins OmniAuth Plugin";
-        send(cfg, subject, body);
+        dispatch(cfg, subject, body);
     }
 }

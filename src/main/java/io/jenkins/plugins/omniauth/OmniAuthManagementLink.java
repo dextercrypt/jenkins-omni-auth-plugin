@@ -96,6 +96,67 @@ public class OmniAuthManagementLink extends ManagementLink {
         req.getView(this, "notifications.jelly").forward(req, rsp);
     }
 
+    public NotificationLog getNotificationLog() {
+        return NotificationLog.get();
+    }
+
+    public void doNotificationLog(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        req.getView(this, "notificationLog.jelly").forward(req, rsp);
+    }
+
+    @POST
+    public void doSendTestSlack(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String url = req.getParameter("slackWebhookUrl");
+        String json;
+        if (url == null || url.trim().isEmpty()) {
+            json = "{\"ok\":false,\"msg\":\"Webhook URL is required\"}";
+        } else {
+            try {
+                SlackHelper.test(url.trim());
+                json = "{\"ok\":true,\"msg\":\"Test message sent to Slack\"}";
+            } catch (Exception e) {
+                String msg = e.getMessage() != null ? e.getMessage() : "Unknown error";
+                json = "{\"ok\":false,\"msg\":\"" + escapeJson(msg) + "\"}";
+            }
+        }
+        writeJson(rsp, json);
+    }
+
+    @POST
+    public void doSendTestTeams(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String url = req.getParameter("teamsWebhookUrl");
+        String json;
+        if (url == null || url.trim().isEmpty()) {
+            json = "{\"ok\":false,\"msg\":\"Webhook URL is required\"}";
+        } else {
+            try {
+                TeamsHelper.test(url.trim());
+                json = "{\"ok\":true,\"msg\":\"Test message sent to Teams\"}";
+            } catch (Exception e) {
+                String msg = e.getMessage() != null ? e.getMessage() : "Unknown error";
+                json = "{\"ok\":false,\"msg\":\"" + escapeJson(msg) + "\"}";
+            }
+        }
+        writeJson(rsp, json);
+    }
+
+    private static void writeJson(StaplerResponse rsp, String json) throws Exception {
+        rsp.setContentType("application/json;charset=UTF-8");
+        byte[] bytes = json.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        rsp.setContentLength(bytes.length);
+        rsp.getOutputStream().write(bytes);
+    }
+
+    @POST
+    public void doClearNotificationLog(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        NotificationLog.get().clear();
+        rsp.sendRedirect("notificationLog?cleared=true");
+    }
+
     @POST
     public void doSaveNotifications(StaplerRequest req, StaplerResponse rsp) throws Exception {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
@@ -105,6 +166,10 @@ public class OmniAuthManagementLink extends ManagementLink {
             // master + channels
             json.put("notificationsEnabled", req.getParameter("notificationsEnabled") != null);
             json.put("smtpEnabled",          req.getParameter("smtpEnabled")          != null);
+            json.put("slackEnabled",         req.getParameter("slackEnabled")         != null);
+            putParam(json, req, "slackWebhookUrl");
+            json.put("teamsEnabled",         req.getParameter("teamsEnabled")         != null);
+            putParam(json, req, "teamsWebhookUrl");
             // SMTP fields
             putParam(json, req, "smtpHost");
             putParam(json, req, "smtpPort");
@@ -175,7 +240,7 @@ public class OmniAuthManagementLink extends ManagementLink {
             List<String> removed = new ArrayList<>(oldProtected);
             removed.removeAll(newProtected);
 
-            EmailHelper.sendProtectedListChanged(config, currentUserId(), added, removed);
+            NotificationService.sendProtectedListChanged(config, currentUserId(), added, removed);
         }
         rsp.sendRedirect("protectedUsers");
     }
@@ -302,7 +367,7 @@ public class OmniAuthManagementLink extends ManagementLink {
             json = "{\"ok\":false,\"msg\":\"Fill in at least one notification recipient\"}";
         } else {
             try {
-                EmailHelper.testSmtp(host, port, username, password, tls, fromAddr, fromName, replyTo, to);
+                SmtpHelper.test(host, port, username, password, tls, fromAddr, fromName, replyTo, to);
                 json = "{\"ok\":true,\"msg\":\"Test email sent to " + escapeJson(to) + "\"}";
             } catch (Exception e) {
                 String msg = e.getMessage() != null ? e.getMessage() : "Unknown error";
@@ -310,10 +375,7 @@ public class OmniAuthManagementLink extends ManagementLink {
             }
         }
 
-        rsp.setContentType("application/json;charset=UTF-8");
-        byte[] bytes = json.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        rsp.setContentLength(bytes.length);
-        rsp.getOutputStream().write(bytes);
+        writeJson(rsp, json);
     }
 
     private static String param(StaplerRequest req, String name, String fallback) {
@@ -572,7 +634,7 @@ public class OmniAuthManagementLink extends ManagementLink {
                 String deletedBy = currentUserId();
                 LOGGER.info("Manual user deletion by " + deletedBy + ": " + userId + " (from " + back + ")");
                 user.delete();
-                EmailHelper.sendUserDeleted(config, userId, deletedBy);
+                NotificationService.sendUserDeleted(config, userId, deletedBy);
             }
         }
         rsp.sendRedirect(back + "?deleted=true");

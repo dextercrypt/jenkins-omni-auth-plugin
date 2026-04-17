@@ -34,6 +34,10 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     // ── Notifications master + channels ──────────────────────────────────────
     private boolean notificationsEnabled = false;
     private boolean smtpEnabled          = false;
+    private boolean slackEnabled         = false;
+    private String  slackWebhookUrl      = "";
+    private boolean teamsEnabled         = false;
+    private String  teamsWebhookUrl      = "";
 
     // ── SMTP configuration ────────────────────────────────────────────────────
     private String  smtpHost        = "";
@@ -108,6 +112,10 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     // Notifications master + channels
     public boolean isNotificationsEnabled() { return notificationsEnabled; }
     public boolean isSmtpEnabled()          { return smtpEnabled; }
+    public boolean isSlackEnabled()         { return slackEnabled; }
+    public String  getSlackWebhookUrl()     { return slackWebhookUrl; }
+    public boolean isTeamsEnabled()         { return teamsEnabled; }
+    public String  getTeamsWebhookUrl()     { return teamsWebhookUrl; }
 
     // Brute force
     public int getBruteForceThreshold() { return bruteForceThreshold; }
@@ -189,6 +197,10 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
         // Notifications master + channels
         notificationsEnabled = json.optBoolean("notificationsEnabled", false);
         smtpEnabled          = json.optBoolean("smtpEnabled",          false);
+        slackEnabled         = json.optBoolean("slackEnabled",         false);
+        slackWebhookUrl      = jsonStr(json, "slackWebhookUrl",        "");
+        teamsEnabled         = json.optBoolean("teamsEnabled",         false);
+        teamsWebhookUrl      = jsonStr(json, "teamsWebhookUrl",        "");
 
         // Brute force
         bruteForceThreshold = jsonInt(json, "bruteForceThreshold", 5);

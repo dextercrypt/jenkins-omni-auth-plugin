@@ -203,9 +203,10 @@
               </div>
             </div>
 
-            <!-- Slack (coming soon) -->
-            <div class="jenkins-card" style="padding: 0; margin-bottom: 16px; overflow: hidden; opacity: 0.5;">
-              <div style="padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+            <!-- Slack -->
+            <div class="jenkins-card" style="padding: 0; margin-bottom: 16px; overflow: hidden;">
+              <div style="padding: 14px 20px; border-bottom: 1px solid var(--panel-border-color,#e0e0e0);
+                          display: flex; align-items: center; justify-content: space-between; gap: 10px;">
                 <div style="display: flex; align-items: center; gap: 10px;">
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
@@ -219,21 +220,44 @@
                     <path d="M10 9.5C10 8.67 9.33 8 8.5 8h-5C2.67 8 2 8.67 2 9.5S2.67 11 3.5 11h5c.83 0 1.5-.67 1.5-1.5z"/>
                     <path d="M8.5 5H10V3.5C10 2.67 9.33 2 8.5 2S7 2.67 7 3.5 7.67 5 8.5 5z"/>
                   </svg>
-                  <div>
-                    <h3 style="margin: 0; font-size: 0.95em; font-weight: 600;">Slack</h3>
-                    <span style="font-size: 0.78em; color: var(--text-color-secondary,#888);">Coming soon</span>
-                  </div>
+                  <h3 style="margin: 0; font-size: 0.95em; font-weight: 600;">Slack</h3>
                 </div>
-                <label class="oau-toggle-wrap" style="pointer-events:none;">
-                  <input type="checkbox" class="oau-toggle-chk" disabled="disabled"/>
+                <label class="oau-toggle-wrap" style="flex-shrink:0;">
+                  <j:choose>
+                    <j:when test="${cfg.slackEnabled}">
+                      <input type="checkbox" name="slackEnabled" id="slackEnabled"
+                             class="oau-toggle-chk" checked="checked" onchange="oauToggleWebhook('slackEnabled','slackConfig')"/>
+                    </j:when>
+                    <j:otherwise>
+                      <input type="checkbox" name="slackEnabled" id="slackEnabled"
+                             class="oau-toggle-chk" onchange="oauToggleWebhook('slackEnabled','slackConfig')"/>
+                    </j:otherwise>
+                  </j:choose>
                   <div class="oau-toggle-track"><div class="oau-toggle-thumb"></div></div>
                 </label>
               </div>
+              <div id="slackConfig" style="padding: 16px 20px; display: flex; flex-direction: column; gap: 12px;">
+                <label>
+                  <div style="font-weight: 600; font-size: 0.88em; margin-bottom: 4px;">Incoming webhook URL</div>
+                  <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.8em; margin-bottom: 6px;">
+                    Create one at Slack → Your App → Incoming Webhooks.
+                  </div>
+                  <input type="text" name="slackWebhookUrl" value="${cfg.slackWebhookUrl}"
+                         class="jenkins-input" style="width: 100%;" placeholder="https://hooks.slack.com/services/..."/>
+                </label>
+                <div style="padding-top: 4px; border-top: 1px solid var(--panel-border-color,#f0f0f0);">
+                  <button type="button" class="jenkins-button" onclick="oauTestWebhook(this,'slackWebhookUrl','sendTestSlack','slackTestResult')">
+                    Send Test Message
+                  </button>
+                  <span id="slackTestResult" style="margin-left: 12px; font-size: 0.85em;"></span>
+                </div>
+              </div>
             </div>
 
-            <!-- Teams (coming soon) -->
-            <div class="jenkins-card" style="padding: 0; margin-bottom: 20px; overflow: hidden; opacity: 0.5;">
-              <div style="padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+            <!-- Teams -->
+            <div class="jenkins-card" style="padding: 0; margin-bottom: 20px; overflow: hidden;">
+              <div style="padding: 14px 20px; border-bottom: 1px solid var(--panel-border-color,#e0e0e0);
+                          display: flex; align-items: center; justify-content: space-between; gap: 10px;">
                 <div style="display: flex; align-items: center; gap: 10px;">
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
@@ -243,15 +267,38 @@
                     <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
                     <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                   </svg>
-                  <div>
-                    <h3 style="margin: 0; font-size: 0.95em; font-weight: 600;">Microsoft Teams</h3>
-                    <span style="font-size: 0.78em; color: var(--text-color-secondary,#888);">Coming soon</span>
-                  </div>
+                  <h3 style="margin: 0; font-size: 0.95em; font-weight: 600;">Microsoft Teams</h3>
                 </div>
-                <label class="oau-toggle-wrap" style="pointer-events:none;">
-                  <input type="checkbox" class="oau-toggle-chk" disabled="disabled"/>
+                <label class="oau-toggle-wrap" style="flex-shrink:0;">
+                  <j:choose>
+                    <j:when test="${cfg.teamsEnabled}">
+                      <input type="checkbox" name="teamsEnabled" id="teamsEnabled"
+                             class="oau-toggle-chk" checked="checked" onchange="oauToggleWebhook('teamsEnabled','teamsConfig')"/>
+                    </j:when>
+                    <j:otherwise>
+                      <input type="checkbox" name="teamsEnabled" id="teamsEnabled"
+                             class="oau-toggle-chk" onchange="oauToggleWebhook('teamsEnabled','teamsConfig')"/>
+                    </j:otherwise>
+                  </j:choose>
                   <div class="oau-toggle-track"><div class="oau-toggle-thumb"></div></div>
                 </label>
+              </div>
+              <div id="teamsConfig" style="padding: 16px 20px; display: flex; flex-direction: column; gap: 12px;">
+                <label>
+                  <div style="font-weight: 600; font-size: 0.88em; margin-bottom: 4px;">Incoming webhook URL</div>
+                  <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.8em; margin-bottom: 6px;">
+                    In Teams: channel → ... → Workflows → "Post to a channel when a webhook request is received".
+                    Copy the generated webhook URL. O365 Connectors are retired and no longer work.
+                  </div>
+                  <input type="text" name="teamsWebhookUrl" value="${cfg.teamsWebhookUrl}"
+                         class="jenkins-input" style="width: 100%;" placeholder="https://prod-xx.westus.logic.azure.com/workflows/..."/>
+                </label>
+                <div style="padding-top: 4px; border-top: 1px solid var(--panel-border-color,#f0f0f0);">
+                  <button type="button" class="jenkins-button" onclick="oauTestWebhook(this,'teamsWebhookUrl','sendTestTeams','teamsTestResult')">
+                    Send Test Message
+                  </button>
+                  <span id="teamsTestResult" style="margin-left: 12px; font-size: 0.85em;"></span>
+                </div>
               </div>
             </div>
 
@@ -468,6 +515,29 @@
           </div>
 
         </form>
+
+        <!-- ================================================================
+             NOTIFICATION LOG
+             ================================================================ -->
+        <div style="font-size: 0.75em; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+                    color: var(--text-color-secondary,#888); margin-bottom: 10px; margin-top: 28px; padding-left: 4px;">
+          Notification Log
+        </div>
+
+        <div class="jenkins-card" style="padding: 0; margin-bottom: 20px; overflow: hidden;">
+          <div style="padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+            <div style="flex: 1;">
+              <div style="font-weight: 600; font-size: 0.9em; margin-bottom: 4px;">Audit trail</div>
+              <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.82em;">
+                View the last 200 notifications sent by this plugin — timestamp, event, recipients, and delivery status.
+                Persists across Jenkins restarts.
+              </div>
+            </div>
+            <a href="notificationLog" class="jenkins-button" style="flex-shrink: 0;">
+              View Notification Log
+            </a>
+          </div>
+        </div>
       </div>
 
       <style>
@@ -502,6 +572,44 @@
           cfg.style.pointerEvents = on ? ''   : 'none';
         }
 
+        function oauToggleWebhook(checkboxId, configId) {
+          var on  = document.getElementById(checkboxId).checked;
+          var cfg = document.getElementById(configId);
+          cfg.style.opacity       = on ? '1'  : '0.4';
+          cfg.style.pointerEvents = on ? ''   : 'none';
+        }
+
+        function oauTestWebhook(btn, urlField, endpoint, resultId) {
+          var resultEl = document.getElementById(resultId);
+          resultEl.style.color = '#888';
+          resultEl.textContent = 'Sending…';
+          btn.disabled = true;
+
+          var form = btn.closest('form');
+          var url  = form.querySelector('[name="' + urlField + '"]').value;
+          var head = document.querySelector('head');
+          var cf   = head ? head.getAttribute('data-crumb-header') : '';
+          var cv   = head ? head.getAttribute('data-crumb-value')  : '';
+          var headers = {'Content-Type': 'application/x-www-form-urlencoded'};
+          if (cf) headers[cf] = cv;
+
+          fetch('${rootURL}/manage/omniauth-management/' + endpoint, {
+            method: 'POST', credentials: 'same-origin', headers: headers,
+            body: new URLSearchParams([[urlField, url]])
+          })
+            .then(function(r) { return r.text(); })
+            .then(function(t) {
+              var d = JSON.parse(t);
+              resultEl.style.color = d.ok ? '#27ae60' : '#e74c3c';
+              resultEl.textContent = d.msg;
+            })
+            .catch(function(err) {
+              resultEl.style.color = '#e74c3c';
+              resultEl.textContent = 'Request failed: ' + err.message;
+            })
+            .finally(function() { btn.disabled = false; });
+        }
+
         function oauToggleSection(checkboxId, sectionId) {
           var on = document.getElementById(checkboxId).checked;
           var el = document.getElementById(sectionId);
@@ -512,6 +620,8 @@
         // Init on load
         oauToggleMaster();
         oauToggleSmtp();
+        oauToggleWebhook('slackEnabled', 'slackConfig');
+        oauToggleWebhook('teamsEnabled', 'teamsConfig');
         oauToggleSection('notifyOnBruteForce', 'bruteForceConfig');
         oauToggleSection('staleWarningEnabled', 'staleWarningConfig');
 

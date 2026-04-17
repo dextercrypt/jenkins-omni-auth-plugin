@@ -55,7 +55,7 @@ public class AdminChangeListener extends SaveableListener {
 
         String changedBy = currentUserId();
         LOGGER.info("New admin(s) detected: " + added + " (saved by " + changedBy + ")");
-        EmailHelper.sendAdminGranted(cfg, new ArrayList<>(added), changedBy);
+        NotificationService.sendAdminGranted(cfg, new ArrayList<>(added), changedBy);
     }
 
     @SuppressWarnings("unchecked")

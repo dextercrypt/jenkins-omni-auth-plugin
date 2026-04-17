@@ -79,7 +79,7 @@ public class StaleWarningWork extends AsyncPeriodicWork {
 
         LOGGER.info("Stale warning scan: " + approaching.size() + " user(s) approaching stale threshold");
         if (!approaching.isEmpty()) {
-            EmailHelper.sendStaleWarningDigest(config, approaching, windowDays, thresholdDays);
+            NotificationService.sendStaleWarningDigest(config, approaching, windowDays, thresholdDays);
         }
     }
 

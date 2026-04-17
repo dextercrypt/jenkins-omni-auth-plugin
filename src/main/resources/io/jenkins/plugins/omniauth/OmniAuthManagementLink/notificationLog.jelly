@@ -1,0 +1,187 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:l="/lib/layout">
+
+  <l:layout title="OmniAuth — Notification Log" norefresh="true">
+    <l:side-panel>
+      <st:include page="sidepanel.jelly"/>
+    </l:side-panel>
+    <l:main-panel>
+
+      <div class="jenkins-app-bar">
+        <div class="jenkins-app-bar__content">
+          <h1 class="jenkins-app-bar__heading">Notification Log</h1>
+        </div>
+      </div>
+
+      <div style="padding: 16px 24px; max-width: 960px;">
+
+        <j:if test="${request2.getParameter('cleared') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom: 20px;">
+            Notification log cleared.
+          </div>
+        </j:if>
+
+        <j:set var="entries" value="${it.notificationLog.entries}"/>
+
+        <div class="jenkins-card" style="padding: 0; overflow: hidden;">
+
+          <!-- Header row -->
+          <div style="padding: 12px 20px; border-bottom: 1px solid var(--panel-border-color,#e0e0e0);
+                      display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+            <div>
+              <span style="font-weight: 600; font-size: 0.9em;">
+                ${entries.size()} notification(s) recorded
+              </span>
+              <span style="margin-left: 8px; font-size: 0.8em; color: var(--text-color-secondary,#888);">
+                — last 200, persists across restarts
+              </span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <a href="notifications" class="jenkins-button" style="font-size: 0.85em;">
+                ← Back to Notifications
+              </a>
+              <j:if test="${!entries.isEmpty()}">
+                <form method="post" action="clearNotificationLog" style="margin: 0;">
+                  <input type="hidden" name="${app.crumbRequestField}" value="${app.crumb}"/>
+                  <button type="submit" class="jenkins-button"
+                          style="font-size: 0.85em;"
+                          onclick="return confirm('Clear all notification log entries?')">
+                    Clear log
+                  </button>
+                </form>
+              </j:if>
+            </div>
+          </div>
+
+          <!-- Empty state -->
+          <j:if test="${entries.isEmpty()}">
+            <div style="padding: 48px 20px; text-align: center; color: var(--text-color-secondary,#888); font-size: 0.9em;">
+              No notifications sent yet. Configure SMTP, enable events, and they will appear here.
+            </div>
+          </j:if>
+
+          <!-- Table (hidden initially — JS shows correct page) -->
+          <j:if test="${!entries.isEmpty()}">
+            <table id="logTable" style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
+              <thead>
+                <tr style="background: var(--panel-header-bg,#f8f9fa); border-bottom: 2px solid var(--panel-border-color,#e0e0e0);">
+                  <th style="padding: 9px 16px; text-align: left; font-weight: 600; color: var(--text-color-secondary,#555); white-space: nowrap;">#</th>
+                  <th style="padding: 9px 16px; text-align: left; font-weight: 600; color: var(--text-color-secondary,#555); white-space: nowrap;">Time</th>
+                  <th style="padding: 9px 16px; text-align: left; font-weight: 600; color: var(--text-color-secondary,#555);">Event</th>
+                  <th style="padding: 9px 16px; text-align: left; font-weight: 600; color: var(--text-color-secondary,#555);">Recipients</th>
+                  <th style="padding: 9px 16px; text-align: center; font-weight: 600; color: var(--text-color-secondary,#555); white-space: nowrap;">Status</th>
+                  <th style="padding: 9px 16px; text-align: left; font-weight: 600; color: var(--text-color-secondary,#555);">Details</th>
+                </tr>
+              </thead>
+              <tbody id="logBody">
+                <j:set var="idx" value="${0}"/>
+                <j:forEach var="entry" items="${entries}">
+                  <j:set var="idx" value="${idx + 1}"/>
+                  <tr class="log-row" style="border-bottom: 1px solid var(--panel-border-color,#f0f0f0);">
+                    <td style="padding: 8px 16px; color: var(--text-color-secondary,#aaa); font-size: 0.82em;">${idx}</td>
+                    <td style="padding: 8px 16px; white-space: nowrap; color: var(--text-color-secondary,#666);"
+                        title="${entry.formattedTime}">
+                      ${entry.relativeTime}
+                    </td>
+                    <td style="padding: 8px 16px;">${entry.description}</td>
+                    <td style="padding: 8px 16px; color: var(--text-color-secondary,#666);
+                                max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                        title="${entry.recipients}">
+                      ${entry.recipients}
+                    </td>
+                    <td style="padding: 8px 16px; text-align: center;">
+                      <j:choose>
+                        <j:when test="${entry.success}">
+                          <span style="color: #27ae60; font-weight: 600;">&#10003; Sent</span>
+                        </j:when>
+                        <j:otherwise>
+                          <span style="color: #e74c3c; font-weight: 600;">&#10007; Failed</span>
+                        </j:otherwise>
+                      </j:choose>
+                    </td>
+                    <td style="padding: 8px 16px; font-size: 0.82em; color: var(--text-color-secondary,#666);
+                                max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                      <j:choose>
+                        <j:when test="${!entry.success and entry.errorMessage != null and entry.errorMessage != ''}">
+                          <span style="color: #e74c3c;" title="${entry.errorMessage}">${entry.errorMessage}</span>
+                        </j:when>
+                        <j:otherwise>&#8212;</j:otherwise>
+                      </j:choose>
+                    </td>
+                  </tr>
+                </j:forEach>
+              </tbody>
+            </table>
+
+            <!-- Pagination bar -->
+            <div id="pagination" style="padding: 12px 16px; border-top: 1px solid var(--panel-border-color,#e0e0e0);
+                                        display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+              <span id="pageInfo" style="font-size: 0.82em; color: var(--text-color-secondary,#888);"></span>
+              <div style="display: flex; gap: 6px;">
+                <button id="btnFirst" class="jenkins-button" style="font-size:0.82em; padding:4px 10px;" onclick="goPage(1)">&#171; First</button>
+                <button id="btnPrev"  class="jenkins-button" style="font-size:0.82em; padding:4px 10px;" onclick="goPage(currentPage - 1)">&#8249; Prev</button>
+                <span id="pageButtons" style="display:flex; gap:4px;"></span>
+                <button id="btnNext"  class="jenkins-button" style="font-size:0.82em; padding:4px 10px;" onclick="goPage(currentPage + 1)">Next &#8250;</button>
+                <button id="btnLast"  class="jenkins-button" style="font-size:0.82em; padding:4px 10px;" onclick="goPage(totalPages)">Last &#187;</button>
+              </div>
+            </div>
+          </j:if>
+
+        </div>
+      </div>
+
+      <script>//<![CDATA[
+        var PAGE_SIZE   = 25;
+        var currentPage = 1;
+        var rows        = Array.from(document.querySelectorAll('.log-row'));
+        var totalPages  = Math.ceil(rows.length / PAGE_SIZE);
+
+        function goPage(p) {
+          if (p < 1) p = 1;
+          if (p > totalPages) p = totalPages;
+          currentPage = p;
+
+          var start = (p - 1) * PAGE_SIZE;
+          var end   = start + PAGE_SIZE;
+          rows.forEach(function(r, i) {
+            r.style.display = (i >= start && i < end) ? '' : 'none';
+          });
+
+          document.getElementById('pageInfo').textContent =
+            'Showing ' + (start + 1) + '–' + Math.min(end, rows.length) + ' of ' + rows.length;
+
+          // Page number buttons — show window of 5 around current
+          var btns = document.getElementById('pageButtons');
+          btns.innerHTML = '';
+          var wStart = Math.max(1, p - 2);
+          var wEnd   = Math.min(totalPages, wStart + 4);
+          if (wEnd - wStart < 4) wStart = Math.max(1, wEnd - 4);
+          for (var i = wStart; i <= wEnd; i++) {
+            (function(pg) {
+              var b = document.createElement('button');
+              b.textContent = pg;
+              b.className   = 'jenkins-button';
+              b.style.cssText = 'font-size:0.82em; padding:4px 10px;'
+                + (pg === p ? ' background:var(--blue,#0078d4); color:#fff; border-color:var(--blue,#0078d4);' : '');
+              b.onclick = function() { goPage(pg); };
+              btns.appendChild(b);
+            })(i);
+          }
+
+          document.getElementById('btnFirst').disabled = (p === 1);
+          document.getElementById('btnPrev').disabled  = (p === 1);
+          document.getElementById('btnNext').disabled  = (p === totalPages);
+          document.getElementById('btnLast').disabled  = (p === totalPages);
+
+          // Hide pagination entirely if only one page
+          document.getElementById('pagination').style.display =
+            totalPages <= 1 ? 'none' : '';
+        }
+
+        if (rows.length > 0) goPage(1);
+      //]]></script>
+
+    </l:main-panel>
+  </l:layout>
+
+</j:jelly>
