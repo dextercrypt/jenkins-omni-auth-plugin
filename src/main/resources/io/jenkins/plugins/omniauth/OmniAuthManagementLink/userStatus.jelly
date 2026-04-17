@@ -58,8 +58,8 @@
 
                 <td>
                   <j:choose>
-                    <j:when test="${u.userType == 'Entra'}">
-                      <span style="background:#e8f0fe;color:#0078d4;padding:2px 8px;border-radius:4px;font-size:0.85em;">Entra</span>
+                    <j:when test="${u.userType != 'Native'}">
+                      <span style="background:#e8f0fe;color:#0078d4;padding:2px 8px;border-radius:4px;font-size:0.85em;">${u.userType}</span>
                     </j:when>
                     <j:otherwise>
                       <span style="background:#f0f0f0;color:#6c757d;padding:2px 8px;border-radius:4px;font-size:0.85em;">Native</span>

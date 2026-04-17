@@ -56,8 +56,8 @@ public class OmniAuthManagementLink extends ManagementLink {
     // -------------------------------------------------------------------------
 
     @Override public String getIconFileName()    { return "symbol-people"; }
-    @Override public String getDisplayName()     { return "OmniAuth — Entra User Management"; }
-    @Override public String getDescription()     { return "Manage Microsoft Entra users, review access, and clean up stale accounts."; }
+    @Override public String getDisplayName()     { return "OmniAuth Management"; }
+    @Override public String getDescription()     { return "Manage users, review access, monitor security, and clean up stale accounts."; }
     @Override public String getUrlName()         { return "omniauth-management"; }
     @Override public Permission getRequiredPermission() { return Jenkins.ADMINISTER; }
     @Override public Category getCategory()      { return Category.SECURITY; }

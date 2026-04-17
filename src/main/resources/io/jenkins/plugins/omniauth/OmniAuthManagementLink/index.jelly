@@ -40,7 +40,7 @@
 
           <a href="userStatus" class="jenkins-card oau-stat-card">
             <div class="oau-stat-number" style="color: #0078d4;">${it.entraUserCount}</div>
-            <div class="oau-stat-label">Entra Users</div>
+            <div class="oau-stat-label">SSO Users</div>
           </a>
 
           <a href="userStatus" class="jenkins-card oau-stat-card">

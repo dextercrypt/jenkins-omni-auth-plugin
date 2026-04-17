@@ -651,7 +651,7 @@
         var oauEventTitles = {
           cleanup:              'Report after each automated cleanup run (dry-run or live).',
           userDeleted:          'Alert when an admin manually deletes a user via the OmniAuth UI.',
-          configChanged:        'Sent when Entra credentials or OmniAuth settings are saved.',
+          configChanged:        'Sent when OmniAuth settings are saved.',
           protectedListChanged: 'Alert when users are added to or removed from the protected list.',
           graphApiFailure:      'Alert when Microsoft Graph API calls fail, breaking Entra group sync.',
           adminGranted:         'Alert when a user is granted Jenkins ADMINISTER permission.',

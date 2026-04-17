@@ -63,7 +63,7 @@
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
           <p style="color:#6c757d;margin:0;font-size:0.9em;">
             Users inactive for more than <strong>${threshold} days</strong>.
-            Deleting removes their Jenkins account; Entra users re-provision on next login.
+            Deleting removes their Jenkins account; SSO users re-provision on next login.
           </p>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
             <j:choose>
@@ -128,8 +128,8 @@
                       <td>${u.fullName}</td>
                       <td>
                         <j:choose>
-                          <j:when test="${u.userType == 'Entra'}">
-                            <span style="background:#e8f0fe;color:#0078d4;padding:2px 8px;border-radius:4px;font-size:0.85em;">Entra</span>
+                          <j:when test="${u.userType != 'Native'}">
+                            <span style="background:#e8f0fe;color:#0078d4;padding:2px 8px;border-radius:4px;font-size:0.85em;">${u.userType}</span>
                           </j:when>
                           <j:otherwise>
                             <span style="background:#f0f0f0;color:#6c757d;padding:2px 8px;border-radius:4px;font-size:0.85em;">Native</span>
@@ -290,7 +290,7 @@
               <p style="margin:0 0 12px 0;">This will <strong>permanently delete</strong> all stale users that have not logged in within the configured threshold.</p>
               <div style="background:#f8d7da;border:1px solid #f5c6cb;border-radius:6px;padding:10px 14px;font-size:0.85em;color:#721c24;">
                 <strong>This action cannot be undone.</strong> Protected users will be skipped.
-                Entra users will be re-provisioned on their next login.
+                SSO users will be re-provisioned on their next login.
               </div>
             </div>
             <div class="oau-modal-footer">

@@ -81,8 +81,8 @@
                         </div>
                         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                           <j:choose>
-                            <j:when test="${u.userType == 'Entra'}">
-                              <span style="background:#e8f0fe;color:#0078d4;padding:1px 8px;border-radius:10px;font-size:0.73em;font-weight:600;">Entra</span>
+                            <j:when test="${u.userType != 'Native'}">
+                              <span style="background:#e8f0fe;color:#0078d4;padding:1px 8px;border-radius:10px;font-size:0.73em;font-weight:600;">${u.userType}</span>
                             </j:when>
                             <j:otherwise>
                               <span style="background:#f0f0f0;color:#6c757d;padding:1px 8px;border-radius:10px;font-size:0.73em;font-weight:600;">Native</span>
@@ -138,8 +138,8 @@
                         </div>
                         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                           <j:choose>
-                            <j:when test="${u.userType == 'Entra'}">
-                              <span style="background:#e8f0fe;color:#0078d4;padding:1px 8px;border-radius:10px;font-size:0.73em;font-weight:600;">Entra</span>
+                            <j:when test="${u.userType != 'Native'}">
+                              <span style="background:#e8f0fe;color:#0078d4;padding:1px 8px;border-radius:10px;font-size:0.73em;font-weight:600;">${u.userType}</span>
                             </j:when>
                             <j:otherwise>
                               <span style="background:#f0f0f0;color:#6c757d;padding:1px 8px;border-radius:10px;font-size:0.73em;font-weight:600;">Native</span>
