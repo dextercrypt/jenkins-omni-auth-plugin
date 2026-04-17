@@ -83,6 +83,13 @@
       <scope>provided</scope>
     </dependency>
 
+    <!-- Jakarta Mail API — depend on the jenkins plugin so its classloader is accessible at runtime -->
+    <dependency>
+      <groupId>io.jenkins.plugins</groupId>
+      <artifactId>jakarta-mail-api</artifactId>
+      <version>2.1.5-1</version>
+    </dependency>
+
     <!-- Spring Security - provided by Jenkins core, do NOT bundle -->
     <dependency>
       <groupId>org.springframework.security</groupId>

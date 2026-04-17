@@ -91,6 +91,264 @@ public class OmniAuthManagementLink extends ManagementLink {
         req.getView(this, "about.jelly").forward(req, rsp);
     }
 
+    public void doNotifications(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        req.getView(this, "notifications.jelly").forward(req, rsp);
+    }
+
+    public NotificationLog getNotificationLog() {
+        return NotificationLog.get();
+    }
+
+    public void doNotificationLog(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        req.getView(this, "notificationLog.jelly").forward(req, rsp);
+    }
+
+    @POST
+    public void doSendTestSlack(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String url = req.getParameter("slackWebhookUrl");
+        String json;
+        if (url == null || url.trim().isEmpty()) {
+            json = "{\"ok\":false,\"msg\":\"Webhook URL is required\"}";
+        } else {
+            try {
+                SlackHelper.test(url.trim());
+                json = "{\"ok\":true,\"msg\":\"Test message sent to Slack\"}";
+            } catch (Exception e) {
+                String msg = e.getMessage() != null ? e.getMessage() : "Unknown error";
+                json = "{\"ok\":false,\"msg\":\"" + escapeJson(msg) + "\"}";
+            }
+        }
+        writeJson(rsp, json);
+    }
+
+    @POST
+    public void doSendTestTeams(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String url = req.getParameter("teamsWebhookUrl");
+        String json;
+        if (url == null || url.trim().isEmpty()) {
+            json = "{\"ok\":false,\"msg\":\"Webhook URL is required\"}";
+        } else {
+            try {
+                TeamsHelper.test(url.trim());
+                json = "{\"ok\":true,\"msg\":\"Test message sent to Teams\"}";
+            } catch (Exception e) {
+                String msg = e.getMessage() != null ? e.getMessage() : "Unknown error";
+                json = "{\"ok\":false,\"msg\":\"" + escapeJson(msg) + "\"}";
+            }
+        }
+        writeJson(rsp, json);
+    }
+
+    private static void writeJson(StaplerResponse rsp, String json) throws Exception {
+        rsp.setContentType("application/json;charset=UTF-8");
+        byte[] bytes = json.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        rsp.setContentLength(bytes.length);
+        rsp.getOutputStream().write(bytes);
+    }
+
+    @POST
+    public void doClearNotificationLog(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        NotificationLog.get().clear();
+        rsp.sendRedirect("notificationLog?cleared=true");
+    }
+
+    @POST
+    public void doSaveNotifications(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        OmniAuthGlobalConfig config = OmniAuthGlobalConfig.get();
+        if (config != null) {
+            // Snapshot full channel state BEFORE the save
+            boolean masterWasOn   = config.isNotificationsEnabled();
+            boolean smtpWasOn     = config.isSmtpEnabled();
+            boolean slackWasOn    = config.isSlackEnabled();
+            boolean teamsWasOn    = config.isTeamsEnabled();
+            boolean smtpHadConfigChanged  = masterWasOn && smtpWasOn  && config.isSmtpConfigured()              && config.isSmtpEvent("configChanged");
+            boolean slackHadConfigChanged = masterWasOn && slackWasOn && !config.getSlackWebhookUrl().isEmpty() && config.isSlackEvent("configChanged");
+            boolean teamsHadConfigChanged = masterWasOn && teamsWasOn && !config.getTeamsWebhookUrl().isEmpty() && config.isTeamsEvent("configChanged");
+            // Also snapshot whether the configChanged event was subscribed (independently of enabled state)
+            boolean smtpHadEvent  = config.isSmtpEvent("configChanged");
+            boolean slackHadEvent = config.isSlackEvent("configChanged");
+            boolean teamsHadEvent = config.isTeamsEvent("configChanged");
+
+            // Capture raw SMTP credentials before the save — used if SMTP gets disabled in the same operation
+            final String snapHost      = config.getSmtpHost();
+            final int    snapPort      = config.getSmtpPort();
+            final String snapUsername  = config.getSmtpUsername();
+            final String snapPassword  = config.getSmtpPassword() != null ? config.getSmtpPassword().getPlainText() : "";
+            final boolean snapTls      = config.isSmtpTls();
+            final String snapFromAddr  = config.getSmtpFromAddress();
+            final String snapFromName  = config.getSmtpFromName() != null ? config.getSmtpFromName() : "Jenkins OmniAuth";
+            final String snapReplyTo   = config.getSmtpReplyTo();
+            final String snapRecipients = config.getNotifyEmails();
+            final String snapSlackUrl   = config.getSlackWebhookUrl();
+            final String snapTeamsUrl   = config.getTeamsWebhookUrl();
+            final String snapLogoUrl    = config.getNotificationLogoUrl();
+
+            net.sf.json.JSONObject json = new net.sf.json.JSONObject();
+            // master + channels
+            json.put("notificationsEnabled", req.getParameter("notificationsEnabled") != null);
+            json.put("smtpEnabled",          req.getParameter("smtpEnabled")          != null);
+            json.put("slackEnabled",         req.getParameter("slackEnabled")         != null);
+            putParam(json, req, "slackWebhookUrl");
+            json.put("teamsEnabled",         req.getParameter("teamsEnabled")         != null);
+            putParam(json, req, "teamsWebhookUrl");
+            // SMTP fields
+            putParam(json, req, "smtpHost");
+            putParam(json, req, "smtpPort");
+            putParam(json, req, "smtpUsername");
+            putParam(json, req, "smtpPassword");
+            json.put("smtpTls", req.getParameter("smtpTls") != null);
+            putParam(json, req, "smtpFromAddress");
+            putParam(json, req, "smtpFromName");
+            putParam(json, req, "smtpReplyTo");
+            putParam(json, req, "notifyEmails");
+            putParam(json, req, "notificationLogoUrl");
+            // brute force
+            String bft = req.getParameter("bruteForceThreshold");
+            if (bft != null) json.put("bruteForceThreshold", bft.trim());
+            // stale warning
+            json.put("staleWarningEnabled", req.getParameter("staleWarningEnabled") != null);
+            String swCron = req.getParameter("staleWarningCron");
+            String swWin  = req.getParameter("staleWarningWindowDays");
+            if (swCron != null) json.put("staleWarningCron",       swCron.trim());
+            if (swWin  != null) json.put("staleWarningWindowDays", swWin.trim());
+            // per-channel event subscriptions
+            net.sf.json.JSONArray smtpEvtsArr = new net.sf.json.JSONArray();
+            String[] se = req.getParameterValues("smtpEvents");
+            if (se != null) for (String e : se) smtpEvtsArr.add(e);
+            json.put("smtpEvents", smtpEvtsArr);
+            net.sf.json.JSONArray slackEvtsArr = new net.sf.json.JSONArray();
+            String[] sle = req.getParameterValues("slackEvents");
+            if (sle != null) for (String e : sle) slackEvtsArr.add(e);
+            json.put("slackEvents", slackEvtsArr);
+            net.sf.json.JSONArray teamsEvtsArr = new net.sf.json.JSONArray();
+            String[] te = req.getParameterValues("teamsEvents");
+            if (te != null) for (String e : te) teamsEvtsArr.add(e);
+            json.put("teamsEvents", teamsEvtsArr);
+            // preserve fields managed by other forms
+            net.sf.json.JSONArray arr = new net.sf.json.JSONArray();
+            for (String u : config.getProtectedUsers()) arr.add(u);
+            json.put("protectedUsers", arr);
+            json.put("staleThresholdDays",  config.getStaleThresholdDays());
+            json.put("activeThresholdDays", config.getActiveThresholdDays());
+            json.put("cleanupEnabled",      config.isCleanupEnabled());
+            json.put("cleanupDryRun",       config.isCleanupDryRun());
+            json.put("cleanupCron",         config.getCleanupCron());
+            json.put("cleanupMaxDeletions", config.getCleanupMaxDeletions());
+            config.configure(req, json);
+
+            // Fire a farewell alert on any channel that previously had configChanged enabled
+            // but no longer does — using PRE-SAVE credentials so disabling SMTP/master cannot silence it.
+            boolean smtpLost  = smtpHadConfigChanged  && !(config.isNotificationsEnabled() && config.isSmtpEnabled()  && config.isSmtpEvent("configChanged"));
+            boolean slackLost = slackHadConfigChanged && !(config.isNotificationsEnabled() && config.isSlackEnabled() && config.isSlackEvent("configChanged"));
+            boolean teamsLost = teamsHadConfigChanged && !(config.isNotificationsEnabled() && config.isTeamsEnabled() && config.isTeamsEvent("configChanged"));
+            if (smtpLost || slackLost || teamsLost) {
+                String changedBy = currentUserId();
+                List<String> diff = new ArrayList<>();
+                // Master switch
+                if (masterWasOn && !config.isNotificationsEnabled())
+                    diff.add("All notifications were globally disabled");
+                if (smtpLost) {
+                    if (!masterWasOn || config.isNotificationsEnabled()) {
+                        if (smtpWasOn && !config.isSmtpEnabled())
+                            diff.add("Email (SMTP) notification channel was disabled");
+                        else
+                            diff.add("Configuration change alerts were removed from email (SMTP)");
+                    }
+                }
+                if (slackLost) {
+                    if (!masterWasOn || config.isNotificationsEnabled()) {
+                        if (slackWasOn && !config.isSlackEnabled())
+                            diff.add("Slack notification channel was disabled");
+                        else
+                            diff.add("Configuration change alerts were removed from Slack");
+                    }
+                }
+                if (teamsLost) {
+                    if (!masterWasOn || config.isNotificationsEnabled()) {
+                        if (teamsWasOn && !config.isTeamsEnabled())
+                            diff.add("Microsoft Teams notification channel was disabled");
+                        else
+                            diff.add("Configuration change alerts were removed from Microsoft Teams");
+                    }
+                }
+                String subject = "[Jenkins OmniAuth] Configuration change alerts have been disabled by " + changedBy;
+                StringBuilder body = new StringBuilder();
+                body.append("Notification Settings Change\n");
+                body.append("============================\n\n");
+                body.append("Changed by: ").append(changedBy).append("\n");
+                body.append("When:       ").append(java.time.Instant.now()).append("\n\n");
+                body.append("This is the final configuration change alert for the affected channel(s).\n");
+                body.append("The following changes have disabled configuration change notifications:\n\n");
+                for (String line : diff) body.append("  - ").append(line).append("\n");
+                body.append("\nNo further alerts of this type will be delivered until notifications are re-enabled.\n");
+                body.append(mgmtCta("Review Settings", "notifications"));
+                body.append("\n---\nJenkins OmniAuth Plugin");
+                final String msg = body.toString();
+                // All channels use pre-save credentials and run async
+                if (smtpLost && !snapRecipients.isEmpty()) {
+                    Thread t = new Thread(() -> SmtpHelper.sendNow(snapHost, snapPort, snapUsername, snapPassword,
+                            snapTls, snapFromAddr, snapFromName, snapReplyTo, snapRecipients, subject, msg, snapLogoUrl));
+                    t.setDaemon(true); t.setName("omniauth-farewell-smtp"); t.start();
+                }
+                if (slackLost && !snapSlackUrl.isEmpty()) {
+                    final String slackPayload = SlackHelper.buildPayload(subject, msg);
+                    Thread t = new Thread(() -> { try { SlackHelper.postJson(snapSlackUrl, slackPayload); } catch (Exception e) { LOGGER.warning("Farewell Slack alert failed: " + e.getMessage()); } });
+                    t.setDaemon(true); t.setName("omniauth-farewell-slack"); t.start();
+                }
+                if (teamsLost && !snapTeamsUrl.isEmpty()) {
+                    final String teamsPayload = TeamsHelper.buildPayload(subject, msg);
+                    Thread t = new Thread(() -> { try { TeamsHelper.postJson(snapTeamsUrl, teamsPayload); } catch (Exception e) { LOGGER.warning("Farewell Teams alert failed: " + e.getMessage()); } });
+                    t.setDaemon(true); t.setName("omniauth-farewell-teams"); t.start();
+                }
+            }
+            // Alert when config-change notifications are re-enabled on any channel
+            boolean smtpGained  = !smtpHadConfigChanged  && config.isNotificationsEnabled() && config.isSmtpEnabled()  && config.isSmtpConfigured()              && config.isSmtpEvent("configChanged");
+            boolean slackGained = !slackHadConfigChanged && config.isNotificationsEnabled() && config.isSlackEnabled() && !config.getSlackWebhookUrl().isEmpty() && config.isSlackEvent("configChanged");
+            boolean teamsGained = !teamsHadConfigChanged && config.isNotificationsEnabled() && config.isTeamsEnabled() && !config.getTeamsWebhookUrl().isEmpty() && config.isTeamsEvent("configChanged");
+            if (smtpGained || slackGained || teamsGained) {
+                String changedBy = currentUserId();
+                List<String> diff = new ArrayList<>();
+                if (!masterWasOn && config.isNotificationsEnabled())
+                    diff.add("All notifications were globally enabled");
+                if (smtpGained) {
+                    if (!smtpWasOn) diff.add("Email (SMTP) notification channel was enabled");
+                    else if (!smtpHadEvent) diff.add("Configuration change alerts were added to email (SMTP)");
+                }
+                if (slackGained) {
+                    if (!slackWasOn) diff.add("Slack notification channel was enabled");
+                    else if (!slackHadEvent) diff.add("Configuration change alerts were added to Slack");
+                }
+                if (teamsGained) {
+                    if (!teamsWasOn) diff.add("Microsoft Teams notification channel was enabled");
+                    else if (!teamsHadEvent) diff.add("Configuration change alerts were added to Microsoft Teams");
+                }
+                String subject = "[Jenkins OmniAuth] Configuration change alerts have been enabled by " + changedBy;
+                StringBuilder body = new StringBuilder();
+                body.append("Notification Settings Change\n");
+                body.append("============================\n\n");
+                body.append("Changed by: ").append(changedBy).append("\n");
+                body.append("When:       ").append(java.time.Instant.now()).append("\n\n");
+                body.append("Configuration change alerts have been enabled on one or more notification channels.\n");
+                body.append("All future configuration changes will be reported accordingly.\n\n");
+                body.append("The following changes were applied:\n\n");
+                for (String line : diff) body.append("  + ").append(line).append("\n");
+                body.append(mgmtCta("Review Settings", "notifications"));
+                body.append("\n---\nJenkins OmniAuth Plugin");
+                // Use new config — channels are now live
+                if (smtpGained)  SmtpHelper.send(config, subject, body.toString());
+                if (slackGained) SlackHelper.send(config, subject, body.toString());
+                if (teamsGained) TeamsHelper.send(config, subject, body.toString());
+            }
+        }
+        rsp.sendRedirect("notifications?saved=true");
+    }
+
     public void doProtectedUsers(StaplerRequest req, StaplerResponse rsp) throws Exception {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
         req.getView(this, "protectedUsers.jelly").forward(req, rsp);
@@ -102,6 +360,8 @@ public class OmniAuthManagementLink extends ManagementLink {
         String[] selected = req.getParameterValues("protectedUsers");
         OmniAuthGlobalConfig config = OmniAuthGlobalConfig.get();
         if (config != null) {
+            List<String> oldProtected = new ArrayList<>(config.getProtectedUsers());
+
             net.sf.json.JSONObject json = new net.sf.json.JSONObject();
             if (selected != null && selected.length > 0) {
                 net.sf.json.JSONArray arr = new net.sf.json.JSONArray();
@@ -109,6 +369,14 @@ public class OmniAuthManagementLink extends ManagementLink {
                 json.put("protectedUsers", arr);
             }
             config.configure(req, json);
+
+            List<String> newProtected = new ArrayList<>(config.getProtectedUsers());
+            List<String> added   = new ArrayList<>(newProtected);
+            added.removeAll(oldProtected);
+            List<String> removed = new ArrayList<>(oldProtected);
+            removed.removeAll(newProtected);
+
+            NotificationService.sendProtectedListChanged(config, currentUserId(), added, removed);
         }
         rsp.sendRedirect("protectedUsers");
     }
@@ -118,6 +386,15 @@ public class OmniAuthManagementLink extends ManagementLink {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
         OmniAuthGlobalConfig config = OmniAuthGlobalConfig.get();
         if (config != null) {
+            // snapshot before
+            int    oldStale          = config.getStaleThresholdDays();
+            int    oldActive         = config.getActiveThresholdDays();
+            boolean oldCleanupEnabled = config.isCleanupEnabled();
+            boolean oldDryRun        = config.isCleanupDryRun();
+            String oldCron           = config.getCleanupCron();
+            int    oldMaxDel         = config.getCleanupMaxDeletions();
+            int    oldBft            = config.getBruteForceThreshold();
+
             net.sf.json.JSONObject json = new net.sf.json.JSONObject();
             // thresholds
             String stale  = req.getParameter("staleThresholdDays");
@@ -127,22 +404,189 @@ public class OmniAuthManagementLink extends ManagementLink {
             // cleanup
             boolean cleanupEnabled = req.getParameter("cleanupEnabled") != null;
             json.put("cleanupEnabled", cleanupEnabled);
-            // If auto-cleanup is disabled, always force dry-run ON (safety default)
             boolean dryRun = !cleanupEnabled || req.getParameter("cleanupDryRun") != null;
             json.put("cleanupDryRun", dryRun);
-            String cron  = req.getParameter("cleanupCron");
-            String maxD  = req.getParameter("cleanupMaxDeletions");
-            String email = req.getParameter("cleanupNotifyEmail");
-            if (cron  != null) json.put("cleanupCron",          cron.trim());
-            if (maxD  != null) json.put("cleanupMaxDeletions",   maxD.trim());
-            if (email != null) json.put("cleanupNotifyEmail",    email.trim());
-            // preserve protected users — don't touch them from this form
+            String cron = req.getParameter("cleanupCron");
+            String maxD = req.getParameter("cleanupMaxDeletions");
+            if (cron != null) json.put("cleanupCron",         cron.trim());
+            if (maxD != null) json.put("cleanupMaxDeletions", maxD.trim());
+            // SMTP
+            putParam(json, req, "smtpHost");
+            putParam(json, req, "smtpPort");
+            putParam(json, req, "smtpUsername");
+            putParam(json, req, "smtpPassword");
+            json.put("smtpTls", req.getParameter("smtpTls") != null);
+            putParam(json, req, "smtpFromAddress");
+            putParam(json, req, "smtpFromName");
+            putParam(json, req, "smtpReplyTo");
+            putParam(json, req, "notifyEmails");
+            // brute force
+            String bft = req.getParameter("bruteForceThreshold");
+            if (bft != null) json.put("bruteForceThreshold", bft.trim());
+            // stale warning
+            json.put("staleWarningEnabled", req.getParameter("staleWarningEnabled") != null);
+            String swCron = req.getParameter("staleWarningCron");
+            String swWin  = req.getParameter("staleWarningWindowDays");
+            if (swCron != null) json.put("staleWarningCron",       swCron.trim());
+            if (swWin  != null) json.put("staleWarningWindowDays", swWin.trim());
+            // preserve fields managed by the Notifications page
+            json.put("notificationsEnabled", config.isNotificationsEnabled());
+            json.put("smtpEnabled",          config.isSmtpEnabled());
+            json.put("smtpHost",             config.getSmtpHost());
+            json.put("smtpPort",             config.getSmtpPort());
+            json.put("smtpUsername",         config.getSmtpUsername());
+            json.put("smtpTls",              config.isSmtpTls());
+            json.put("smtpFromAddress",      config.getSmtpFromAddress());
+            json.put("smtpFromName",         config.getSmtpFromName());
+            json.put("smtpReplyTo",          config.getSmtpReplyTo());
+            json.put("notifyEmails",         config.getNotifyEmails());
+            json.put("slackEnabled",         config.isSlackEnabled());
+            json.put("slackWebhookUrl",      config.getSlackWebhookUrl());
+            json.put("teamsEnabled",         config.isTeamsEnabled());
+            json.put("teamsWebhookUrl",      config.getTeamsWebhookUrl());
+            json.put("bruteForceThreshold",  config.getBruteForceThreshold());
+            json.put("staleWarningEnabled",    config.isStaleWarningEnabled());
+            json.put("staleWarningCron",       config.getStaleWarningCron());
+            json.put("staleWarningWindowDays", config.getStaleWarningWindowDays());
+            net.sf.json.JSONArray smtpEvts = new net.sf.json.JSONArray();
+            for (String e : config.getSmtpEvents()) smtpEvts.add(e);
+            json.put("smtpEvents", smtpEvts);
+            net.sf.json.JSONArray slackEvts = new net.sf.json.JSONArray();
+            for (String e : config.getSlackEvents()) slackEvts.add(e);
+            json.put("slackEvents", slackEvts);
+            net.sf.json.JSONArray teamsEvts = new net.sf.json.JSONArray();
+            for (String e : config.getTeamsEvents()) teamsEvts.add(e);
+            json.put("teamsEvents", teamsEvts);
+            // preserve protected users
             net.sf.json.JSONArray arr = new net.sf.json.JSONArray();
             for (String u : config.getProtectedUsers()) arr.add(u);
             json.put("protectedUsers", arr);
             config.configure(req, json);
+
+            // diff and notify
+            List<String> diff = new ArrayList<>();
+            if (config.getStaleThresholdDays()  != oldStale)         diff.add("staleThresholdDays: "  + oldStale   + " → " + config.getStaleThresholdDays());
+            if (config.getActiveThresholdDays() != oldActive)        diff.add("activeThresholdDays: " + oldActive  + " → " + config.getActiveThresholdDays());
+            if (config.isCleanupEnabled()       != oldCleanupEnabled) diff.add("cleanupEnabled: "     + oldCleanupEnabled + " → " + config.isCleanupEnabled());
+            if (config.isCleanupDryRun()        != oldDryRun)        diff.add("cleanupDryRun: "       + oldDryRun  + " → " + config.isCleanupDryRun());
+            if (!config.getCleanupCron().equals(oldCron))            diff.add("cleanupCron: "         + oldCron    + " → " + config.getCleanupCron());
+            if (config.getCleanupMaxDeletions() != oldMaxDel)        diff.add("cleanupMaxDeletions: " + oldMaxDel  + " → " + config.getCleanupMaxDeletions());
+            if (config.getBruteForceThreshold() != oldBft)           diff.add("bruteForceThreshold: " + oldBft     + " → " + config.getBruteForceThreshold());
+            if (!diff.isEmpty()) {
+                NotificationService.sendConfigChanged(config, currentUserId(), java.time.Instant.now().toString(), diff);
+            }
         }
         rsp.sendRedirect("settings?saved=true");
+    }
+
+    @POST
+    public void doSendTestEmail(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+
+        // Read current form values — no save needed
+        OmniAuthGlobalConfig saved = OmniAuthGlobalConfig.get();
+
+        String host     = param(req, "smtpHost",    saved != null ? saved.getSmtpHost()        : "");
+        String portStr  = param(req, "smtpPort",    saved != null ? String.valueOf(saved.getSmtpPort()) : "587");
+        String username = param(req, "smtpUsername",saved != null ? saved.getSmtpUsername()    : "");
+        String fromAddr = param(req, "smtpFromAddress", saved != null ? saved.getSmtpFromAddress() : "");
+        String fromName = param(req, "smtpFromName",saved != null ? saved.getSmtpFromName()    : "Jenkins OmniAuth");
+        String replyTo  = param(req, "smtpReplyTo", saved != null ? saved.getSmtpReplyTo()     : "");
+        String to       = param(req, "notifyEmails",saved != null ? saved.getNotifyEmails()    : "");
+        boolean tls     = "1".equals(req.getParameter("smtpTls"));
+
+        // Split host:port if user pasted a combined value (e.g. from Grafana config)
+        if (host.contains(":")) {
+            String[] parts = host.split(":", 2);
+            host = parts[0].trim();
+            if (portStr.isEmpty() || portStr.equals("587")) portStr = parts[1].trim();
+        }
+
+        // Password: use form value if provided, else fall back to saved
+        String password = req.getParameter("smtpPassword");
+        if (password == null || password.trim().isEmpty()) {
+            password = (saved != null && saved.getSmtpPassword() != null)
+                    ? saved.getSmtpPassword().getPlainText() : "";
+        } else {
+            password = password.trim(); // remove accidental trailing whitespace/newlines from paste
+        }
+
+        int port = 587;
+        try { port = Integer.parseInt(portStr.trim()); } catch (NumberFormatException ignored) {}
+
+        String json;
+        if (host.isEmpty() || fromAddr.isEmpty() || username.isEmpty() || password.isEmpty()) {
+            json = "{\"ok\":false,\"msg\":\"Fill in host, username, password and from address first\"}";
+        } else if (to.isEmpty()) {
+            json = "{\"ok\":false,\"msg\":\"Fill in at least one notification recipient\"}";
+        } else {
+            try {
+                SmtpHelper.test(host, port, username, password, tls, fromAddr, fromName, replyTo, to);
+                json = "{\"ok\":true,\"msg\":\"Test email sent to " + escapeJson(to) + "\"}";
+            } catch (Exception e) {
+                String msg = e.getMessage() != null ? e.getMessage() : "Unknown error";
+                json = "{\"ok\":false,\"msg\":\"" + escapeJson(msg) + "\"}";
+            }
+        }
+
+        writeJson(rsp, json);
+    }
+
+    public void doPreviewEmail(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        String logoUrl = cfg != null ? cfg.getNotificationLogoUrl() : "";
+        String rootUrl = "";
+        try {
+            String r = Jenkins.get().getRootUrl();
+            if (r != null && !r.isEmpty()) rootUrl = r.endsWith("/") ? r.substring(0, r.length() - 1) : r;
+        } catch (Exception ignored) {}
+        String subject = "Configuration Changed by admin";
+        String body =
+            "Notification Settings Change\n============================\n\n"
+            + "Changed by: admin\nWhen:       " + java.time.Instant.now() + "\n\n"
+            + "Settings changed:\n\n"
+            + "  smtpHost: old-mail.corp.com \u2192 mail.corp.com\n"
+            + "  smtpPort: 25 \u2192 587\n"
+            + "  smtpTls: false \u2192 true\n"
+            + "  + Brute force alerting enabled\n"
+            + "  - Legacy relay removed\n"
+            + (rootUrl.isEmpty() ? "" : "\nCTA: Review Settings | " + rootUrl + "/manage/omniauth-management/notifications")
+            + "\n---\nJenkins OmniAuth Plugin";
+        String html = SmtpHelper.buildHtml(subject, body, logoUrl);
+        byte[] bytes = html.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        rsp.setContentType("text/html;charset=UTF-8");
+        rsp.setContentLength(bytes.length);
+        rsp.getOutputStream().write(bytes);
+    }
+
+    private static String param(StaplerRequest req, String name, String fallback) {
+        String v = req.getParameter(name);
+        return (v != null && !v.trim().isEmpty()) ? v.trim() : fallback;
+    }
+
+    private static String escapeJson(String s) {
+        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "");
+    }
+
+    private static void putParam(net.sf.json.JSONObject json, StaplerRequest req, String name) {
+        String v = req.getParameter(name);
+        if (v != null) json.put(name, v.trim());
+    }
+
+    private static String mgmtCta(String label, String page) {
+        try {
+            String r = Jenkins.get().getRootUrl();
+            if (r == null || r.isEmpty()) return "";
+            if (r.endsWith("/")) r = r.substring(0, r.length() - 1);
+            return "\nCTA: " + label + " | " + r + "/manage/omniauth-management/" + page;
+        } catch (Exception e) { return ""; }
+    }
+
+    private static String currentUserId() {
+        Authentication auth = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication();
+        return (auth != null && auth.getName() != null) ? auth.getName() : "unknown";
     }
 
     // -------------------------------------------------------------------------
@@ -378,8 +822,10 @@ public class OmniAuthManagementLink extends ManagementLink {
             }
             User user = User.getById(userId, false);
             if (user != null) {
-                LOGGER.info("Manual user deletion by admin: " + userId + " (from " + back + ")");
+                String deletedBy = currentUserId();
+                LOGGER.info("Manual user deletion by " + deletedBy + ": " + userId + " (from " + back + ")");
                 user.delete();
+                NotificationService.sendUserDeleted(config, userId, deletedBy);
             }
         }
         rsp.sendRedirect(back + "?deleted=true");

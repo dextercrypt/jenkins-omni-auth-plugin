@@ -111,10 +111,7 @@ public class StaleUserCleanupWork extends AsyncPeriodicWork {
                 + " skippedProtected=" + skippedProt
                 + " dryRun=" + dryRun);
 
-        String email = config.getCleanupNotifyEmail();
-        if (email != null && !email.trim().isEmpty()) {
-            LOGGER.info("Email report configured for: " + email + " (email sending not yet implemented)");
-        }
+        NotificationService.sendCleanupReport(config, record);
     }
 
     // ── Cron matching ─────────────────────────────────────────────────────────
