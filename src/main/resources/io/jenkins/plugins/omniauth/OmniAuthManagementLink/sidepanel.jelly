@@ -13,6 +13,12 @@
     <l:task icon="symbol-lock-closed"
             href="${rootURL}/manage/omniauth-management/protectedUsers"
             title="Protected Users"/>
+    <l:task icon="symbol-person"
+            href="${rootURL}/manage/omniauth-management/sessions"
+            title="Active Sessions"/>
+    <l:task icon="symbol-lock-closed"
+            href="${rootURL}/manage/omniauth-management/security"
+            title="Security"/>
     <l:task icon="symbol-settings"
             href="${rootURL}/manage/omniauth-management/settings"
             title="Settings"/>

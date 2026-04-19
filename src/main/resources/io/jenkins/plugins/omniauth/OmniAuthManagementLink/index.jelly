@@ -1,7 +1,7 @@
 <?jelly escape-by-default='true'?>
 <j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:l="/lib/layout">
 
-  <l:layout title="OmniAuth — Overview" norefresh="true">
+  <l:layout title="OmniAuth — Dashboard" norefresh="true">
     <l:side-panel>
       <st:include page="sidepanel.jelly"/>
     </l:side-panel>
@@ -9,14 +9,17 @@
 
       <div class="jenkins-app-bar">
         <div class="jenkins-app-bar__content">
-          <h1 class="jenkins-app-bar__heading">OmniAuth Overview</h1>
+          <h1 class="jenkins-app-bar__heading">OmniAuth Dashboard</h1>
         </div>
       </div>
 
       <div style="padding: 16px 24px;">
 
-        <!-- Stat cards -->
-        <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px;">
+        <j:set var="cfg" value="${it.omniAuthGlobalConfig}"/>
+        <j:set var="nlog" value="${it.notificationLog}"/>
+
+        <!-- ── Stat cards ─────────────────────────────────────────── -->
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:24px;">
 
           <a href="userStatus" class="jenkins-card oau-stat-card">
             <div class="oau-stat-number">${it.totalUserCount}</div>
@@ -24,55 +27,251 @@
           </a>
 
           <a href="userStatus" class="jenkins-card oau-stat-card">
-            <div class="oau-stat-number" style="color: var(--green, #27ae60);">${it.activeUserCount}</div>
-            <div class="oau-stat-label">Active (${it.omniAuthGlobalConfig.activeThresholdDays}d)</div>
+            <div class="oau-stat-number" style="color:var(--green,#27ae60);">${it.activeUserCount}</div>
+            <div class="oau-stat-label">Active <span style="font-size:0.8em;">(${cfg.activeThresholdDays}d)</span></div>
           </a>
 
           <a href="staleUsers" class="jenkins-card oau-stat-card">
-            <div class="oau-stat-number" style="color: var(--red, #e74c3c);">${it.staleUserCount}</div>
-            <div class="oau-stat-label">Stale (${it.omniAuthGlobalConfig.staleThresholdDays}d)</div>
+            <div class="oau-stat-number" style="color:var(--red,#e74c3c);">${it.staleUserCount}</div>
+            <div class="oau-stat-label">Stale <span style="font-size:0.8em;">(${cfg.staleThresholdDays}d)</span></div>
           </a>
 
           <a href="protectedUsers" class="jenkins-card oau-stat-card">
-            <div class="oau-stat-number" style="color: var(--blue, #0078d4);">${it.protectedUserCount}</div>
+            <div class="oau-stat-number" style="color:var(--blue,#0078d4);">${it.protectedUserCount}</div>
             <div class="oau-stat-label">Protected</div>
           </a>
 
           <a href="userStatus" class="jenkins-card oau-stat-card">
-            <div class="oau-stat-number" style="color: #0078d4;">${it.entraUserCount}</div>
+            <div class="oau-stat-number" style="color:#0078d4;">${it.entraUserCount}</div>
             <div class="oau-stat-label">SSO Users</div>
           </a>
 
           <a href="userStatus" class="jenkins-card oau-stat-card">
-            <div class="oau-stat-number" style="color: var(--text-color-secondary, #6c757d);">${it.legacyUserCount}</div>
+            <div class="oau-stat-number" style="color:var(--text-color-secondary,#6c757d);">${it.legacyUserCount}</div>
             <div class="oau-stat-label">Native Users</div>
+          </a>
+
+          <a href="sessions" class="jenkins-card oau-stat-card">
+            <div class="oau-stat-number" style="color:#7c3aed;">${it.activeSessionCount}</div>
+            <div class="oau-stat-label">Active Sessions</div>
           </a>
 
         </div>
 
-        <!-- Quick links -->
-        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-          <a href="userStatus"     class="jenkins-button">View All Users</a>
-          <a href="staleUsers"     class="jenkins-button jenkins-button--primary">Review Stale Users</a>
-          <a href="protectedUsers" class="jenkins-button">Protected Users</a>
-          <a href="settings"       class="jenkins-button">Settings</a>
+        <!-- ── Two-column: Recent Logins + Notification Health ───── -->
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
+
+          <!-- Stale Users -->
+          <div class="jenkins-card" style="flex:1;min-width:200px;padding:16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+              <h3 style="margin:0;font-size:0.95em;">Stale Users</h3>
+              <a href="staleUsers" style="font-size:0.8em;color:#0078d4;text-decoration:none;">View all →</a>
+            </div>
+            <j:set var="staleList" value="${it.getStaleUsers(cfg.staleThresholdDays)}"/>
+            <j:choose>
+              <j:when test="${staleList.isEmpty()}">
+                <p style="color:#27ae60;font-size:0.85em;margin:0;">✓ No stale users</p>
+              </j:when>
+              <j:otherwise>
+                <table style="width:100%;border-collapse:collapse;font-size:0.85em;">
+                  <j:forEach var="u" items="${staleList}" begin="0" end="4">
+                    <tr style="border-bottom:1px solid var(--panel-border-color,#f0f0f0);">
+                      <td style="padding:6px 4px;"><strong>${u.userId}</strong></td>
+                      <td style="padding:6px 4px;color:#6c757d;text-align:right;">
+                        <j:choose>
+                          <j:when test="${u.neverLoggedIn}"><em>Never</em></j:when>
+                          <j:otherwise>${u.lastLoginAt}</j:otherwise>
+                        </j:choose>
+                      </td>
+                    </tr>
+                  </j:forEach>
+                </table>
+                <j:if test="${staleList.size() > 5}">
+                  <p style="color:#6c757d;font-size:0.78em;margin:8px 0 0;">+${staleList.size() - 5} more</p>
+                </j:if>
+              </j:otherwise>
+            </j:choose>
+          </div>
+
+          <!-- Active Sessions -->
+          <div class="jenkins-card" style="flex:1;min-width:200px;padding:16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+              <h3 style="margin:0;font-size:0.95em;">Active Sessions</h3>
+              <a href="sessions" style="font-size:0.8em;color:#0078d4;text-decoration:none;">View all →</a>
+            </div>
+            <j:set var="sessionList" value="${it.activeSessions}"/>
+            <j:choose>
+              <j:when test="${sessionList.isEmpty()}">
+                <p style="color:#6c757d;font-size:0.85em;margin:0;">No active sessions tracked yet.</p>
+              </j:when>
+              <j:otherwise>
+                <table style="width:100%;border-collapse:collapse;font-size:0.85em;">
+                  <j:forEach var="s" items="${sessionList}" begin="0" end="4">
+                    <tr style="border-bottom:1px solid var(--panel-border-color,#f0f0f0);">
+                      <td style="padding:6px 4px;"><strong>${s.userId}</strong></td>
+                      <td style="padding:6px 4px;">
+                        <j:choose>
+                          <j:when test="${s.userType != 'Native'}">
+                            <span style="background:#e8f0fe;color:#0078d4;padding:1px 6px;border-radius:3px;font-size:0.78em;">${s.userType}</span>
+                          </j:when>
+                          <j:otherwise>
+                            <span style="background:#f0f0f0;color:#6c757d;padding:1px 6px;border-radius:3px;font-size:0.78em;">Native</span>
+                          </j:otherwise>
+                        </j:choose>
+                      </td>
+                      <td style="padding:6px 4px;color:#6c757d;text-align:right;">${s.relativeLoginTime}</td>
+                    </tr>
+                  </j:forEach>
+                </table>
+                <j:if test="${sessionList.size() > 5}">
+                  <p style="color:#6c757d;font-size:0.78em;margin:8px 0 0;">+${sessionList.size() - 5} more</p>
+                </j:if>
+              </j:otherwise>
+            </j:choose>
+          </div>
+
+          <!-- Notification Health -->
+          <div class="jenkins-card" style="flex:0 0 260px;padding:16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+              <h3 style="margin:0;font-size:0.95em;">Notification Health</h3>
+              <a href="notifications" style="font-size:0.8em;color:#0078d4;text-decoration:none;">Configure →</a>
+            </div>
+
+            <j:set var="smtpEntry"  value="${nlog.lastSmtpEntry()}"/>
+            <j:set var="slackEntry" value="${nlog.lastSlackEntry()}"/>
+            <j:set var="teamsEntry" value="${nlog.lastTeamsEntry()}"/>
+
+            <!-- Email -->
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--panel-border-color,#f0f0f0);">
+              <span style="font-size:0.88em;">Email</span>
+              <j:choose>
+                <j:when test="${!cfg.smtpEnabled}">
+                  <span style="font-size:0.78em;color:#6c757d;">Disabled</span>
+                </j:when>
+                <j:when test="${smtpEntry == null}">
+                  <span style="font-size:0.78em;color:#6c757d;">No sends yet</span>
+                </j:when>
+                <j:when test="${smtpEntry.success}">
+                  <span style="font-size:0.78em;color:#27ae60;">✓ ${smtpEntry.relativeTimestamp}</span>
+                </j:when>
+                <j:otherwise>
+                  <span style="font-size:0.78em;color:#e74c3c;">✗ Failed ${smtpEntry.relativeTimestamp}</span>
+                </j:otherwise>
+              </j:choose>
+            </div>
+
+            <!-- Slack -->
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--panel-border-color,#f0f0f0);">
+              <span style="font-size:0.88em;">Slack</span>
+              <j:choose>
+                <j:when test="${!cfg.slackEnabled}">
+                  <span style="font-size:0.78em;color:#6c757d;">Disabled</span>
+                </j:when>
+                <j:when test="${slackEntry == null}">
+                  <span style="font-size:0.78em;color:#6c757d;">No sends yet</span>
+                </j:when>
+                <j:when test="${slackEntry.success}">
+                  <span style="font-size:0.78em;color:#27ae60;">✓ ${slackEntry.relativeTimestamp}</span>
+                </j:when>
+                <j:otherwise>
+                  <span style="font-size:0.78em;color:#e74c3c;">✗ Failed ${slackEntry.relativeTimestamp}</span>
+                </j:otherwise>
+              </j:choose>
+            </div>
+
+            <!-- Teams -->
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;">
+              <span style="font-size:0.88em;">Teams</span>
+              <j:choose>
+                <j:when test="${!cfg.teamsEnabled}">
+                  <span style="font-size:0.78em;color:#6c757d;">Disabled</span>
+                </j:when>
+                <j:when test="${teamsEntry == null}">
+                  <span style="font-size:0.78em;color:#6c757d;">No sends yet</span>
+                </j:when>
+                <j:when test="${teamsEntry.success}">
+                  <span style="font-size:0.78em;color:#27ae60;">✓ ${teamsEntry.relativeTimestamp}</span>
+                </j:when>
+                <j:otherwise>
+                  <span style="font-size:0.78em;color:#e74c3c;">✗ Failed ${teamsEntry.relativeTimestamp}</span>
+                </j:otherwise>
+              </j:choose>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ── Security snapshot ──────────────────────────────────── -->
+        <div class="jenkins-card" style="padding:14px 16px;">
+          <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;font-size:0.87em;">
+
+            <span style="color:#6c757d;font-weight:600;text-transform:uppercase;font-size:0.78em;letter-spacing:0.5px;">Security</span>
+
+            <a href="security" style="text-decoration:none;color:inherit;">
+              <j:set var="failed24h" value="${it.failedLoginsLast24h}"/>
+              <j:choose>
+                <j:when test="${failed24h == 0}">
+                  <span style="color:#27ae60;">✓ No failed logins (24h)</span>
+                </j:when>
+                <j:otherwise>
+                  <span style="color:#e74c3c;">✗ <strong>${failed24h}</strong> failed login<j:if test="${failed24h != 1}">s</j:if> in last 24h</span>
+                </j:otherwise>
+              </j:choose>
+            </a>
+
+            <span style="color:#6c757d;">|</span>
+
+            <a href="security" style="text-decoration:none;color:inherit;">
+              Brute force threshold: <strong>${cfg.bruteForceThreshold}</strong> attempts
+            </a>
+
+            <span style="color:#6c757d;">|</span>
+
+            <a href="settings" style="text-decoration:none;color:inherit;">
+              Cleanup:
+              <j:choose>
+                <j:when test="${cfg.cleanupEnabled}">
+                  <span style="color:#27ae60;">Enabled</span>
+                  <j:if test="${cfg.cleanupDryRun}"> <span style="color:#856404;">(dry run)</span></j:if>
+                </j:when>
+                <j:otherwise>
+                  <span style="color:#6c757d;">Disabled</span>
+                </j:otherwise>
+              </j:choose>
+            </a>
+
+            <span style="color:#6c757d;">|</span>
+
+            <a href="notifications" style="text-decoration:none;color:inherit;">
+              Notifications:
+              <j:choose>
+                <j:when test="${cfg.notificationsEnabled}">
+                  <span style="color:#27ae60;">On</span>
+                </j:when>
+                <j:otherwise>
+                  <span style="color:#6c757d;">Off</span>
+                </j:otherwise>
+              </j:choose>
+            </a>
+
+          </div>
         </div>
 
       </div>
 
       <style>
         .oau-stat-card {
-          flex: 1; min-width: 130px; padding: 16px; text-align: center;
-          text-decoration: none; color: inherit;
-          transition: box-shadow 0.15s, transform 0.15s;
+          flex:1; min-width:110px; padding:16px; text-align:center;
+          text-decoration:none; color:inherit;
+          transition:box-shadow 0.15s, transform 0.15s;
         }
         .oau-stat-card:hover {
-          box-shadow: 0 4px 12px rgba(0,0,0,0.12);
-          transform: translateY(-2px);
-          text-decoration: none; color: inherit;
+          box-shadow:0 4px 12px rgba(0,0,0,0.12);
+          transform:translateY(-2px);
+          text-decoration:none; color:inherit;
         }
-        .oau-stat-number { font-size: 2em; font-weight: 700; line-height: 1.1; }
-        .oau-stat-label  { color: var(--text-color-secondary, #6c757d); font-size: 0.85em; margin-top: 4px; }
+        .oau-stat-number { font-size:2em; font-weight:700; line-height:1.1; }
+        .oau-stat-label  { color:var(--text-color-secondary,#6c757d); font-size:0.82em; margin-top:4px; }
       </style>
 
     </l:main-panel>

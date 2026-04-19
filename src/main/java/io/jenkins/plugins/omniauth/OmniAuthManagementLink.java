@@ -96,6 +96,39 @@ public class OmniAuthManagementLink extends ManagementLink {
         req.getView(this, "notifications.jelly").forward(req, rsp);
     }
 
+    public void doSessions(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        javax.servlet.http.HttpSession s = req.getSession(false);
+        if (s != null) req.setAttribute("currentSessionId", s.getId());
+        req.getView(this, "sessions.jelly").forward(req, rsp);
+    }
+
+    public java.util.List<ActiveSessionManager.ActiveSession> getActiveSessions() {
+        return ActiveSessionManager.getAll();
+    }
+
+    @POST
+    public void doClearBruteForce(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String userId = req.getParameter("userId");
+        if (userId != null && !userId.isEmpty()) BruteForceTracker.clearAlert(userId);
+        rsp.sendRedirect("security");
+    }
+
+    @POST
+    public void doRevokeSession(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER); // CSRF already enforced via @POST
+        String sessionId = req.getParameter("sessionId");
+        String currentSessionId = req.getSession(false) != null ? req.getSession(false).getId() : null;
+        if (sessionId == null || sessionId.equals(currentSessionId)) {
+            rsp.sendRedirect("sessions?error=self");
+            return;
+        }
+        ActiveSessionManager.revoke(sessionId);
+        rsp.sendRedirect("sessions?revoked=true");
+    }
+
     public NotificationLog getNotificationLog() {
         return NotificationLog.get();
     }
@@ -629,6 +662,139 @@ public class OmniAuthManagementLink extends ManagementLink {
     // -------------------------------------------------------------------------
     // Overview stats (used by index.jelly)
     // -------------------------------------------------------------------------
+
+    public int getActiveSessionCount()  { return ActiveSessionManager.getAll().size(); }
+
+    public int getFailedLoginsLast24h() {
+        Instant cutoff = Instant.now().minus(1, ChronoUnit.DAYS);
+        int count = 0;
+        for (User user : User.getAll()) {
+            if (isInternalUser(user)) continue;
+            LoginHistoryProperty hp = user.getProperty(LoginHistoryProperty.class);
+            if (hp == null) continue;
+            for (LoginEvent e : hp.getEvents()) {
+                try {
+                    if (!e.isSuccess() && Instant.parse(e.getTimestamp()).isAfter(cutoff)) count++;
+                } catch (Exception ignored) {}
+            }
+        }
+        return count;
+    }
+
+    public void doSecurity(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        int hours = 24;
+        try {
+            String w = req.getParameter("window");
+            if (w != null) hours = Integer.parseInt(w);
+        } catch (Exception ignored) {}
+        req.setAttribute("failedLogins", getFailedLogins(hours));
+        req.setAttribute("windowHours", String.valueOf(hours));
+        req.getView(this, "security.jelly").forward(req, rsp);
+    }
+
+    public List<FailedLoginEntry> getFailedLogins(int hours) {
+        Instant cutoff = Instant.now().minus(hours, ChronoUnit.HOURS);
+        List<FailedLoginEntry> result = new ArrayList<>();
+        for (User user : User.getAll()) {
+            if (isInternalUser(user)) continue;
+            LoginHistoryProperty hp = user.getProperty(LoginHistoryProperty.class);
+            if (hp == null) continue;
+            for (LoginEvent e : hp.getEvents()) {
+                try {
+                    if (!e.isSuccess() && Instant.parse(e.getTimestamp()).isAfter(cutoff)) {
+                        result.add(new FailedLoginEntry(user.getId(), user.getFullName(), e));
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+        result.sort((a, b) -> b.event.getTimestamp().compareTo(a.event.getTimestamp()));
+        return result;
+    }
+
+    public List<BruteForceEntry> getBruteForceEntries() {
+        Map<String, Integer> live    = BruteForceTracker.getAllFailureCounts();
+        Map<String, String>  alerted = BruteForceTracker.getAlertedUsers();
+        Map<String, BruteForceEntry> merged = new HashMap<>();
+
+        for (Map.Entry<String, Integer> e : live.entrySet()) {
+            String username = e.getKey();
+            User user = User.getById(username, false);
+            String fullName = (user != null) ? user.getFullName() : username;
+            merged.put(username, new BruteForceEntry(username, fullName, e.getValue(), null));
+        }
+        for (Map.Entry<String, String> e : alerted.entrySet()) {
+            String username = e.getKey();
+            if (!merged.containsKey(username)) {
+                User user = User.getById(username, false);
+                String fullName = (user != null) ? user.getFullName() : username;
+                merged.put(username, new BruteForceEntry(username, fullName, 0, e.getValue()));
+            } else {
+                BruteForceEntry existing = merged.get(username);
+                merged.put(username, new BruteForceEntry(existing.userId, existing.fullName, existing.failureCount, e.getValue()));
+            }
+        }
+        List<BruteForceEntry> result = new ArrayList<>(merged.values());
+        result.sort((a, b) -> Integer.compare(b.failureCount, a.failureCount));
+        return result;
+    }
+
+    public static final class FailedLoginEntry {
+        public final String userId;
+        public final String fullName;
+        public final LoginEvent event;
+        public FailedLoginEntry(String userId, String fullName, LoginEvent event) {
+            this.userId = userId; this.fullName = fullName; this.event = event;
+        }
+        public String getUserId()    { return userId; }
+        public String getFullName()  { return fullName; }
+        public LoginEvent getEvent() { return event; }
+    }
+
+    public static final class BruteForceEntry {
+        public final String userId;
+        public final String fullName;
+        public final int failureCount;
+        public final String alertedAt;
+        public BruteForceEntry(String userId, String fullName, int failureCount, String alertedAt) {
+            this.userId = userId; this.fullName = fullName;
+            this.failureCount = failureCount; this.alertedAt = alertedAt;
+        }
+        public String getUserId()     { return userId; }
+        public String getFullName()   { return fullName; }
+        public int getFailureCount()  { return failureCount; }
+        public String getAlertedAt()  { return alertedAt; }
+        public boolean isAlerted()    { return alertedAt != null; }
+        public String getRelativeAlertedAt() { return alertedAt != null ? relativeTime(alertedAt) : null; }
+    }
+
+    public List<RecentLoginEntry> getRecentLoginEvents() {
+        List<RecentLoginEntry> all = new ArrayList<>();
+        for (User user : User.getAll()) {
+            if (isInternalUser(user)) continue;
+            LoginHistoryProperty hp = user.getProperty(LoginHistoryProperty.class);
+            if (hp == null) continue;
+            for (LoginEvent e : hp.getEvents()) {
+                all.add(new RecentLoginEntry(user.getId(), user.getFullName(), e));
+            }
+        }
+        all.sort((a, b) -> b.event.getTimestamp().compareTo(a.event.getTimestamp()));
+        return all.size() > 7 ? all.subList(0, 7) : all;
+    }
+
+    public static final class RecentLoginEntry {
+        public final String userId;
+        public final String fullName;
+        public final LoginEvent event;
+        public RecentLoginEntry(String userId, String fullName, LoginEvent event) {
+            this.userId   = userId;
+            this.fullName = fullName;
+            this.event    = event;
+        }
+        public String getUserId()   { return userId; }
+        public String getFullName() { return fullName; }
+        public LoginEvent getEvent(){ return event; }
+    }
 
     public int getTotalUserCount()     { return (int) User.getAll().stream().filter(u -> !isInternalUser(u)).count(); }
     public int getEntraUserCount()     { return (int) User.getAll().stream().filter(u -> !isInternalUser(u) && u.getProperty(OmniAuthUserProperty.class) != null).count(); }

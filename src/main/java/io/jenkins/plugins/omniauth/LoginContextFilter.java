@@ -13,6 +13,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -53,8 +54,9 @@ public class LoginContextFilter {
             // Capture IP/UA from this request, then check FRESH_LOGINS immediately.
             String ip = "unknown";
             String ua = null;
-            if (request instanceof HttpServletRequest) {
-                HttpServletRequest http = (HttpServletRequest) request;
+            HttpServletRequest http = (request instanceof HttpServletRequest)
+                    ? (HttpServletRequest) request : null;
+            if (http != null) {
                 String forwarded = http.getHeader("X-Forwarded-For");
                 String raw = (forwarded != null && !forwarded.isEmpty())
                         ? forwarded.split(",")[0].trim()
@@ -86,6 +88,12 @@ public class LoginContextFilter {
                                 String method = (p != null) ? "Entra" : "Native";
                                 LoginHistoryProperty.record(user,
                                         new LoginEvent(now, finalIp, finalUa, browser, os, method, true));
+                                HttpSession httpSession = http.getSession(false);
+                                if (httpSession != null
+                                        && httpSession.getAttribute(ActiveSessionManager.SESSION_ATTR) == null) {
+                                    ActiveSessionManager.register(httpSession, username,
+                                            user.getFullName(), method, finalIp, browser, os);
+                                }
                             }
                         }
                     }

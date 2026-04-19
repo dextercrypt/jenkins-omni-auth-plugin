@@ -1,0 +1,194 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:l="/lib/layout">
+
+  <l:layout title="OmniAuth — Security" norefresh="true">
+    <l:side-panel>
+      <st:include page="sidepanel.jelly"/>
+    </l:side-panel>
+    <l:main-panel>
+
+      <div class="jenkins-app-bar">
+        <div class="jenkins-app-bar__content">
+          <h1 class="jenkins-app-bar__heading">Security</h1>
+        </div>
+      </div>
+
+      <div style="padding: 16px 24px;">
+
+        <j:set var="cfg" value="${it.omniAuthGlobalConfig}"/>
+
+        <!-- ── Brute Force State ─────────────────────────────────── -->
+        <div class="jenkins-card" style="padding:16px;margin-bottom:16px;">
+          <h3 style="margin:0 0 12px;">Brute Force — Active Counters</h3>
+          <p style="color:#6c757d;font-size:0.85em;margin:0 0 12px;">
+            Users with consecutive failed logins. Counters reset on successful login.
+            Alert fires at <strong>${cfg.bruteForceThreshold}</strong> failures.
+            Configure in <a href="settings">Settings</a>.
+          </p>
+
+          <j:set var="bfEntries" value="${it.bruteForceEntries}"/>
+          <j:choose>
+            <j:when test="${bfEntries.isEmpty()}">
+              <div style="color:#27ae60;font-size:0.88em;">✓ No users with active failure counters.</div>
+            </j:when>
+            <j:otherwise>
+              <table class="jenkins-table" style="width:100%;">
+                <thead>
+                  <tr>
+                    <th>Username</th>
+                    <th>Full Name</th>
+                    <th>Failures</th>
+                    <th>Status</th>
+                    <th>Alerted</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <j:forEach var="bf" items="${bfEntries}">
+                    <tr>
+                      <td><strong>${bf.userId}</strong></td>
+                      <td>${bf.fullName}</td>
+                      <td style="text-align:center;">
+                        <j:choose>
+                          <j:when test="${bf.failureCount > 0}">
+                            <strong style="color:#e74c3c;">${bf.failureCount}</strong>
+                          </j:when>
+                          <j:otherwise>
+                            <span style="color:#6c757d;">—</span>
+                          </j:otherwise>
+                        </j:choose>
+                      </td>
+                      <td>
+                        <j:choose>
+                          <j:when test="${bf.failureCount >= cfg.bruteForceThreshold}">
+                            <span style="background:#f8d7da;color:#721c24;padding:2px 8px;border-radius:4px;font-size:0.82em;">Threshold reached</span>
+                          </j:when>
+                          <j:when test="${bf.failureCount > 0}">
+                            <span style="background:#fff3cd;color:#856404;padding:2px 8px;border-radius:4px;font-size:0.82em;">Warning</span>
+                          </j:when>
+                          <j:otherwise>
+                            <span style="background:#f8d7da;color:#721c24;padding:2px 8px;border-radius:4px;font-size:0.82em;">Previously alerted</span>
+                          </j:otherwise>
+                        </j:choose>
+                      </td>
+                      <td>
+                        <j:choose>
+                          <j:when test="${bf.alerted}">
+                            <span style="font-size:0.82em;color:#6c757d;">${bf.relativeAlertedAt}</span>
+                          </j:when>
+                          <j:otherwise>—</j:otherwise>
+                        </j:choose>
+                      </td>
+                      <td>
+                        <j:if test="${bf.alerted}">
+                          <form method="post" action="clearBruteForce" style="display:inline;">
+                            <input type="hidden" name="userId" value="${bf.userId}"/>
+                            <input type="hidden" name="${app.crumbRequestField}" value="${app.crumb}"/>
+                            <button type="submit" class="jenkins-button jenkins-button--small">Clear</button>
+                          </form>
+                        </j:if>
+                      </td>
+                    </tr>
+                  </j:forEach>
+                </tbody>
+              </table>
+            </j:otherwise>
+          </j:choose>
+        </div>
+
+        <!-- ── Failed Logins ─────────────────────────────────────── -->
+        <div class="jenkins-card" style="padding:16px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <h3 style="margin:0;">Failed Logins</h3>
+            <div style="display:flex;gap:8px;">
+              <a href="security?window=24"  class="jenkins-button jenkins-button--small${windowHours == '24'  ? ' jenkins-button--primary' : ''}">24h</a>
+              <a href="security?window=48"  class="jenkins-button jenkins-button--small${windowHours == '48'  ? ' jenkins-button--primary' : ''}">48h</a>
+              <a href="security?window=168" class="jenkins-button jenkins-button--small${windowHours == '168' ? ' jenkins-button--primary' : ''}">7d</a>
+            </div>
+          </div>
+
+          <j:set var="windowHours" value="${request2.getAttribute('windowHours')}"/>
+          <j:set var="failedLogins" value="${request2.getAttribute('failedLogins')}"/>
+
+          <j:choose>
+            <j:when test="${failedLogins.isEmpty()}">
+              <div style="color:#27ae60;font-size:0.88em;">✓ No failed logins in this window.</div>
+            </j:when>
+            <j:otherwise>
+              <table class="jenkins-table sortable" style="width:100%;">
+                <thead>
+                  <tr>
+                    <th>When</th>
+                    <th>Username</th>
+                    <th>IP Address</th>
+                    <th>Browser</th>
+                    <th>OS</th>
+                    <th>Method</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <j:forEach var="f" items="${failedLogins}">
+                    <tr>
+                      <td>
+                        <span style="display:inline-flex;align-items:center;gap:4px;">
+                          <span>${f.event.relativeTimestamp}</span>
+                          <span class="oau-info-wrap">
+                            <span class="oau-info-btn">i</span>
+                            <span class="oau-info-tip">${f.event.formattedTimestamp}</span>
+                          </span>
+                        </span>
+                      </td>
+                      <td><strong>${f.userId}</strong></td>
+                      <td style="font-family:monospace;font-size:0.88em;">${f.event.ipAddress}</td>
+                      <td>${f.event.browser}</td>
+                      <td>${f.event.os}</td>
+                      <td>
+                        <j:choose>
+                          <j:when test="${f.event.method != 'Native'}">
+                            <span style="background:#e8f0fe;color:#0078d4;padding:2px 8px;border-radius:4px;font-size:0.82em;">${f.event.method}</span>
+                          </j:when>
+                          <j:otherwise>
+                            <span style="background:#f0f0f0;color:#6c757d;padding:2px 8px;border-radius:4px;font-size:0.82em;">Native</span>
+                          </j:otherwise>
+                        </j:choose>
+                      </td>
+                    </tr>
+                  </j:forEach>
+                </tbody>
+              </table>
+            </j:otherwise>
+          </j:choose>
+        </div>
+
+      </div>
+
+      <style>
+        .oau-info-wrap { position: relative; display: inline-flex; align-items: center; }
+        .oau-info-btn {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 14px; height: 14px; border-radius: 50%;
+          background: var(--text-color-secondary,#6c757d); color: #fff;
+          font-size: 9px; font-weight: 700; font-style: normal;
+          cursor: default; user-select: none; flex-shrink: 0;
+          font-family: serif; line-height: 1;
+        }
+        .oau-info-tip {
+          display: none; position: absolute; bottom: calc(100% + 6px); left: 50%;
+          transform: translateX(-50%);
+          background: #333; color: #fff; font-size: 0.78em;
+          padding: 4px 8px; border-radius: 4px; white-space: nowrap;
+          z-index: 100; pointer-events: none;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+        }
+        .oau-info-tip::after {
+          content: ''; position: absolute; top: 100%; left: 50%;
+          transform: translateX(-50%);
+          border: 4px solid transparent; border-top-color: #333;
+        }
+        .oau-info-wrap:hover .oau-info-tip { display: block; }
+      </style>
+
+    </l:main-panel>
+  </l:layout>
+
+</j:jelly>

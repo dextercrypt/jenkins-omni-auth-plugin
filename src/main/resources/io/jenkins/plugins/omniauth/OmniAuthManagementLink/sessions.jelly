@@ -1,0 +1,223 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:l="/lib/layout">
+
+  <l:layout title="OmniAuth — Active Sessions" norefresh="true">
+    <l:side-panel>
+      <st:include page="sidepanel.jelly"/>
+    </l:side-panel>
+    <l:main-panel>
+
+      <div class="jenkins-app-bar">
+        <div class="jenkins-app-bar__content">
+          <h1 class="jenkins-app-bar__heading">Active Sessions</h1>
+        </div>
+      </div>
+
+      <div style="padding: 16px 24px;">
+
+        <j:if test="${request2.getParameter('revoked') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom: 16px;">
+            Session revoked successfully.
+          </div>
+        </j:if>
+        <j:if test="${request2.getParameter('error') == 'self'}">
+          <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom: 16px;">
+            You cannot revoke your own session.
+          </div>
+        </j:if>
+
+        <p style="color: #6c757d; margin-bottom: 16px;">
+          All currently active Jenkins sessions. Sessions are tracked from login onwards.
+          Revoking a session immediately logs that user out.
+        </p>
+
+        <j:set var="sessions" value="${it.activeSessions}"/>
+
+        <j:choose>
+          <j:when test="${sessions.isEmpty()}">
+            <div style="padding: 32px; text-align: center; color: #6c757d;">
+              No active sessions tracked yet. Sessions appear here after users log in.
+            </div>
+          </j:when>
+          <j:otherwise>
+            <table class="jenkins-table sortable">
+              <thead>
+                <tr>
+                  <th>Username</th>
+                  <th>Full Name</th>
+                  <th>Type</th>
+                  <th>Logged In</th>
+                  <th>IP Address</th>
+                  <th>Browser</th>
+                  <th>OS</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <j:forEach var="s" items="${sessions}">
+                  <tr>
+                    <td><strong>${s.userId}</strong></td>
+                    <td>${s.fullName}</td>
+                    <td>
+                      <j:choose>
+                        <j:when test="${s.userType != 'Native'}">
+                          <span style="background:#e8f0fe;color:#0078d4;padding:2px 8px;border-radius:4px;font-size:0.85em;">${s.userType}</span>
+                        </j:when>
+                        <j:otherwise>
+                          <span style="background:#f0f0f0;color:#6c757d;padding:2px 8px;border-radius:4px;font-size:0.85em;">Native</span>
+                        </j:otherwise>
+                      </j:choose>
+                    </td>
+                    <td>
+                      <span style="display:inline-flex;align-items:center;gap:4px;">
+                        <span>${s.relativeLoginTime}</span>
+                        <span class="oau-info-wrap">
+                          <span class="oau-info-btn">i</span>
+                          <span class="oau-info-tip">${s.loginTime}</span>
+                        </span>
+                      </span>
+                    </td>
+                    <td style="font-family:monospace;font-size:0.88em;">${s.ip}</td>
+                    <td>${s.browser}</td>
+                    <td>${s.os}</td>
+                    <td>
+                      <j:choose>
+                        <j:when test="${s.sessionId == request2.getAttribute('currentSessionId')}">
+                          <span style="background:#d4edda;color:#155724;padding:2px 8px;border-radius:4px;font-size:0.82em;">Current</span>
+                        </j:when>
+                        <j:otherwise>
+                          <button type="button"
+                                  class="jenkins-button jenkins-button--danger jenkins-button--small"
+                                  onclick="oauShowRevokeModal(this)"
+                                  data-sessionid="${s.sessionId}"
+                                  data-userid="${s.userId}"
+                                  data-crumb-field="${app.crumbRequestField}"
+                                  data-crumb-value="${app.crumb}">
+                            Revoke
+                          </button>
+                        </j:otherwise>
+                      </j:choose>
+                    </td>
+                  </tr>
+                </j:forEach>
+              </tbody>
+            </table>
+          </j:otherwise>
+        </j:choose>
+
+      </div>
+
+      <!-- REVOKE MODAL -->
+      <div id="oauRevokeModal" class="oau-modal-backdrop" style="display:none;" onclick="if(event.target===this)oauCloseRevokeModal()">
+        <div class="oau-modal">
+          <div class="oau-modal-header oau-modal-header--danger">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+            Revoke Session
+          </div>
+          <div class="oau-modal-body">
+            <p style="margin:0;">
+              This will immediately log out <strong id="oauRevokeUserId"></strong>.
+              They will need to log in again to access Jenkins.
+            </p>
+          </div>
+          <div class="oau-modal-footer">
+            <button type="button" class="jenkins-button" onclick="oauCloseRevokeModal()">Cancel</button>
+            <button type="button" class="jenkins-button jenkins-button--danger" id="oauRevokeConfirmBtn">Revoke</button>
+          </div>
+        </div>
+      </div>
+
+      <form id="oauRevokeForm" method="post" action="revokeSession" style="display:none;">
+        <input type="hidden" name="sessionId" id="oauRevokeSessionIdInput"/>
+        <input type="hidden" id="oauRevokeCrumbField"/>
+        <input type="hidden" id="oauRevokeCrumbValue"/>
+      </form>
+
+      <script>//<![CDATA[
+        function oauShowRevokeModal(btn) {
+          var sessionId  = btn.dataset.sessionid;
+          var userId     = btn.dataset.userid;
+          var crumbField = btn.dataset.crumbField;
+          var crumbValue = btn.dataset.crumbValue;
+
+          document.getElementById('oauRevokeUserId').textContent       = userId;
+          document.getElementById('oauRevokeSessionIdInput').value      = sessionId;
+          document.getElementById('oauRevokeCrumbField').name           = crumbField;
+          document.getElementById('oauRevokeCrumbField').value          = crumbField;
+          document.getElementById('oauRevokeCrumbValue').name           = crumbField;
+          document.getElementById('oauRevokeCrumbValue').value          = crumbValue;
+          document.getElementById('oauRevokeModal').style.display       = 'flex';
+
+          document.getElementById('oauRevokeConfirmBtn').onclick = function() {
+            oauCloseRevokeModal();
+            document.getElementById('oauRevokeForm').submit();
+          };
+        }
+        function oauCloseRevokeModal() {
+          document.getElementById('oauRevokeModal').style.display = 'none';
+        }
+        document.addEventListener('keydown', function(e) {
+          if (e.key === 'Escape') oauCloseRevokeModal();
+        });
+      //]]></script>
+
+      <style>
+        .oau-modal-backdrop {
+          position: fixed; inset: 0; z-index: 9999;
+          background: rgba(0,0,0,0.45);
+          display: flex; align-items: center; justify-content: center;
+        }
+        .oau-modal {
+          background: var(--background, #fff);
+          border-radius: 8px;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.22);
+          width: 100%; max-width: 400px;
+          overflow: hidden;
+          animation: oauModalIn 0.15s ease;
+        }
+        @keyframes oauModalIn {
+          from { transform: scale(0.95); opacity: 0; }
+          to   { transform: scale(1);    opacity: 1; }
+        }
+        .oau-modal-header {
+          display: flex; align-items: center; gap: 10px;
+          padding: 16px 20px; font-weight: 600; font-size: 0.95em;
+        }
+        .oau-modal-header--danger { background: #fdecea; color: #7f1f1f; border-bottom: 1px solid #f5c6cb; }
+        .oau-modal-body   { padding: 20px; font-size: 0.88em; line-height: 1.6; }
+        .oau-modal-footer {
+          display: flex; justify-content: flex-end; gap: 8px;
+          padding: 12px 20px; border-top: 1px solid var(--panel-border-color, #e0e0e0);
+          background: var(--background-color, #fafafa);
+        }
+        .oau-info-wrap { position: relative; display: inline-flex; align-items: center; }
+        .oau-info-btn {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 14px; height: 14px; border-radius: 50%;
+          background: var(--text-color-secondary, #6c757d); color: #fff;
+          font-size: 9px; font-weight: 700; font-style: normal;
+          cursor: default; user-select: none; flex-shrink: 0;
+          font-family: serif; line-height: 1;
+        }
+        .oau-info-tip {
+          display: none; position: absolute; bottom: calc(100% + 6px); left: 50%;
+          transform: translateX(-50%);
+          background: #333; color: #fff; font-size: 0.78em;
+          padding: 4px 8px; border-radius: 4px; white-space: nowrap;
+          z-index: 100; pointer-events: none;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+        }
+        .oau-info-tip::after {
+          content: ''; position: absolute; top: 100%; left: 50%;
+          transform: translateX(-50%);
+          border: 4px solid transparent; border-top-color: #333;
+        }
+        .oau-info-wrap:hover .oau-info-tip { display: block; }
+      </style>
+
+    </l:main-panel>
+  </l:layout>
+
+</j:jelly>
