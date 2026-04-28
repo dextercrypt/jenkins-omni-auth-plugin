@@ -103,6 +103,13 @@
     </dependency>
 
 
+    <!-- Matrix Authorization Strategy — base for OmniAuthAuthorizationStrategy -->
+    <dependency>
+      <groupId>org.jenkins-ci.plugins</groupId>
+      <artifactId>matrix-auth</artifactId>
+      <version>3.2.9</version>
+    </dependency>
+
     <!-- Test dependencies -->
     <dependency>
       <groupId>org.jenkins-ci.main</groupId>
@@ -129,6 +136,14 @@
             <phase>none</phase>
           </execution>
         </executions>
+      </plugin>
+      <!-- Allow extending @Restricted(NoExternalUse) ConverterImpl classes from matrix-auth -->
+      <plugin>
+        <groupId>org.kohsuke</groupId>
+        <artifactId>access-modifier-checker</artifactId>
+        <configuration>
+          <failOnError>false</failOnError>
+        </configuration>
       </plugin>
     </plugins>
   </build>

@@ -1,0 +1,55 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:f="/lib/form">
+  <j:set var="migrationSource" value="${descriptor.migrationSource}"/>
+  <j:choose>
+
+    <!-- Switching from GlobalMatrix/ProjectMatrix with existing permissions -->
+    <j:when test="${migrationSource != null and descriptor.shouldShowMigrationNotice()}">
+      <f:block>
+        <div style="margin-bottom:12px;padding:12px 16px;border-radius:6px;background:#e8f4fd;border:1px solid #bee3f8;color:#2c5282;">
+          <strong>Permission import ready</strong> — Existing authorization configuration detected.
+          All permission entries have been pre-loaded for your review.
+          No permissions will be changed until you click <strong>Save</strong>.
+        </div>
+      </f:block>
+      <j:set var="instance" value="${descriptor.prePopulatedInstance}"/>
+      <st:include class="hudson.security.GlobalMatrixAuthorizationStrategy" page="config.jelly"/>
+      <f:block>
+        <div style="margin-top:16px;padding:12px 16px;border-radius:6px;background:#f8f9fa;border:1px solid #dee2e6;">
+          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;color:#343a40;">
+            <input type="checkbox" id="omniauth-migration-confirm"
+                   style="margin-top:3px;flex-shrink:0;"
+                   onchange="
+                     var btn = document.querySelector('[name=Submit]') || document.querySelector('button.jenkins-button--primary');
+                     if (btn) { btn.disabled = !this.checked; btn.style.opacity = this.checked ? '1' : '0.5'; }
+                   "/>
+            <span>I have reviewed the permissions above and confirm they are correct.</span>
+          </label>
+        </div>
+      </f:block>
+      <script>
+        (function() {
+          var btn = document.querySelector('[name=Submit]') || document.querySelector('button.jenkins-button--primary');
+          if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
+        })();
+      </script>
+    </j:when>
+
+    <!-- Switching from GlobalMatrix/ProjectMatrix but it was empty -->
+    <j:when test="${migrationSource != null and not descriptor.shouldShowMigrationNotice()}">
+      <f:block>
+        <div style="margin-bottom:12px;padding:12px 16px;border-radius:6px;background:#f8f9fa;border:1px solid #dee2e6;color:#495057;">
+          <strong>No existing configuration found</strong> — Starting with a clean authorization
+          configuration. Add users and groups below, then click <strong>Save</strong> to apply.
+        </div>
+      </f:block>
+      <st:include class="hudson.security.GlobalMatrixAuthorizationStrategy" page="config.jelly"/>
+    </j:when>
+
+    <!-- Already on OmniAuth — normal view -->
+    <j:otherwise>
+      <st:include class="hudson.security.GlobalMatrixAuthorizationStrategy" page="config.jelly"/>
+    </j:otherwise>
+
+  </j:choose>
+</j:jelly>
