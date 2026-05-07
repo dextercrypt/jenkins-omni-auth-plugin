@@ -203,7 +203,7 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
         if (error != null) {
             LOGGER.log(Level.WARNING, "Azure AD error: {0} — {1}",
                     new Object[]{error, req.getParameter("error_description")});
-            return HttpResponses.redirectTo(Jenkins.get().getRootUrl() + "login?error=entra");
+            return HttpResponses.redirectTo(Jenkins.get().getRootUrl() + "loginError?error=entra");
         }
 
         String authCode = req.getParameter("code");
@@ -257,6 +257,16 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
                 NotificationService.sendGraphApiFailed(OmniAuthGlobalConfig.get(),
                         upn != null ? upn : oid, e.getMessage());
             }
+        }
+
+        // Gate: only users pre-provisioned by an admin can log in via SSO.
+        // Rejects first-time Microsoft logins from accounts not set up in Access Management.
+        if (!isPreProvisioned(oid, upn)) {
+            String displayId = upn != null ? upn : oid;
+            LOGGER.log(Level.WARNING, "Rejected SSO login — not pre-provisioned: {0}", displayId);
+            OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+            if (audit != null) audit.logLoginFailure(displayId, req.getRemoteAddr());
+            return HttpResponses.redirectTo(Jenkins.get().getRootUrl() + "loginError?error=notProvisioned");
         }
 
         // Provision / update Jenkins user
@@ -336,6 +346,22 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
         updateUserProperty(newUser, oid, upn, groups);
         LOGGER.log(Level.INFO, "Provisioned Jenkins user for Entra identity: {0}", upn);
         return newUser;
+    }
+
+    private boolean isPreProvisioned(String oid, String upn) {
+        // Returning user: already has a Jenkins account with OmniAuthUserProperty for this UPN
+        if (upn != null && !upn.isEmpty()) {
+            User existing = User.getById(upn, false);
+            if (existing != null && existing.getProperty(OmniAuthUserProperty.class) != null) return true;
+        }
+        // Returning user whose UPN changed: find by OID
+        if (oid != null) {
+            for (User u : User.getAll()) {
+                OmniAuthUserProperty prop = u.getProperty(OmniAuthUserProperty.class);
+                if (prop != null && oid.equals(prop.getEntraObjectId())) return true;
+            }
+        }
+        return false;
     }
 
     private void updateUserProperty(User user, String oid, String upn,

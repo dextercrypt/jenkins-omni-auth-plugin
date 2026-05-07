@@ -94,6 +94,8 @@ public class LoginContextFilter {
                                     ActiveSessionManager.register(httpSession, username,
                                             user.getFullName(), method, finalIp, browser, os);
                                 }
+                                OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+                                if (audit != null) audit.logLoginSuccess(username, method, finalIp);
                             }
                         }
                     }
@@ -104,6 +106,8 @@ public class LoginContextFilter {
                             .forEach(k -> {
                                 FRESH_LOGINS.remove(k);
                                 String uname = k.substring("__failed__".length());
+                                OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+                                if (audit != null) audit.logLoginFailure(uname, finalIp);
                                 User user = User.getById(uname, false);
                                 if (user != null) {
                                     OmniAuthUserProperty p = user.getProperty(OmniAuthUserProperty.class);

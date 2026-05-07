@@ -1,6 +1,8 @@
 package io.jenkins.plugins.omniauth;
 
 import hudson.Extension;
+import hudson.model.AbstractItem;
+import hudson.security.ACL;
 import hudson.security.AuthorizationStrategy;
 import hudson.security.GlobalMatrixAuthorizationStrategy;
 import hudson.security.Permission;
@@ -12,11 +14,27 @@ import org.kohsuke.stapler.DataBoundConstructor;
 
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
 public class OmniAuthAuthorizationStrategy extends ProjectMatrixAuthorizationStrategy {
 
     private static final Logger LOGGER = Logger.getLogger(OmniAuthAuthorizationStrategy.class.getName());
+
+    private static final ConcurrentHashMap<String, ACL> aclCache = new ConcurrentHashMap<>();
+
+    public static void invalidateCache() {
+        aclCache.clear();
+    }
+
+    @Override
+    public ACL getACL(AbstractItem item) {
+        OmniAuthAssignmentConfig config = OmniAuthAssignmentConfig.get();
+        if (config == null || config.getAssignments().isEmpty()) {
+            return super.getACL(item);
+        }
+        return aclCache.computeIfAbsent(item.getFullName(), OmniAuthItemACL::new);
+    }
 
     @DataBoundConstructor
     public OmniAuthAuthorizationStrategy() {

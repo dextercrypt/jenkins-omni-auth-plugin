@@ -2,14 +2,20 @@ package io.jenkins.plugins.omniauth;
 
 import hudson.Extension;
 import hudson.model.Item;
+import hudson.model.ItemGroup;
 import hudson.model.Job;
 import hudson.model.ManagementLink;
 import hudson.model.Run;
 import hudson.model.User;
+import com.cloudbees.hudson.plugins.folder.AbstractFolder;
 import hudson.security.ACL;
 import hudson.security.ACLContext;
+import hudson.security.GlobalMatrixAuthorizationStrategy;
 import hudson.security.Permission;
+import hudson.security.PermissionGroup;
 import jenkins.model.Jenkins;
+import org.jenkinsci.plugins.matrixauth.AuthorizationType;
+import org.jenkinsci.plugins.matrixauth.PermissionEntry;
 import org.kohsuke.stapler.StaplerRequest;
 import org.kohsuke.stapler.StaplerResponse;
 import org.kohsuke.stapler.verb.POST;
@@ -18,10 +24,15 @@ import org.springframework.security.core.Authentication;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.LinkedHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -79,6 +90,47 @@ public class OmniAuthManagementLink extends ManagementLink {
     public void doAccess(StaplerRequest req, StaplerResponse rsp) throws Exception {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
         req.getView(this, "access.jelly").forward(req, rsp);
+    }
+
+    public void doAccessManagement(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        req.getView(this, "accessManagement.jelly").forward(req, rsp);
+    }
+
+    public void doAuditLog(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        req.getView(this, "auditLog.jelly").forward(req, rsp);
+    }
+
+    public List<Map<String, String>> getAuditEvents() {
+        OmniAuthAuditLog log = OmniAuthAuditLog.get();
+        return log != null ? log.readRecent(200) : Collections.emptyList();
+    }
+
+    @POST
+    public void doPurgeAuditLog(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String password = req.getParameter("confirmPassword");
+        String currentUser = Jenkins.getAuthentication2().getName();
+
+        // Verify password via security realm
+        try {
+            Jenkins.get().getSecurityRealm().getSecurityComponents().manager2
+                    .authenticate(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(currentUser, password));
+        } catch (Exception e) {
+            LoginContextFilter.FRESH_LOGINS.remove("__failed__" + currentUser);
+            rsp.setContentType("application/json");
+            rsp.getWriter().write("{\"error\":\"wrongPassword\"}");
+            return;
+        }
+        // Suppress the login event that manager2.authenticate() fires — this is a password
+        // verification, not a real login, so it should not appear in the audit log
+        LoginContextFilter.FRESH_LOGINS.remove(currentUser);
+
+        OmniAuthAuditLog log = OmniAuthAuditLog.get();
+        if (log != null) log.purgeAll();
+        rsp.setContentType("application/json");
+        rsp.getWriter().write("{\"ok\":true}");
     }
 
     public void doSettings(StaplerRequest req, StaplerResponse rsp) throws Exception {
@@ -960,6 +1012,251 @@ public class OmniAuthManagementLink extends ManagementLink {
     }
 
     // -------------------------------------------------------------------------
+    // Access Management (writable permission management)
+    // -------------------------------------------------------------------------
+
+    public boolean isOmniAuthActive() {
+        return Jenkins.get().getAuthorizationStrategy() instanceof OmniAuthAuthorizationStrategy;
+    }
+
+    public List<String> getAllJobNames() {
+        List<String> names = new ArrayList<>();
+        try {
+            for (Job<?, ?> job : Jenkins.get().getAllItems(Job.class)) {
+                names.add(job.getFullName());
+            }
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Failed to list jobs", e);
+        }
+        names.sort(String.CASE_INSENSITIVE_ORDER);
+        return names;
+    }
+
+    /** Returns folders + jobs as a JSON array of {path, type} objects for the scope picker. */
+    public String getAllScopeNamesJson() {
+        List<String[]> items = new ArrayList<>();
+        try {
+            for (AbstractFolder<?> folder : Jenkins.get().getAllItems(AbstractFolder.class)) {
+                items.add(new String[]{folder.getFullName(), "folder"});
+            }
+            for (Job<?, ?> job : Jenkins.get().getAllItems(Job.class)) {
+                items.add(new String[]{job.getFullName(), "job"});
+            }
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Failed to list scope items", e);
+        }
+        items.sort((a, b) -> a[0].compareToIgnoreCase(b[0]));
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < items.size(); i++) {
+            if (i > 0) sb.append(",");
+            String path = items.get(i)[0].replace("\\", "\\\\").replace("\"", "\\\"");
+            sb.append("{\"path\":\"").append(path).append("\",\"type\":\"").append(items.get(i)[1]).append("\"}");
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+
+    public List<AccessManagementUserInfo> getAccessManagementUserList() {
+        hudson.security.AuthorizationStrategy strat = Jenkins.get().getAuthorizationStrategy();
+        if (!(strat instanceof GlobalMatrixAuthorizationStrategy)) return Collections.emptyList();
+        GlobalMatrixAuthorizationStrategy matrix = (GlobalMatrixAuthorizationStrategy) strat;
+
+        Map<String, Set<String>> permsByKey = new LinkedHashMap<>();
+        Map<String, AuthorizationType> typeByKey = new LinkedHashMap<>();
+
+        for (Map.Entry<Permission, Set<PermissionEntry>> e : matrix.getGrantedPermissionEntries().entrySet()) {
+            for (PermissionEntry pe : e.getValue()) {
+                String key = pe.getType().name() + ":" + pe.getSid();
+                permsByKey.computeIfAbsent(key, k -> new HashSet<>()).add(e.getKey().getId());
+                typeByKey.put(key, pe.getType());
+            }
+        }
+
+        List<AccessManagementUserInfo> result = new ArrayList<>();
+        for (Map.Entry<String, Set<String>> entry : permsByKey.entrySet()) {
+            String key = entry.getKey();
+            AuthorizationType atype = typeByKey.get(key);
+            String sid = key.substring(key.indexOf(':') + 1);
+            String dn = resolveDisplayName(sid, atype);
+            OmniAuthRoleConfig roleConfig = OmniAuthRoleConfig.get();
+            String roleName = roleConfig != null ? roleConfig.matchRole(entry.getValue()) : null;
+            if (roleName == null) roleName = "Custom";
+            String lastLogin = null;
+            if (atype == AuthorizationType.USER) {
+                User u = User.getById(sid, false);
+                if (u != null) {
+                    OmniAuthUserProperty ep = u.getProperty(OmniAuthUserProperty.class);
+                    LastLoginProperty lp = u.getProperty(LastLoginProperty.class);
+                    lastLogin = resolveLastLogin(ep, lp);
+                }
+            }
+            result.add(new AccessManagementUserInfo(sid, dn, atype, roleName, entry.getValue(), lastLogin));
+        }
+        result.sort((a, b) -> a.getSid().compareToIgnoreCase(b.getSid()));
+        return result;
+    }
+
+    public List<PermissionGroupInfo> getAvailablePermissions() {
+        // Friendly label mapping: permission ID → display name
+        Map<String, String> labels = new LinkedHashMap<>();
+        // Job
+        labels.put("hudson.model.Item.Read",       "Read Jobs");
+        labels.put("hudson.model.Item.Discover",   "Discover Jobs");
+        labels.put("hudson.model.Item.Create",     "Create Jobs");
+        labels.put("hudson.model.Item.Configure",  "Configure Jobs");
+        labels.put("hudson.model.Item.Move",       "Move Jobs");
+        labels.put("hudson.model.Item.Delete",     "Delete Jobs");
+        labels.put("hudson.model.Item.Workspace",  "Access Workspace");
+        labels.put("hudson.model.Item.Build",      "Trigger Builds");
+        labels.put("hudson.model.Item.Cancel",     "Cancel Builds");
+        // Run
+        labels.put("hudson.model.Run.Replay",      "Replay Pipeline");
+        labels.put("hudson.model.Run.Delete",      "Delete Build History");
+        labels.put("hudson.model.Run.Update",      "Update Build Description");
+        // View
+        labels.put("hudson.model.View.Read",       "Read Views");
+        labels.put("hudson.model.View.Create",     "Create Views");
+        labels.put("hudson.model.View.Configure",  "Configure Views");
+        labels.put("hudson.model.View.Delete",     "Delete Views");
+        // SCM
+        labels.put("hudson.scm.SCM.Tag",           "Create SCM Tags");
+        // Overall
+        labels.put("hudson.model.Hudson.Administer",              "Full Admin");
+        labels.put("hudson.model.Hudson.Read",                    "Overall Read (Login)");
+        labels.put("hudson.model.Hudson.Manage",                  "Manage Jenkins");
+        labels.put("hudson.model.Hudson.SystemRead",              "Read System Config");
+        labels.put("hudson.model.Hudson.RunScripts",              "Run Groovy Scripts");
+        labels.put("hudson.model.Hudson.ConfigureUpdateCenter",   "Configure Update Center");
+        labels.put("hudson.model.Hudson.UploadPlugins",           "Upload Plugins");
+        // Agent
+        labels.put("hudson.model.Computer.Build",                 "Use Agent for Builds");
+        labels.put("hudson.model.Computer.Configure",             "Configure Agents");
+        labels.put("hudson.model.Computer.Connect",               "Connect Agents");
+        labels.put("hudson.model.Computer.Create",                "Create Agents");
+        labels.put("hudson.model.Computer.Delete",                "Delete Agents");
+        labels.put("hudson.model.Computer.Disconnect",            "Disconnect Agents");
+        labels.put("hudson.model.Computer.Provision",             "Provision Agents");
+        // Credentials
+        labels.put("com.cloudbees.plugins.credentials.CredentialsProvider.Create",        "Add Credentials");
+        labels.put("com.cloudbees.plugins.credentials.CredentialsProvider.Delete",        "Delete Credentials");
+        labels.put("com.cloudbees.plugins.credentials.CredentialsProvider.ManageDomains", "Manage Credential Domains");
+        labels.put("com.cloudbees.plugins.credentials.CredentialsProvider.Update",        "Update Credentials");
+        labels.put("com.cloudbees.plugins.credentials.CredentialsProvider.View",          "View Credentials");
+        labels.put("com.cloudbees.plugins.credentials.CredentialsProvider.UseItem",       "Use Credentials in Jobs");
+        labels.put("com.cloudbees.plugins.credentials.CredentialsProvider.UseOwn",        "Use Own Credentials");
+        // Metrics
+        labels.put("jenkins.metrics.api.Metrics.HealthCheck", "Health Check");
+        labels.put("jenkins.metrics.api.Metrics.ThreadDump",  "Thread Dump");
+        labels.put("jenkins.metrics.api.Metrics.View",        "View Metrics");
+
+        List<PermissionGroupInfo> result = new ArrayList<>();
+
+        result.add(buildGroup("Overall", "System-wide access control", new String[]{
+                "hudson.model.Hudson.Read",
+                "hudson.model.Hudson.Administer",
+                "hudson.model.Hudson.Manage",
+                "hudson.model.Hudson.SystemRead",
+                "hudson.model.Hudson.RunScripts",
+                "hudson.model.Hudson.ConfigureUpdateCenter",
+                "hudson.model.Hudson.UploadPlugins"
+        }, labels));
+
+        result.add(buildGroup("Credentials", "Stored passwords, API keys & certificates", new String[]{
+                "com.cloudbees.plugins.credentials.CredentialsProvider.View",
+                "com.cloudbees.plugins.credentials.CredentialsProvider.Create",
+                "com.cloudbees.plugins.credentials.CredentialsProvider.Update",
+                "com.cloudbees.plugins.credentials.CredentialsProvider.Delete",
+                "com.cloudbees.plugins.credentials.CredentialsProvider.ManageDomains",
+                "com.cloudbees.plugins.credentials.CredentialsProvider.UseItem",
+                "com.cloudbees.plugins.credentials.CredentialsProvider.UseOwn"
+        }, labels));
+
+        result.add(buildGroup("Agent", "Build nodes & executors", new String[]{
+                "hudson.model.Computer.Build",
+                "hudson.model.Computer.Configure",
+                "hudson.model.Computer.Connect",
+                "hudson.model.Computer.Create",
+                "hudson.model.Computer.Delete",
+                "hudson.model.Computer.Disconnect",
+                "hudson.model.Computer.Provision"
+        }, labels));
+
+        result.add(buildGroup("Job", "Pipelines, freestyle jobs & folders", new String[]{
+                "hudson.model.Item.Read",
+                "hudson.model.Item.Discover",
+                "hudson.model.Item.Create",
+                "hudson.model.Item.Configure",
+                "hudson.model.Item.Move",
+                "hudson.model.Item.Delete",
+                "hudson.model.Item.Build",
+                "hudson.model.Item.Cancel",
+                "hudson.model.Item.Workspace"
+        }, labels));
+
+        result.add(buildGroup("Run", "Individual build instances", new String[]{
+                "hudson.model.Run.Replay",
+                "hudson.model.Run.Delete",
+                "hudson.model.Run.Update"
+        }, labels));
+
+        result.add(buildGroup("View", "Dashboard views & layouts", new String[]{
+                "hudson.model.View.Read",
+                "hudson.model.View.Create",
+                "hudson.model.View.Configure",
+                "hudson.model.View.Delete"
+        }, labels));
+
+        result.add(buildGroup("SCM", "Source control management", new String[]{
+                "hudson.scm.SCM.Tag"
+        }, labels));
+
+        result.add(buildGroup("Metrics", "Health & monitoring endpoints", new String[]{
+                "jenkins.metrics.api.Metrics.View",
+                "jenkins.metrics.api.Metrics.HealthCheck",
+                "jenkins.metrics.api.Metrics.ThreadDump"
+        }, labels));
+
+        // Plugin Permissions — anything not already in a named group above.
+        // Excludes hudson.security.Permission.* (internal abstract base permissions, not user-facing).
+        Set<String> knownIds = new HashSet<>(labels.keySet());
+        List<PermissionInfo> pluginPerms = new ArrayList<>();
+        for (PermissionGroup group : PermissionGroup.getAll()) {
+            if (group.owner == hudson.security.Permission.class) continue; // skip internal abstract perms
+            for (Permission p : group.getPermissions()) {
+                if (!p.enabled) continue;
+                String pId = p.getId();
+                if (knownIds.contains(pId)) continue;
+                int last = pId.lastIndexOf('.');
+                int prev = last > 0 ? pId.lastIndexOf('.', last - 1) : -1;
+                String raw = prev >= 0 ? pId.substring(prev + 1) : (last >= 0 ? pId.substring(last + 1) : pId);
+                pluginPerms.add(new PermissionInfo(pId, raw));
+            }
+        }
+        if (!pluginPerms.isEmpty()) {
+            result.add(new PermissionGroupInfo(
+                    "Other Plugin Permissions",
+                    "Permissions from installed plugins not covered above",
+                    pluginPerms));
+        }
+
+        // Remove empty groups (plugin absent or all permissions disabled)
+        result.removeIf(g -> g.getPermissions().isEmpty());
+        return result;
+    }
+
+    /** Returns only permissions that exist in this Jenkins and are enabled. */
+    private PermissionGroupInfo buildGroup(String name, String subtitle, String[] ids, Map<String, String> labels) {
+        List<PermissionInfo> perms = new ArrayList<>();
+        for (String id : ids) {
+            Permission p = Permission.fromId(id);
+            if (p != null && p.enabled) {
+                perms.add(new PermissionInfo(id, labels.getOrDefault(id, id)));
+            }
+        }
+        return new PermissionGroupInfo(name, subtitle, perms);
+    }
+
+    // -------------------------------------------------------------------------
     // POST actions
     // -------------------------------------------------------------------------
 
@@ -992,9 +1289,770 @@ public class OmniAuthManagementLink extends ManagementLink {
                 LOGGER.info("Manual user deletion by " + deletedBy + ": " + userId + " (from " + back + ")");
                 user.delete();
                 NotificationService.sendUserDeleted(config, userId, deletedBy);
+                OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+                if (audit != null) audit.logUserDeleted(deletedBy, userId);
             }
+            // Always wipe matrix entries — user object may already be gone but entries linger
+            purgeMatrixEntries(userId);
         }
         rsp.sendRedirect(back + "?deleted=true");
+    }
+
+    private void purgeMatrixEntries(String userId) {
+        // 1. Global matrix — remove both USER and GROUP entries (belt-and-suspenders)
+        hudson.security.AuthorizationStrategy strat = Jenkins.get().getAuthorizationStrategy();
+        if (strat instanceof OmniAuthAuthorizationStrategy) {
+            OmniAuthAuthorizationStrategy current = (OmniAuthAuthorizationStrategy) strat;
+            OmniAuthAuthorizationStrategy rebuilt = new OmniAuthAuthorizationStrategy();
+            for (Map.Entry<Permission, Set<PermissionEntry>> e : current.getGrantedPermissionEntries().entrySet()) {
+                for (PermissionEntry pe : e.getValue()) {
+                    if (!pe.getSid().equals(userId)) {
+                        rebuilt.add(e.getKey(), pe);
+                    }
+                }
+            }
+            Jenkins.get().setAuthorizationStrategy(rebuilt);
+            try { Jenkins.get().save(); } catch (Exception ex) {
+                LOGGER.log(Level.WARNING, "Failed to save Jenkins config after purging global matrix for " + userId, ex);
+            }
+        }
+
+        // 2. Job-level matrices
+        try {
+            for (Job<?, ?> job : Jenkins.get().getAllItems(Job.class)) {
+                hudson.security.AuthorizationMatrixProperty prop =
+                        job.getProperty(hudson.security.AuthorizationMatrixProperty.class);
+                if (prop == null) continue;
+                boolean affected = prop.getGrantedPermissionEntries().values().stream()
+                        .anyMatch(set -> set.stream().anyMatch(pe -> pe.getSid().equals(userId)));
+                if (!affected) continue;
+                mutateGrantedPermissions(prop, userId, null, null, Collections.emptySet());
+                job.save();
+            }
+        } catch (Exception ex) {
+            LOGGER.log(Level.WARNING, "Failed to purge job-level matrix entries for " + userId, ex);
+        }
+
+        // 3. Folder-level matrices
+        try {
+            for (AbstractFolder<?> folder : Jenkins.get().getAllItems(AbstractFolder.class)) {
+                com.cloudbees.hudson.plugins.folder.properties.AuthorizationMatrixProperty fp =
+                        folder.getProperties().get(
+                                com.cloudbees.hudson.plugins.folder.properties.AuthorizationMatrixProperty.class);
+                if (fp == null) continue;
+                boolean affected = fp.getGrantedPermissionEntries().values().stream()
+                        .anyMatch(set -> set.stream().anyMatch(pe -> pe.getSid().equals(userId)));
+                if (!affected) continue;
+                mutateGrantedPermissions(fp, userId, null, null, Collections.emptySet());
+                folder.save();
+            }
+        } catch (Exception ex) {
+            LOGGER.log(Level.WARNING, "Failed to purge folder-level matrix entries for " + userId, ex);
+        }
+    }
+
+    @POST
+    public void doSetUserRole(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String sid      = req.getParameter("sid");
+        String type     = req.getParameter("type");
+        String roleName = req.getParameter("role");
+
+        if (sid == null || sid.trim().isEmpty()) {
+            rsp.sendRedirect("accessManagement?error=missingSid"); return;
+        }
+
+        hudson.security.AuthorizationStrategy strat = Jenkins.get().getAuthorizationStrategy();
+        if (!(strat instanceof OmniAuthAuthorizationStrategy)) {
+            rsp.sendRedirect("accessManagement?error=notOmniAuth"); return;
+        }
+        OmniAuthAuthorizationStrategy current = (OmniAuthAuthorizationStrategy) strat;
+
+        Set<String> newPermIds;
+        OmniAuthRoleConfig roleConfig = OmniAuthRoleConfig.get();
+        OmniAuthRoleConfig.RoleDefinition roleDef = roleConfig != null ? roleConfig.findRole(roleName) : null;
+        if (roleDef != null) {
+            newPermIds = new HashSet<>(roleDef.getPermissionIds());
+        } else if ("CUSTOM".equalsIgnoreCase(roleName)) {
+            String[] custom = req.getParameterValues("customPermissions");
+            newPermIds = custom != null ? new HashSet<>(Arrays.asList(custom)) : Collections.emptySet();
+        } else {
+            rsp.sendRedirect("accessManagement?error=invalidRole"); return;
+        }
+
+        if (newPermIds.isEmpty()) {
+            rsp.sendRedirect("accessManagement?error=noPermissions"); return;
+        }
+
+        AuthorizationType targetType = "GROUP".equalsIgnoreCase(type)
+                ? AuthorizationType.GROUP : AuthorizationType.USER;
+        sid = sid.trim();
+
+        // Rebuild: keep all other entries, replace this user's entries.
+        // Preserve Hudson.Read for this user — login access comes from account creation, not role.
+        Permission hudsonRead = Permission.fromId("hudson.model.Hudson.Read");
+        OmniAuthAuthorizationStrategy rebuilt = new OmniAuthAuthorizationStrategy();
+        for (Map.Entry<Permission, Set<PermissionEntry>> e : current.getGrantedPermissionEntries().entrySet()) {
+            for (PermissionEntry pe : e.getValue()) {
+                boolean isThisUser = pe.getSid().equals(sid) && pe.getType() == targetType;
+                boolean isHudsonRead = e.getKey().equals(hudsonRead);
+                if (!isThisUser || isHudsonRead) {
+                    rebuilt.add(e.getKey(), pe);
+                }
+            }
+        }
+        PermissionEntry entry = targetType == AuthorizationType.GROUP
+                ? PermissionEntry.group(sid) : PermissionEntry.user(sid);
+        for (String permId : newPermIds) {
+            Permission p = Permission.fromId(permId);
+            if (p != null) rebuilt.add(p, entry);
+        }
+
+        Set<PermissionEntry> adminSet = rebuilt.getGrantedPermissionEntries().get(Jenkins.ADMINISTER);
+        if (adminSet == null || adminSet.isEmpty()) {
+            rsp.sendRedirect("accessManagement?error=lastAdmin"); return;
+        }
+
+        Jenkins.get().setAuthorizationStrategy(rebuilt);
+        Jenkins.get().save();
+        rsp.sendRedirect("accessManagement?saved=true&sid=" + java.net.URLEncoder.encode(sid, "UTF-8"));
+    }
+
+    @POST
+    public void doRemoveUserAccess(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String sid  = req.getParameter("sid");
+        String type = req.getParameter("type");
+
+        if (sid == null) { rsp.sendRedirect("accessManagement?error=missing"); return; }
+
+        hudson.security.AuthorizationStrategy strat = Jenkins.get().getAuthorizationStrategy();
+        if (!(strat instanceof OmniAuthAuthorizationStrategy)) {
+            rsp.sendRedirect("accessManagement?error=notOmniAuth"); return;
+        }
+        OmniAuthAuthorizationStrategy current = (OmniAuthAuthorizationStrategy) strat;
+        AuthorizationType targetType = "GROUP".equalsIgnoreCase(type)
+                ? AuthorizationType.GROUP : AuthorizationType.USER;
+
+        OmniAuthAuthorizationStrategy rebuilt = new OmniAuthAuthorizationStrategy();
+        for (Map.Entry<Permission, Set<PermissionEntry>> e : current.getGrantedPermissionEntries().entrySet()) {
+            for (PermissionEntry pe : e.getValue()) {
+                if (!(pe.getSid().equals(sid) && pe.getType() == targetType)) {
+                    rebuilt.add(e.getKey(), pe);
+                }
+            }
+        }
+
+        Set<PermissionEntry> adminSet = rebuilt.getGrantedPermissionEntries().get(Jenkins.ADMINISTER);
+        if (adminSet == null || adminSet.isEmpty()) {
+            rsp.sendRedirect("accessManagement?error=lastAdmin"); return;
+        }
+
+        Jenkins.get().setAuthorizationStrategy(rebuilt);
+        Jenkins.get().save();
+        rsp.sendRedirect("accessManagement?removed=true");
+    }
+
+    /** Returns JSON array of scoped permissions for a user across all jobs. */
+    public void doScopedAccess(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String sid  = req.getParameter("sid");
+        String type = req.getParameter("type");
+        if (sid == null) { writeJson(rsp, "[]"); return; }
+
+        AuthorizationType atype = "GROUP".equalsIgnoreCase(type)
+                ? AuthorizationType.GROUP : AuthorizationType.USER;
+
+        StringBuilder json = new StringBuilder("[");
+        boolean first = true;
+        try {
+            for (Job<?, ?> job : Jenkins.get().getAllItems(Job.class)) {
+                hudson.security.AuthorizationMatrixProperty prop =
+                        job.getProperty(hudson.security.AuthorizationMatrixProperty.class);
+                if (prop == null) continue;
+                List<String> granted = new ArrayList<>();
+                for (Map.Entry<Permission, Set<PermissionEntry>> e : prop.getGrantedPermissionEntries().entrySet()) {
+                    for (PermissionEntry pe : e.getValue()) {
+                        if (pe.getSid().equals(sid) && pe.getType() == atype) {
+                            String pId = e.getKey().getId();
+                            int dot = pId.lastIndexOf('.');
+                            granted.add(dot >= 0 ? pId.substring(dot + 1) : pId);
+                        }
+                    }
+                }
+                if (!granted.isEmpty()) {
+                    if (!first) json.append(",");
+                    json.append("{\"jobName\":\"").append(escapeJson(job.getFullName())).append("\"")
+                        .append(",\"permissions\":[");
+                    for (int i = 0; i < granted.size(); i++) {
+                        if (i > 0) json.append(",");
+                        json.append("\"").append(escapeJson(granted.get(i))).append("\"");
+                    }
+                    json.append("]}");
+                    first = false;
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Error scanning scoped permissions", e);
+        }
+        writeJson(rsp, json.append("]").toString());
+    }
+
+    public void doAllScopedAccess(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        StringBuilder json = new StringBuilder("[");
+        boolean first = true;
+        try {
+            for (Job<?, ?> job : Jenkins.get().getAllItems(Job.class)) {
+                hudson.security.AuthorizationMatrixProperty prop =
+                        job.getProperty(hudson.security.AuthorizationMatrixProperty.class);
+                if (prop == null) continue;
+                Map<String, List<String>> bySid = new LinkedHashMap<>();
+                Map<String, String> sidType = new java.util.LinkedHashMap<>();
+                for (Map.Entry<Permission, Set<PermissionEntry>> e : prop.getGrantedPermissionEntries().entrySet()) {
+                    String pShort = e.getKey().getId();
+                    int dot = pShort.lastIndexOf('.');
+                    if (dot >= 0) pShort = pShort.substring(dot + 1);
+                    for (PermissionEntry pe : e.getValue()) {
+                        String key = pe.getType().name() + "\0" + pe.getSid();
+                        bySid.computeIfAbsent(key, k -> new ArrayList<>()).add(pShort);
+                        sidType.put(key, pe.getType().name());
+                    }
+                }
+                for (Map.Entry<String, List<String>> entry : bySid.entrySet()) {
+                    String[] parts = entry.getKey().split("\0", 2);
+                    if (!first) json.append(",");
+                    json.append("{\"sid\":\"").append(escapeJson(parts.length > 1 ? parts[1] : parts[0])).append("\"")
+                        .append(",\"type\":\"").append(parts[0]).append("\"")
+                        .append(",\"jobName\":\"").append(escapeJson(job.getFullName())).append("\"")
+                        .append(",\"permissions\":[");
+                    List<String> perms = entry.getValue();
+                    for (int i = 0; i < perms.size(); i++) {
+                        if (i > 0) json.append(",");
+                        json.append("\"").append(escapeJson(perms.get(i))).append("\"");
+                    }
+                    json.append("]}");
+                    first = false;
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Error scanning all scoped permissions", e);
+        }
+        writeJson(rsp, json.append("]").toString());
+    }
+
+    @POST
+    public void doGrantScopedAccess(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String sid       = req.getParameter("sid");
+        String type      = req.getParameter("type");
+        String jobName   = req.getParameter("jobName");
+        String scopedRole = req.getParameter("scopedRole");
+
+        if (sid == null || jobName == null) {
+            rsp.sendRedirect("accessManagement?error=missing"); return;
+        }
+
+        Job<?, ?> job = Jenkins.get().getItemByFullName(jobName, Job.class);
+        if (job == null) {
+            rsp.sendRedirect("accessManagement?error=jobNotFound&sid=" +
+                    java.net.URLEncoder.encode(sid, "UTF-8")); return;
+        }
+
+        AuthorizationType atype = "GROUP".equalsIgnoreCase(type)
+                ? AuthorizationType.GROUP : AuthorizationType.USER;
+        PermissionEntry entry = atype == AuthorizationType.GROUP
+                ? PermissionEntry.group(sid) : PermissionEntry.user(sid);
+
+        // Determine permissions from config-based role, then legacy scoped role names
+        List<String> permIds;
+        OmniAuthRoleConfig roleConfig = OmniAuthRoleConfig.get();
+        OmniAuthRoleConfig.RoleDefinition roleDef = roleConfig != null ? roleConfig.findRole(scopedRole) : null;
+        if (roleDef != null) {
+            permIds = new ArrayList<>(roleDef.getPermissionIds());
+        } else {
+            permIds = new ArrayList<>();
+            permIds.add("hudson.model.Item.Read");
+            if ("BUILD".equals(scopedRole) || "CONFIGURE".equals(scopedRole)) {
+                permIds.add("hudson.model.Item.Build");
+                permIds.add("hudson.model.Item.Cancel");
+            }
+            if ("CONFIGURE".equals(scopedRole)) {
+                permIds.add("hudson.model.Item.Configure");
+                permIds.add("hudson.model.Item.Delete");
+            }
+        }
+
+        // Grant on the target job
+        hudson.security.AuthorizationMatrixProperty prop =
+                job.getProperty(hudson.security.AuthorizationMatrixProperty.class);
+        if (prop == null) {
+            prop = new hudson.security.AuthorizationMatrixProperty(new java.util.HashMap<>());
+        }
+        for (String permId : permIds) {
+            Permission p = Permission.fromId(permId);
+            if (p != null) prop.add(p, entry);
+        }
+        job.addProperty(prop);
+        job.save();
+
+        // Auto-grant Item.Read on all parent jobs/folders (best-effort)
+        hudson.model.ItemGroup<?> parent = job.getParent();
+        while (parent instanceof Job) {
+            Job<?, ?> parentJob = (Job<?, ?>) parent;
+            try {
+                hudson.security.AuthorizationMatrixProperty fp =
+                        parentJob.getProperty(hudson.security.AuthorizationMatrixProperty.class);
+                if (fp == null) fp = new hudson.security.AuthorizationMatrixProperty(new java.util.HashMap<>());
+                Permission readPerm = Permission.fromId("hudson.model.Item.Read");
+                if (readPerm != null) fp.add(readPerm, entry);
+                parentJob.addProperty(fp);
+                parentJob.save();
+            } catch (Exception ignored) {}
+            parent = ((hudson.model.AbstractItem) parentJob).getParent();
+        }
+
+        rsp.sendRedirect("accessManagement?saved=true&sid=" +
+                java.net.URLEncoder.encode(sid, "UTF-8"));
+    }
+
+    @POST
+    public void doRevokeScopedAccess(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String sid     = req.getParameter("sid");
+        String type    = req.getParameter("type");
+        String jobName = req.getParameter("jobName");
+
+        if (sid == null || jobName == null) {
+            rsp.sendRedirect("accessManagement?error=missing"); return;
+        }
+
+        Job<?, ?> job = Jenkins.get().getItemByFullName(jobName, Job.class);
+        if (job == null) {
+            rsp.sendRedirect("accessManagement?saved=true&sid=" +
+                    java.net.URLEncoder.encode(sid, "UTF-8")); return;
+        }
+
+        AuthorizationType atype = "GROUP".equalsIgnoreCase(type)
+                ? AuthorizationType.GROUP : AuthorizationType.USER;
+
+        hudson.security.AuthorizationMatrixProperty prop =
+                job.getProperty(hudson.security.AuthorizationMatrixProperty.class);
+        if (prop != null) {
+            // Build filtered map excluding this user's entries
+            java.util.Map<Permission, Set<PermissionEntry>> filteredMap = new java.util.HashMap<>();
+            for (Map.Entry<Permission, Set<PermissionEntry>> e : prop.getGrantedPermissionEntries().entrySet()) {
+                for (PermissionEntry pe : e.getValue()) {
+                    if (!(pe.getSid().equals(sid) && pe.getType() == atype)) {
+                        filteredMap.computeIfAbsent(e.getKey(), k -> new java.util.HashSet<>()).add(pe);
+                    }
+                }
+            }
+            hudson.security.AuthorizationMatrixProperty rebuilt =
+                    new hudson.security.AuthorizationMatrixProperty(filteredMap, prop.getInheritanceStrategy());
+            job.addProperty(rebuilt);
+            job.save();
+        }
+
+        rsp.sendRedirect("accessManagement?saved=true&sid=" +
+                java.net.URLEncoder.encode(sid, "UTF-8"));
+    }
+
+    // -------------------------------------------------------------------------
+    // Role management (CRUD for OmniAuthRoleConfig)
+    // -------------------------------------------------------------------------
+
+    public List<OmniAuthRoleConfig.RoleDefinition> getRoles() {
+        OmniAuthRoleConfig cfg = OmniAuthRoleConfig.get();
+        return cfg != null ? cfg.getRoles() : Collections.emptyList();
+    }
+
+    @POST
+    public void doSaveRole(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String name        = req.getParameter("roleName");
+        String description = req.getParameter("roleDescription");
+        String[] permIds   = req.getParameterValues("rolePermissions");
+        if (name == null || name.trim().isEmpty()) {
+            rsp.sendRedirect("accessManagement?error=missingRoleName"); return;
+        }
+        OmniAuthRoleConfig cfg = OmniAuthRoleConfig.get();
+        if (cfg != null) {
+            List<String> perms = permIds != null ? Arrays.asList(permIds) : Collections.emptyList();
+            boolean isNew = cfg.findRole(name.trim()) == null;
+            cfg.upsertRole(name.trim(), description != null ? description.trim() : "", perms);
+            OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+            if (audit != null) {
+                if (isNew) audit.logRoleCreated(Jenkins.getAuthentication2().getName(), name.trim());
+                else audit.logRoleEdited(Jenkins.getAuthentication2().getName(), name.trim());
+            }
+        }
+        rsp.sendRedirect("accessManagement?roleSaved=true");
+    }
+
+    @POST
+    public void doDeleteRole(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String name = req.getParameter("roleName");
+        if (name != null) {
+            OmniAuthRoleConfig cfg = OmniAuthRoleConfig.get();
+            if (cfg != null) cfg.deleteRole(name);
+            OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+            if (audit != null) audit.logRoleDeleted(Jenkins.getAuthentication2().getName(), name);
+        }
+        rsp.sendRedirect("accessManagement?roleDeleted=true");
+    }
+
+    // -------------------------------------------------------------------------
+    // User-centric assignment view (used by userDetail.jelly)
+    // -------------------------------------------------------------------------
+
+    public List<UserAssignmentInfo> getUserAssignments() {
+        org.kohsuke.stapler.StaplerRequest2 req = org.kohsuke.stapler.Stapler.getCurrentRequest2();
+        if (req == null) return Collections.emptyList();
+        String sid  = req.getParameter("sid");
+        String type = req.getParameter("type");
+        if (sid == null) return Collections.emptyList();
+
+        AuthorizationType atype = "GROUP".equalsIgnoreCase(type)
+                ? AuthorizationType.GROUP : AuthorizationType.USER;
+        OmniAuthRoleConfig roleConfig = OmniAuthRoleConfig.get();
+        List<UserAssignmentInfo> result = new ArrayList<>();
+
+        // Global assignment
+        hudson.security.AuthorizationStrategy strat = Jenkins.get().getAuthorizationStrategy();
+        if (strat instanceof GlobalMatrixAuthorizationStrategy) {
+            Set<String> perms = collectDirectPermsForUser(
+                    ((GlobalMatrixAuthorizationStrategy) strat).getGrantedPermissionEntries(), sid, atype);
+            if (!perms.isEmpty()) {
+                String roleName = roleConfig != null ? roleConfig.matchRole(perms) : null;
+                result.add(new UserAssignmentInfo("", "Jenkins (Global)", "global",
+                        roleName != null ? roleName : "Custom", new ArrayList<>(perms),
+                        null, null));
+            }
+        }
+
+        // Item-level assignments from assignment store
+        OmniAuthAssignmentConfig assignmentConfig = OmniAuthAssignmentConfig.get();
+        if (assignmentConfig != null) {
+            String authTypeStr = atype == AuthorizationType.GROUP ? "GROUP" : "USER";
+            for (OmniAuthAssignment a : assignmentConfig.getAssignmentsForUser(sid, authTypeStr)) {
+                if (a.getScope().isEmpty()) continue; // global handled above
+                String itemType = "FOLDER".equals(a.getScopeType()) ? "folder" : "job";
+                List<String> perms = "CUSTOM".equalsIgnoreCase(a.getRoleId())
+                        ? a.getCustomPermissions()
+                        : (roleConfig != null && roleConfig.findRole(a.getRoleId()) != null
+                                ? roleConfig.findRole(a.getRoleId()).getPermissionIds()
+                                : Collections.emptyList());
+                List<String> customPerms = "CUSTOM".equalsIgnoreCase(a.getRoleId())
+                        ? a.getCustomPermissions() : Collections.emptyList();
+                result.add(new UserAssignmentInfo(a.getScope(), a.getScope(), itemType,
+                        a.getRoleId(), new ArrayList<>(perms),
+                        a.getExpiresAt(), new ArrayList<>(customPerms)));
+            }
+        }
+
+        return result;
+    }
+
+    /** Grant a config-defined role to a user at a given scope (global or specific item path). */
+    @POST
+    public void doGrantAssignment(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String sid      = req.getParameter("sid");
+        String type     = req.getParameter("type");
+        String roleName = req.getParameter("role");
+        String scope    = req.getParameter("scope"); // "" = global, "item/path" = scoped
+
+        if (sid == null || sid.trim().isEmpty()) {
+            rsp.sendRedirect("userDetail?sid=&type=&error=missingSid"); return;
+        }
+        sid = sid.trim();
+        AuthorizationType atype = "GROUP".equalsIgnoreCase(type)
+                ? AuthorizationType.GROUP : AuthorizationType.USER;
+
+        Set<String> permIds;
+        if ("CUSTOM".equalsIgnoreCase(roleName)) {
+            String[] custom = req.getParameterValues("customPermissions");
+            permIds = custom != null && custom.length > 0
+                    ? new HashSet<>(Arrays.asList(custom)) : Collections.emptySet();
+        } else {
+            OmniAuthRoleConfig roleConfig = OmniAuthRoleConfig.get();
+            OmniAuthRoleConfig.RoleDefinition roleDef = roleConfig != null ? roleConfig.findRole(roleName) : null;
+            if (roleDef == null) {
+                rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type) + "&error=invalidRole"); return;
+            }
+            permIds = new HashSet<>(roleDef.getPermissionIds());
+        }
+        if (permIds.isEmpty()) {
+            rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type) + "&error=noPermissions"); return;
+        }
+
+        String expiresAt = toInstantString(req.getParameter("expiresAt"));
+
+        if (scope == null || scope.isEmpty()) {
+            applyRootPermissions(sid, atype, permIds, rsp, false);
+        } else {
+            Item item = Jenkins.get().getItemByFullName(scope);
+            if (item == null) {
+                rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type) + "&error=notFound"); return;
+            }
+            String scopeType = (item instanceof com.cloudbees.hudson.plugins.folder.AbstractFolder) ? "FOLDER" : "JOB";
+            String authTypeStr = atype == AuthorizationType.GROUP ? "GROUP" : "USER";
+            String grantedAt = java.time.Instant.now().toString();
+            String grantedBy = Jenkins.getAuthentication2().getName();
+            List<String> customPerms = "CUSTOM".equalsIgnoreCase(roleName)
+                    ? new java.util.ArrayList<>(permIds) : null;
+            OmniAuthAssignment assignment = new OmniAuthAssignment(
+                    sid, authTypeStr, roleName, scope, scopeType, customPerms, grantedAt, grantedBy);
+            assignment.setExpiresAt(expiresAt);
+            OmniAuthAssignmentConfig config = OmniAuthAssignmentConfig.get();
+            if (config != null) config.addAssignment(assignment);
+            // Ensure user can log in — Hudson.Read at global is required for any access
+            grantGlobalRead(sid, atype);
+            OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+            if (audit != null) audit.logGrant(Jenkins.getAuthentication2().getName(), sid, roleName, scope, expiresAt);
+            rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type(atype)) + "&saved=true");
+        }
+    }
+
+    /** Edit (replace) an existing assignment — scope stays the same, role/permissions/expiry may change. */
+    @POST
+    public void doEditAssignment(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String sid      = req.getParameter("sid");
+        String type     = req.getParameter("type");
+        String scope    = req.getParameter("scope");
+        String roleName = req.getParameter("role");
+        String expiresAt = toInstantString(req.getParameter("expiresAt"));
+
+        if (sid == null || sid.trim().isEmpty()) {
+            rsp.sendRedirect("userDetail?sid=&type=&error=missingSid"); return;
+        }
+        sid = sid.trim();
+        AuthorizationType atype = "GROUP".equalsIgnoreCase(type)
+                ? AuthorizationType.GROUP : AuthorizationType.USER;
+        String authTypeStr = atype == AuthorizationType.GROUP ? "GROUP" : "USER";
+
+        Set<String> permIds;
+        if ("CUSTOM".equalsIgnoreCase(roleName)) {
+            String[] custom = req.getParameterValues("customPermissions");
+            permIds = custom != null && custom.length > 0
+                    ? new HashSet<>(Arrays.asList(custom)) : Collections.emptySet();
+        } else {
+            OmniAuthRoleConfig roleConfig = OmniAuthRoleConfig.get();
+            OmniAuthRoleConfig.RoleDefinition roleDef = roleConfig != null ? roleConfig.findRole(roleName) : null;
+            if (roleDef == null) {
+                rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type) + "&error=invalidRole"); return;
+            }
+            permIds = new HashSet<>(roleDef.getPermissionIds());
+        }
+        if (permIds.isEmpty()) {
+            rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type) + "&error=noPermissions"); return;
+        }
+
+        String scopeType;
+        if (scope == null || scope.isEmpty()) {
+            scopeType = "GLOBAL";
+        } else {
+            Item item = Jenkins.get().getItemByFullName(scope);
+            scopeType = (item instanceof com.cloudbees.hudson.plugins.folder.AbstractFolder) ? "FOLDER" : "JOB";
+        }
+
+        List<String> customPerms = "CUSTOM".equalsIgnoreCase(roleName)
+                ? new ArrayList<>(permIds) : null;
+
+        OmniAuthAssignment updated = new OmniAuthAssignment(
+                sid, authTypeStr, roleName,
+                scope != null ? scope : "", scopeType,
+                customPerms,
+                java.time.Instant.now().toString(),
+                Jenkins.getAuthentication2().getName());
+        updated.setExpiresAt(expiresAt);
+
+        OmniAuthAssignmentConfig config = OmniAuthAssignmentConfig.get();
+        String oldRole = null;
+        if (config != null) {
+            OmniAuthAssignment existing = config.getAssignmentsForUser(sid, authTypeStr).stream()
+                    .filter(a -> a.getScope().equals(scope != null ? scope : ""))
+                    .findFirst().orElse(null);
+            oldRole = existing != null ? existing.getRoleId() : null;
+            config.updateAssignment(sid, authTypeStr, scope != null ? scope : "", updated);
+        }
+        OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+        if (audit != null) audit.logEdit(Jenkins.getAuthentication2().getName(), sid, scope, oldRole != null ? oldRole : "?", roleName, expiresAt);
+        rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type(atype)) + "&saved=true");
+    }
+
+    /** Revoke a specific access assignment (global or scoped to an item path). */
+    @POST
+    public void doRevokeAssignment(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String sid   = req.getParameter("sid");
+        String type  = req.getParameter("type");
+        String scope = req.getParameter("scope");
+
+        if (sid == null) {
+            rsp.sendRedirect("userDetail?sid=&type=&error=missing"); return;
+        }
+        AuthorizationType atype = "GROUP".equalsIgnoreCase(type)
+                ? AuthorizationType.GROUP : AuthorizationType.USER;
+
+        if (scope == null || scope.isEmpty()) {
+            applyRootPermissions(sid, atype, Collections.emptySet(), rsp, true);
+        } else {
+            String authTypeStr = atype == AuthorizationType.GROUP ? "GROUP" : "USER";
+            OmniAuthAssignmentConfig config = OmniAuthAssignmentConfig.get();
+            String revokedRole = null;
+            if (config != null) {
+                String normalizedScope = scope == null ? "" : scope;
+                revokedRole = config.getAssignmentsForUser(sid, authTypeStr).stream()
+                        .filter(a -> a.getScope().equals(normalizedScope))
+                        .findFirst().map(OmniAuthAssignment::getRoleId).orElse(null);
+                config.removeAssignment(sid, authTypeStr, scope);
+            }
+            OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+            if (audit != null) audit.logRevoke(Jenkins.getAuthentication2().getName(), sid, scope, revokedRole);
+            rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type(atype)) + "&saved=true");
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Add User flow
+    // -------------------------------------------------------------------------
+
+    /** AJAX: check whether a native Jenkins account exists for the given username. */
+    public void doCheckNativeUser(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String username = req.getParameter("username");
+        rsp.setContentType("application/json;charset=UTF-8");
+        rsp.addHeader("Cache-Control", "no-cache");
+        java.io.PrintWriter w = rsp.getWriter();
+        if (username == null || username.trim().isEmpty()) {
+            w.write("{\"exists\":false}"); return;
+        }
+        User user = User.getById(username.trim(), false);
+        if (user != null) {
+            String dn = user.getDisplayName() != null ? user.getDisplayName() : username.trim();
+            w.write("{\"exists\":true,\"displayName\":\""
+                    + dn.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}");
+        } else {
+            w.write("{\"exists\":false}");
+        }
+    }
+
+    /** POST: add a user (native create or Entra pre-provision) then redirect to their detail page. */
+    @POST
+    public void doAddUser(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String userType           = req.getParameter("userType"); // NATIVE or ENTRA
+        String sid                = req.getParameter("sid");
+        String action             = req.getParameter("action");   // "existing" or "create"
+        String fullName           = req.getParameter("fullName");
+        String email              = req.getParameter("email");
+        boolean forcePasswordChange = "true".equals(req.getParameter("forcePasswordChange"));
+
+        if (sid == null || sid.trim().isEmpty()) {
+            rsp.sendRedirect("accessManagement?error=missingSid"); return;
+        }
+        sid = sid.trim();
+
+        if ("NATIVE".equalsIgnoreCase(userType) && "create".equalsIgnoreCase(action)) {
+            if (!(Jenkins.get().getSecurityRealm() instanceof hudson.security.HudsonPrivateSecurityRealm)) {
+                rsp.sendRedirect("accessManagement?error=notNativeRealm"); return;
+            }
+            hudson.security.HudsonPrivateSecurityRealm realm =
+                    (hudson.security.HudsonPrivateSecurityRealm) Jenkins.get().getSecurityRealm();
+            String tmpPwd = generateTempPassword();
+            realm.createAccount(sid, tmpPwd);
+            User user = User.getById(sid, false);
+            if (user != null) {
+                if (fullName != null && !fullName.trim().isEmpty()) {
+                    user.setFullName(fullName.trim());
+                }
+                if (email != null && !email.trim().isEmpty()) {
+                    try {
+                        ClassLoader uberCl = Jenkins.get().getPluginManager().uberClassLoader;
+                        Class<?> mailerPropClass = Class.forName("hudson.tasks.Mailer$UserProperty", true, uberCl);
+                        java.lang.reflect.Constructor<?> ctor = mailerPropClass.getConstructor(String.class);
+                        hudson.model.UserProperty prop = (hudson.model.UserProperty) ctor.newInstance(email.trim());
+                        user.addProperty(prop);
+                    } catch (Exception e) {
+                        LOGGER.log(Level.WARNING, "Could not set email for user " + sid, e);
+                    }
+                }
+                user.save();
+            }
+            // Auto-grant Hudson.Read so user can log in and change their password
+            grantGlobalRead(sid, AuthorizationType.USER);
+            // Set force-password-change flag if requested
+            if (forcePasswordChange && user != null) {
+                user.addProperty(new OmniAuthForcePasswordProperty(true));
+                user.save();
+            }
+            // Store temp password in session — read once by userDetail, then cleared
+            req.getSession().setAttribute("omniauth.tmpPwd", tmpPwd);
+            req.getSession().setAttribute("omniauth.tmpPwdSid", sid);
+            OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+            if (audit != null) audit.logUserCreated(Jenkins.getAuthentication2().getName(), sid);
+            rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=USER&newUser=true&mustChange=" + forcePasswordChange);
+        } else if ("ENTRA".equalsIgnoreCase(userType)) {
+            // Pre-provision Entra user: create the Jenkins User object + placeholder property + Hudson.Read,
+            // mirroring the native flow so the SSO gate can confirm they were admin-added.
+            User entraUser = User.getOrCreateByIdOrFullName(sid);
+            entraUser.setFullName(sid);
+            OmniAuthUserProperty placeholder = new OmniAuthUserProperty(null, sid);
+            try {
+                entraUser.addProperty(placeholder);
+                entraUser.save();
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Could not save OmniAuthUserProperty for Entra pre-provision: " + sid, e);
+            }
+            grantGlobalRead(sid, AuthorizationType.USER);
+            OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+            if (audit != null) audit.logUserCreated(Jenkins.getAuthentication2().getName(), sid);
+            rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=USER&preProvisioned=true");
+        } else {
+            rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=USER");
+        }
+    }
+
+    private void grantGlobalRead(String sid, AuthorizationType atype) {
+        try {
+            hudson.security.AuthorizationStrategy strat = Jenkins.get().getAuthorizationStrategy();
+            if (!(strat instanceof OmniAuthAuthorizationStrategy)) return;
+            OmniAuthAuthorizationStrategy omniStrat = (OmniAuthAuthorizationStrategy) strat;
+            Permission readPerm = Permission.fromId("hudson.model.Hudson.Read");
+            if (readPerm == null) return;
+            PermissionEntry entry = new PermissionEntry(atype, sid);
+            omniStrat.add(readPerm, entry);
+            Jenkins.get().save();
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Could not auto-grant Hudson.Read to " + sid, e);
+        }
+    }
+
+    /** Called from userDetail.jelly — reads the one-time temp password from session. */
+    public String getTempPassword() {
+        org.kohsuke.stapler.StaplerRequest2 req = org.kohsuke.stapler.Stapler.getCurrentRequest2();
+        if (req == null) return null;
+        Object pwd = req.getSession().getAttribute("omniauth.tmpPwd");
+        Object psid = req.getSession().getAttribute("omniauth.tmpPwdSid");
+        String currentSid = req.getParameter("sid");
+        if (pwd != null && psid != null && psid.toString().equals(currentSid)) {
+            req.getSession().removeAttribute("omniauth.tmpPwd");
+            req.getSession().removeAttribute("omniauth.tmpPwdSid");
+            return pwd.toString();
+        }
+        return null;
+    }
+
+    private static String generateTempPassword() {
+        String chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%";
+        java.security.SecureRandom rng = new java.security.SecureRandom();
+        StringBuilder sb = new StringBuilder(14);
+        for (int i = 0; i < 14; i++) sb.append(chars.charAt(rng.nextInt(chars.length())));
+        return sb.toString();
     }
 
     // -------------------------------------------------------------------------
@@ -1015,6 +2073,16 @@ public class OmniAuthManagementLink extends ManagementLink {
             return loginProp.getLastLoginAt();
         }
         return null;
+    }
+
+    private static String resolveDisplayName(String sid, AuthorizationType type) {
+        if (type == AuthorizationType.USER) {
+            User u = User.getById(sid, false);
+            if (u != null && u.getFullName() != null && !u.getFullName().equals(sid)) {
+                return u.getFullName();
+            }
+        }
+        return sid;
     }
 
     /**
@@ -1296,6 +2364,716 @@ public class OmniAuthManagementLink extends ManagementLink {
         LastJobInfo(String jobName, String triggeredAt) {
             this.jobName     = jobName;
             this.triggeredAt = triggeredAt;
+        }
+    }
+
+    public enum AccessRole {
+        ADMIN(
+            "hudson.model.Hudson.Administer"
+        ),
+        DEVELOPER(
+            "hudson.model.Hudson.Read",
+            "hudson.model.Item.Build",
+            "hudson.model.Item.Cancel",
+            "hudson.model.Item.Configure",
+            "hudson.model.Item.Create",
+            "hudson.model.Item.Delete",
+            "hudson.model.Item.Move",
+            "hudson.model.Item.Read",
+            "hudson.model.Item.WipeOut",
+            "hudson.model.View.Configure",
+            "hudson.model.View.Create",
+            "hudson.model.View.Delete",
+            "hudson.model.View.Read",
+            "hudson.model.Run.Delete",
+            "hudson.model.Run.Update"
+        ),
+        VIEWER(
+            "hudson.model.Hudson.Read",
+            "hudson.model.Item.Read",
+            "hudson.model.View.Read"
+        ),
+        CUSTOM();
+
+        public final Set<String> permissionIds;
+
+        AccessRole(String... ids) {
+            this.permissionIds = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(ids)));
+        }
+
+        public static AccessRole infer(Set<String> userPerms) {
+            Set<String> s = new HashSet<>(userPerms);
+            if (s.equals(ADMIN.permissionIds))     return ADMIN;
+            if (s.equals(DEVELOPER.permissionIds)) return DEVELOPER;
+            if (s.equals(VIEWER.permissionIds))    return VIEWER;
+            return CUSTOM;
+        }
+    }
+
+    public static final class AccessManagementUserInfo {
+        private final String sid;
+        private final String displayName;
+        private final AuthorizationType type;
+        private final String roleName;
+        private final Set<String> permissionIds;
+        private final String lastLoginAt;
+
+        public AccessManagementUserInfo(String sid, String displayName, AuthorizationType type,
+                                        String roleName, Set<String> permissionIds, String lastLoginAt) {
+            this.sid           = sid;
+            this.displayName   = displayName;
+            this.type          = type;
+            this.roleName      = roleName;
+            this.permissionIds = permissionIds;
+            this.lastLoginAt   = lastLoginAt;
+        }
+
+        public String getSid()             { return sid; }
+        public String getDisplayName()     { return displayName; }
+        public AuthorizationType getType() { return type; }
+        public String getRoleName()        { return roleName; }
+        public Set<String> getPermissionIds() { return permissionIds; }
+        public String getLastLoginAt()     { return lastLoginAt; }
+        public boolean isUserEntry()       { return type == AuthorizationType.USER; }
+
+        public String getAvatarLetter() {
+            String src = (displayName != null && !displayName.equals(sid)) ? displayName : sid;
+            return src != null && !src.isEmpty() ? src.substring(0, 1).toUpperCase() : "?";
+        }
+
+        public String getRelativeLastLogin() {
+            return lastLoginAt != null ? OmniAuthManagementLink.relativeTime(lastLoginAt) : null;
+        }
+
+        public String getPermissionsJson() {
+            StringBuilder sb = new StringBuilder("[");
+            boolean first = true;
+            for (String id : permissionIds) {
+                if (!first) sb.append(",");
+                sb.append("\"").append(id.replace("\\", "\\\\").replace("\"", "\\\"")).append("\"");
+                first = false;
+            }
+            return sb.append("]").toString();
+        }
+    }
+
+    public static final class PermissionGroupInfo {
+        private final String groupName;
+        private final String subtitle;
+        private final List<PermissionInfo> permissions;
+        public PermissionGroupInfo(String groupName, String subtitle, List<PermissionInfo> permissions) {
+            this.groupName = groupName;
+            this.subtitle = subtitle != null ? subtitle : "";
+            this.permissions = permissions;
+        }
+        public String getGroupName()                { return groupName; }
+        public String getSubtitle()                 { return subtitle; }
+        public List<PermissionInfo> getPermissions() { return permissions; }
+    }
+
+    public static final class PermissionInfo {
+        private final String id;
+        private final String name;
+        private final String shortId;
+        public PermissionInfo(String id, String name) {
+            this.id = id;
+            this.name = name;
+            // e.g. "hudson.model.Item.Build" → "Item.Build"
+            int last = id.lastIndexOf('.');
+            int prev = last > 0 ? id.lastIndexOf('.', last - 1) : -1;
+            this.shortId = prev >= 0 ? id.substring(prev + 1) : id;
+        }
+        public String getId()      { return id; }
+        public String getName()    { return name; }
+        public String getShortId() { return shortId; }
+    }
+
+    // =========================================================================
+    // User-centric hierarchy view
+    // =========================================================================
+
+    public void doUserDetail(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        req.getView(this, "userDetail.jelly").forward(req, rsp);
+    }
+
+    /** Returns the user hierarchy as a flat list of TreeRow objects (with depth + inherited info). */
+    public List<TreeRow> getUserHierarchyFlat() {
+        org.kohsuke.stapler.StaplerRequest2 req = org.kohsuke.stapler.Stapler.getCurrentRequest2();
+        if (req == null) return Collections.emptyList();
+        String sid = req.getParameter("sid");
+        String type = req.getParameter("type");
+        if (sid == null) return Collections.emptyList();
+        AuthorizationType atype = "GROUP".equalsIgnoreCase(type)
+                ? AuthorizationType.GROUP : AuthorizationType.USER;
+
+        TreeNode root = buildHierarchy(sid, atype);
+        List<TreeRow> rows = new ArrayList<>();
+        flattenTree(root, 0, null, null, rows);
+        return rows;
+    }
+
+    /** Returns minimal info about the user being inspected (for the userDetail header). */
+    public AccessManagementUserInfo getUserDetailHeader() {
+        org.kohsuke.stapler.StaplerRequest2 req = org.kohsuke.stapler.Stapler.getCurrentRequest2();
+        if (req == null) return null;
+        String sid = req.getParameter("sid");
+        String type = req.getParameter("type");
+        if (sid == null) return null;
+        AuthorizationType atype = "GROUP".equalsIgnoreCase(type)
+                ? AuthorizationType.GROUP : AuthorizationType.USER;
+
+        // Reuse the access-management list and filter
+        for (AccessManagementUserInfo info : getAccessManagementUserList()) {
+            if (info.getSid().equals(sid) && info.getType() == atype) return info;
+        }
+        // Build a minimal placeholder if not found in the list (e.g. user being added)
+        String display = resolveDisplayName(sid, atype);
+        return new AccessManagementUserInfo(sid, display, atype, "NONE",
+                Collections.emptySet(), null);
+    }
+
+    private TreeNode buildHierarchy(String sid, AuthorizationType atype) {
+        TreeNode root = new TreeNode("", "Jenkins (root)", "root");
+
+        // Direct grants at root come from the OmniAuthAuthorizationStrategy (global)
+        hudson.security.AuthorizationStrategy strat = Jenkins.get().getAuthorizationStrategy();
+        if (strat instanceof GlobalMatrixAuthorizationStrategy) {
+            Set<String> rootPerms = collectDirectPermsForUser(
+                    ((GlobalMatrixAuthorizationStrategy) strat).getGrantedPermissionEntries(), sid, atype);
+            root.directPerms = new ArrayList<>(rootPerms);
+            root.directRole = inferRoleAtRoot(rootPerms);
+        }
+
+        // Recurse top-level items
+        for (Item item : Jenkins.get().getItems()) {
+            TreeNode child = buildItemNode(item, sid, atype);
+            if (child != null) root.children.add(child);
+        }
+
+        // Compute effective role with simple inheritance: directRole or parent.effectiveRole
+        computeEffectiveRoles(root, null);
+        return root;
+    }
+
+    private TreeNode buildItemNode(Item item, String sid, AuthorizationType atype) {
+        boolean isGroup = item instanceof ItemGroup;
+        boolean isJob   = item instanceof Job;
+        String type = isGroup ? "folder" : (isJob ? "job" : "other");
+        TreeNode node = new TreeNode(item.getFullName(), item.getName(), type);
+
+        Set<String> direct = new HashSet<>();
+        if (isJob) {
+            hudson.security.AuthorizationMatrixProperty prop =
+                    ((Job<?, ?>) item).getProperty(hudson.security.AuthorizationMatrixProperty.class);
+            if (prop != null) {
+                direct.addAll(collectDirectPermsForUser(prop.getGrantedPermissionEntries(), sid, atype));
+            }
+        }
+        if (item instanceof AbstractFolder) {
+            com.cloudbees.hudson.plugins.folder.properties.AuthorizationMatrixProperty fp =
+                    ((AbstractFolder<?>) item).getProperties().get(
+                            com.cloudbees.hudson.plugins.folder.properties.AuthorizationMatrixProperty.class);
+            if (fp != null) {
+                direct.addAll(collectDirectPermsForUser(fp.getGrantedPermissionEntries(), sid, atype));
+            }
+        }
+        node.directPerms = new ArrayList<>(direct);
+        node.directRole = inferRoleAtItem(direct);
+
+        if (isGroup) {
+            for (Object child : ((ItemGroup<?>) item).getItems()) {
+                TreeNode cn = buildItemNode((Item) child, sid, atype);
+                if (cn != null) node.children.add(cn);
+            }
+        }
+        return node;
+    }
+
+    private static Set<String> collectDirectPermsForUser(
+            Map<Permission, Set<PermissionEntry>> entries, String sid, AuthorizationType atype) {
+        Set<String> out = new HashSet<>();
+        for (Map.Entry<Permission, Set<PermissionEntry>> e : entries.entrySet()) {
+            for (PermissionEntry pe : e.getValue()) {
+                if (pe.getSid().equals(sid) && pe.getType() == atype) {
+                    out.add(e.getKey().getId());
+                }
+            }
+        }
+        return out;
+    }
+
+    private static String inferRoleAtRoot(Set<String> perms) {
+        if (perms == null || perms.isEmpty()) return null;
+        AccessRole r = AccessRole.infer(perms);
+        return r.name();
+    }
+
+    private static String inferRoleAtItem(Set<String> perms) {
+        if (perms == null || perms.isEmpty()) return null;
+        if (perms.equals(ScopedRole.CONFIGURE.permissionIds)) return "CONFIGURE";
+        if (perms.equals(ScopedRole.BUILD.permissionIds))     return "BUILD";
+        if (perms.equals(ScopedRole.READ.permissionIds))      return "READ";
+        return "CUSTOM";
+    }
+
+    private void computeEffectiveRoles(TreeNode node, String parentEffective) {
+        node.effectiveRole = node.directRole != null ? node.directRole : parentEffective;
+        for (TreeNode child : node.children) {
+            computeEffectiveRoles(child, node.effectiveRole);
+        }
+    }
+
+    private void flattenTree(TreeNode node, int depth, String parentEffective,
+                             String parentEffectivePath, List<TreeRow> out) {
+        TreeRow row = new TreeRow();
+        row.node = node;
+        row.depth = depth;
+        row.inheritedRole = (node.directRole == null) ? parentEffective : null;
+        row.inheritedFromPath = (node.directRole == null) ? parentEffectivePath : null;
+        out.add(row);
+        String childInheritRole = node.directRole != null ? node.directRole : parentEffective;
+        String childInheritPath = node.directRole != null ? node.path : parentEffectivePath;
+        for (TreeNode child : node.children) {
+            flattenTree(child, depth + 1, childInheritRole, childInheritPath, out);
+        }
+    }
+
+    // ─── POST: Set role at any node (root, folder, job) ─────────────────────
+
+    @POST
+    public void doSetNodePermission(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String sid  = req.getParameter("sid");
+        String type = req.getParameter("type");
+        String path = req.getParameter("path");      // "" for root
+        String role = req.getParameter("role");      // ADMIN/DEVELOPER/VIEWER/CUSTOM at root, or CONFIGURE/BUILD/READ at items
+
+        if (sid == null || sid.trim().isEmpty() || role == null) {
+            rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type) + "&error=missing");
+            return;
+        }
+        sid = sid.trim();
+        AuthorizationType atype = "GROUP".equalsIgnoreCase(type)
+                ? AuthorizationType.GROUP : AuthorizationType.USER;
+
+        // Resolve target permission set
+        Set<String> permIds;
+        if (path == null || path.isEmpty()) {
+            // Root: AccessRole bucket
+            try {
+                permIds = AccessRole.valueOf(role.toUpperCase()).permissionIds;
+            } catch (IllegalArgumentException ex) {
+                rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type) + "&error=invalidRole");
+                return;
+            }
+            if (permIds.isEmpty()) {
+                rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type) + "&error=noPermissions");
+                return;
+            }
+            applyRootPermissions(sid, atype, permIds, rsp, false);
+        } else {
+            // Item: ScopedRole bucket
+            try {
+                permIds = ScopedRole.valueOf(role.toUpperCase()).permissionIds;
+            } catch (IllegalArgumentException ex) {
+                rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type) + "&error=invalidRole");
+                return;
+            }
+            Item item = Jenkins.get().getItemByFullName(path);
+            if (item == null) {
+                rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type) + "&error=notFound");
+                return;
+            }
+            applyItemPermissions(item, sid, atype, permIds);
+            autoGrantParentRead(item, sid, atype);
+        }
+        rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type) + "&saved=true");
+    }
+
+    @POST
+    public void doRemoveNodePermission(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String sid  = req.getParameter("sid");
+        String type = req.getParameter("type");
+        String path = req.getParameter("path");
+
+        if (sid == null) {
+            rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type) + "&error=missing");
+            return;
+        }
+        AuthorizationType atype = "GROUP".equalsIgnoreCase(type)
+                ? AuthorizationType.GROUP : AuthorizationType.USER;
+
+        if (path == null || path.isEmpty()) {
+            // Remove all global (root) grants
+            applyRootPermissions(sid, atype, Collections.emptySet(), rsp, true);
+        } else {
+            Item item = Jenkins.get().getItemByFullName(path);
+            if (item != null) {
+                applyItemPermissions(item, sid, atype, Collections.emptySet());
+                cleanupParentRead(item, sid, atype);
+            }
+            rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type) + "&saved=true");
+        }
+    }
+
+    /** Rebuild the global OmniAuthAuthorizationStrategy with this user's permissions replaced. */
+    private void applyRootPermissions(String sid, AuthorizationType atype, Set<String> permIds,
+                                      StaplerResponse rsp, boolean removing) throws Exception {
+        hudson.security.AuthorizationStrategy strat = Jenkins.get().getAuthorizationStrategy();
+        if (!(strat instanceof OmniAuthAuthorizationStrategy)) {
+            rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type(atype)) + "&error=notOmniAuth");
+            return;
+        }
+        OmniAuthAuthorizationStrategy current = (OmniAuthAuthorizationStrategy) strat;
+        OmniAuthAuthorizationStrategy rebuilt = new OmniAuthAuthorizationStrategy();
+        for (Map.Entry<Permission, Set<PermissionEntry>> e : current.getGrantedPermissionEntries().entrySet()) {
+            for (PermissionEntry pe : e.getValue()) {
+                if (!(pe.getSid().equals(sid) && pe.getType() == atype)) {
+                    rebuilt.add(e.getKey(), pe);
+                }
+            }
+        }
+        if (!permIds.isEmpty()) {
+            PermissionEntry entry = atype == AuthorizationType.GROUP
+                    ? PermissionEntry.group(sid) : PermissionEntry.user(sid);
+            for (String pid : permIds) {
+                Permission p = Permission.fromId(pid);
+                if (p != null) rebuilt.add(p, entry);
+            }
+        }
+        Set<PermissionEntry> adminSet = rebuilt.getGrantedPermissionEntries().get(Jenkins.ADMINISTER);
+        if (adminSet == null || adminSet.isEmpty()) {
+            rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type(atype)) + "&error=lastAdmin");
+            return;
+        }
+        Jenkins.get().setAuthorizationStrategy(rebuilt);
+        Jenkins.get().save();
+        rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type(atype)) + "&saved=true");
+    }
+
+    /**
+     * Apply permissions on a Job or Folder. permIds.isEmpty() means remove all grants for this user.
+     * Global-scope permissions (Hudson.Read, View.Read, etc.) are routed to the global strategy;
+     * only item-scoped permissions are written into the job/folder property.
+     */
+    @SuppressWarnings("unchecked")
+    private void applyItemPermissions(Item item, String sid, AuthorizationType atype, Set<String> permIds) throws Exception {
+        PermissionEntry entry = atype == AuthorizationType.GROUP
+                ? PermissionEntry.group(sid) : PermissionEntry.user(sid);
+
+        // Only item/run-scoped permissions belong in a job/folder property.
+        // Global-scope permissions (Hudson.Read, View.Read) are silently ignored here —
+        // login access is managed separately via Add User / global grants.
+        Set<String> itemPermIds = new HashSet<>();
+        for (String pid : permIds) {
+            Permission p = Permission.fromId(pid);
+            if (p != null && p.isContainedBy(hudson.security.PermissionScope.ITEM)) {
+                itemPermIds.add(pid);
+            }
+        }
+        // For revoke (permIds empty), effectivePerms stays empty → mutate removes all for this user.
+        Set<String> effectivePermIds = permIds.isEmpty() ? Collections.emptySet() : itemPermIds;
+
+        if (item instanceof Job) {
+            Job<?, ?> job = (Job<?, ?>) item;
+            hudson.security.AuthorizationMatrixProperty prop =
+                    job.getProperty(hudson.security.AuthorizationMatrixProperty.class);
+            if (prop == null) {
+                if (effectivePermIds.isEmpty()) return;
+                Map<Permission, Set<PermissionEntry>> map = new HashMap<>();
+                for (String pid : effectivePermIds) {
+                    Permission p = Permission.fromId(pid);
+                    if (p != null) map.computeIfAbsent(p, k -> new HashSet<>()).add(entry);
+                }
+                prop = new hudson.security.AuthorizationMatrixProperty(map,
+                        new org.jenkinsci.plugins.matrixauth.inheritance.InheritParentStrategy());
+                job.addProperty(prop);
+            } else {
+                mutateGrantedPermissions(prop, sid, atype, entry, effectivePermIds);
+            }
+            job.save();
+            return;
+        }
+
+        if (item instanceof AbstractFolder) {
+            AbstractFolder<?> folder = (AbstractFolder<?>) item;
+            com.cloudbees.hudson.plugins.folder.properties.AuthorizationMatrixProperty fp =
+                    folder.getProperties().get(
+                            com.cloudbees.hudson.plugins.folder.properties.AuthorizationMatrixProperty.class);
+            if (fp == null) {
+                if (effectivePermIds.isEmpty()) return;
+                fp = new com.cloudbees.hudson.plugins.folder.properties.AuthorizationMatrixProperty(
+                        new java.util.HashMap<>());
+                folder.addProperty(fp);
+            }
+            mutateGrantedPermissions(fp, sid, atype, entry, effectivePermIds);
+            folder.save();
+        }
+    }
+
+    /** Ensures a single global-scope permission exists in the global strategy (idempotent). */
+    private void applyGlobalPermission(String sid, AuthorizationType atype, PermissionEntry entry, Permission perm) {
+        hudson.security.AuthorizationStrategy strat = Jenkins.get().getAuthorizationStrategy();
+        if (!(strat instanceof OmniAuthAuthorizationStrategy)) return;
+        OmniAuthAuthorizationStrategy strategy = (OmniAuthAuthorizationStrategy) strat;
+        strategy.add(perm, entry);
+        try { Jenkins.get().save(); } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Failed to save global strategy after adding " + perm.getId() + " for " + sid, e);
+        }
+    }
+
+    /**
+     * Mutates the grantedPermissions map of an AuthorizationMatrixProperty in-place via reflection.
+     * This avoids the addProperty/removeProperty unreliability on WorkflowJob and folders.
+     * If atype is null, removes entries for sid regardless of type (used for purge).
+     * entry may be null when permIds is empty (remove-only operation).
+     */
+    @SuppressWarnings("unchecked")
+    private void mutateGrantedPermissions(Object prop, String sid, AuthorizationType atype,
+                                           PermissionEntry entry, Set<String> permIds) throws Exception {
+        java.lang.reflect.Field gpField = null;
+        Class<?> cls = prop.getClass();
+        while (cls != null && gpField == null) {
+            try { gpField = cls.getDeclaredField("grantedPermissions"); }
+            catch (NoSuchFieldException e) { cls = cls.getSuperclass(); }
+        }
+        if (gpField == null)
+            throw new Exception("grantedPermissions field not found on " + prop.getClass().getName());
+        gpField.setAccessible(true);
+        Map<Permission, Set<PermissionEntry>> gp =
+                (Map<Permission, Set<PermissionEntry>>) gpField.get(prop);
+        for (Set<PermissionEntry> pes : gp.values()) {
+            pes.removeIf(pe -> pe.getSid().equals(sid) && (atype == null || pe.getType() == atype));
+        }
+        gp.entrySet().removeIf(e -> e.getValue().isEmpty());
+        for (String pid : permIds) {
+            Permission p = Permission.fromId(pid);
+            if (p != null) gp.computeIfAbsent(p, k -> new HashSet<>()).add(entry);
+        }
+    }
+
+    /** Auto-grant Item.Read on parent folders so the user can navigate to the granted item. */
+    private void autoGrantParentRead(Item item, String sid, AuthorizationType atype) throws Exception {
+        Set<String> readOnly = new HashSet<>();
+        readOnly.add("hudson.model.Item.Read");
+        ItemGroup<?> parent = item.getParent();
+        while (parent instanceof Item) {
+            Item parentItem = (Item) parent;
+            try {
+                applyItemPermissions(parentItem, sid, atype, readOnly);
+            } catch (Exception ignored) {}
+            if (parentItem instanceof AbstractFolder) {
+                setNonInheriting((AbstractFolder<?>) parentItem);
+            }
+            parent = parentItem.getParent();
+        }
+    }
+
+    /** Sets NonInheritingStrategy on a folder if not already set — idempotent, never reverts. */
+    private void setNonInheriting(AbstractFolder<?> folder) {
+        try {
+            com.cloudbees.hudson.plugins.folder.properties.AuthorizationMatrixProperty fp =
+                    folder.getProperties().get(
+                            com.cloudbees.hudson.plugins.folder.properties.AuthorizationMatrixProperty.class);
+            if (fp == null) return;
+            if (fp.getInheritanceStrategy() instanceof org.jenkinsci.plugins.matrixauth.inheritance.NonInheritingStrategy) return;
+            fp.setInheritanceStrategy(new org.jenkinsci.plugins.matrixauth.inheritance.NonInheritingStrategy());
+            folder.save();
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Failed to set NonInheriting on folder " + folder.getFullName(), e);
+        }
+    }
+
+    /** Walks up the parent chain after a revoke and removes auto-granted Item.Read from folders
+     *  that no longer have any descendant grants for this user. */
+    private void cleanupParentRead(Item revokedItem, String sid, AuthorizationType atype) {
+        ItemGroup<?> parent = revokedItem.getParent();
+        while (parent instanceof AbstractFolder) {
+            AbstractFolder<?> folder = (AbstractFolder<?>) parent;
+            boolean hasDescendants = false;
+            for (Job<?, ?> job : folder.getAllItems(Job.class)) {
+                hudson.security.AuthorizationMatrixProperty p =
+                        job.getProperty(hudson.security.AuthorizationMatrixProperty.class);
+                if (p != null && hasUserGrant(p.getGrantedPermissionEntries(), sid, atype)) {
+                    hasDescendants = true; break;
+                }
+            }
+            if (!hasDescendants) {
+                for (AbstractFolder<?> sub : folder.getAllItems(AbstractFolder.class)) {
+                    com.cloudbees.hudson.plugins.folder.properties.AuthorizationMatrixProperty fp =
+                            sub.getProperties().get(
+                                    com.cloudbees.hudson.plugins.folder.properties.AuthorizationMatrixProperty.class);
+                    if (fp != null && hasUserGrant(fp.getGrantedPermissionEntries(), sid, atype)) {
+                        hasDescendants = true; break;
+                    }
+                }
+            }
+            if (!hasDescendants) {
+                com.cloudbees.hudson.plugins.folder.properties.AuthorizationMatrixProperty fp =
+                        folder.getProperties().get(
+                                com.cloudbees.hudson.plugins.folder.properties.AuthorizationMatrixProperty.class);
+                if (fp != null) {
+                    try {
+                        mutateGrantedPermissions(fp, sid, atype, null, Collections.emptySet());
+                        folder.save();
+                    } catch (Exception e) {
+                        LOGGER.log(Level.WARNING, "Failed to cleanup parent read on " + folder.getFullName(), e);
+                    }
+                }
+                parent = folder.getParent();
+            } else {
+                break;
+            }
+        }
+    }
+
+    private boolean hasUserGrant(Map<Permission, Set<PermissionEntry>> entries, String sid, AuthorizationType atype) {
+        for (Set<PermissionEntry> pes : entries.values()) {
+            for (PermissionEntry pe : pes) {
+                if (pe.getSid().equals(sid) && pe.getType() == atype) return true;
+            }
+        }
+        return false;
+    }
+
+    private static String enc(String s) {
+        try { return s == null ? "" : java.net.URLEncoder.encode(s, "UTF-8"); }
+        catch (Exception e) { return ""; }
+    }
+    private static String type(AuthorizationType atype) {
+        return atype == AuthorizationType.GROUP ? "GROUP" : "USER";
+    }
+
+    /** Converts an HTML date input value (YYYY-MM-DD) to an ISO-8601 instant string, or null if blank. */
+    private static String toInstantString(String dateParam) {
+        if (dateParam == null || dateParam.isBlank()) return null;
+        try {
+            return java.time.LocalDate.parse(dateParam.trim())
+                    .atStartOfDay(java.time.ZoneOffset.UTC)
+                    .plusDays(1)          // expires at end of the selected day (midnight of next day UTC)
+                    .toInstant()
+                    .toString();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    // ─── Inner classes for hierarchy view ────────────────────────────────────
+
+    public static final class TreeNode {
+        public final String path;
+        public final String name;
+        public final String type;          // root | folder | job | other
+        public List<String> directPerms = new ArrayList<>();
+        public String directRole;          // ADMIN/DEVELOPER/VIEWER/CUSTOM (root) or CONFIGURE/BUILD/READ/CUSTOM (item)
+        public String effectiveRole;
+        public List<TreeNode> children = new ArrayList<>();
+        public TreeNode(String path, String name, String type) {
+            this.path = path; this.name = name; this.type = type;
+        }
+        public String getPath()          { return path; }
+        public String getName()          { return name; }
+        public String getType()          { return type; }
+        public String getDirectRole()    { return directRole; }
+        public String getEffectiveRole() { return effectiveRole; }
+        public List<String> getDirectPerms() { return directPerms; }
+        public List<TreeNode> getChildren() { return children; }
+        public boolean isHasDirect()     { return directRole != null; }
+        public int getChildCount()       { return children.size(); }
+    }
+
+    public static final class TreeRow {
+        public TreeNode node;
+        public int depth;
+        public String inheritedRole;       // null if direct grant exists at this node
+        public String inheritedFromPath;   // path of the ancestor node where the inherited role originates
+        public TreeNode getNode()         { return node; }
+        public int getDepth()             { return depth; }
+        public String getInheritedRole()  { return inheritedRole; }
+        public String getInheritedFromPath() { return inheritedFromPath; }
+        public int getIndentPx()          { return depth * 22; }
+        public String getDisplayName()    {
+            if ("root".equals(node.type)) return node.name;
+            return node.name;
+        }
+    }
+
+    public static final class UserAssignmentInfo {
+        private final String scope;
+        private final String displayScope;
+        private final String scopeType;
+        private final String roleName;
+        private final List<String> permissionIds;
+        private final String expiresAt;
+        private final List<String> customPermissions;
+
+        public UserAssignmentInfo(String scope, String displayScope, String scopeType,
+                                  String roleName, List<String> permissionIds,
+                                  String expiresAt, List<String> customPermissions) {
+            this.scope             = scope;
+            this.displayScope      = displayScope;
+            this.scopeType         = scopeType;
+            this.roleName          = roleName;
+            this.permissionIds     = permissionIds;
+            this.expiresAt         = expiresAt;
+            this.customPermissions = customPermissions != null ? customPermissions : Collections.emptyList();
+        }
+
+        public String getScope()                     { return scope; }
+        public String getDisplayScope()              { return displayScope; }
+        public String getScopeType()                 { return scopeType; }
+        public String getRoleName()                  { return roleName; }
+        public List<String> getPermissionIds()       { return permissionIds; }
+        public String getExpiresAt()                 { return expiresAt; }
+        public List<String> getCustomPermissions()   { return customPermissions; }
+        public boolean isGlobal()                    { return scope == null || scope.isEmpty(); }
+        public int getPermissionCount()              { return permissionIds != null ? permissionIds.size() : 0; }
+
+        public String getCustomPermissionsJson() {
+            if (customPermissions == null || customPermissions.isEmpty()) return "[]";
+            StringBuilder sb = new StringBuilder("[");
+            for (int i = 0; i < customPermissions.size(); i++) {
+                if (i > 0) sb.append(",");
+                sb.append("\"").append(customPermissions.get(i).replace("\"", "\\\"")).append("\"");
+            }
+            sb.append("]");
+            return sb.toString();
+        }
+
+        public String getPermissionSummary() {
+            if (permissionIds == null || permissionIds.isEmpty()) return "none";
+            List<String> names = new ArrayList<>();
+            for (String pid : permissionIds) {
+                int dot = pid.lastIndexOf('.');
+                names.add(dot >= 0 ? pid.substring(dot + 1) : pid);
+            }
+            if (names.size() <= 3) return String.join(", ", names);
+            return names.get(0) + ", " + names.get(1) + " + " + (names.size() - 2) + " more";
+        }
+    }
+
+    public enum ScopedRole {
+        READ(
+            "hudson.model.Item.Read"
+        ),
+        BUILD(
+            "hudson.model.Item.Read",
+            "hudson.model.Item.Build",
+            "hudson.model.Item.Cancel"
+        ),
+        CONFIGURE(
+            "hudson.model.Item.Read",
+            "hudson.model.Item.Build",
+            "hudson.model.Item.Cancel",
+            "hudson.model.Item.Configure",
+            "hudson.model.Item.Delete"
+        );
+
+        public final Set<String> permissionIds;
+        ScopedRole(String... ids) {
+            this.permissionIds = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(ids)));
         }
     }
 }
