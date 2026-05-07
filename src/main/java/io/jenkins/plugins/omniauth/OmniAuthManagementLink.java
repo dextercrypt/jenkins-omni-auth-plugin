@@ -1918,6 +1918,59 @@ public class OmniAuthManagementLink extends ManagementLink {
     }
 
     // -------------------------------------------------------------------------
+    // Group assignment helpers
+    // -------------------------------------------------------------------------
+
+    public List<OmniAuthAssignment> getGroupAssignmentsForOid(String groupOid) {
+        OmniAuthAssignmentConfig config = OmniAuthAssignmentConfig.get();
+        if (config == null) return Collections.emptyList();
+        return config.getAssignmentsForUser(groupOid, "GROUP");
+    }
+
+    public void doGrantGroupAssignment(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String groupOid   = req.getParameter("sid");
+        String roleId     = req.getParameter("roleId");
+        String scopeType  = req.getParameter("scopeType");
+        String scope      = req.getParameter("scope");
+        if (scope == null) scope = "";
+        scope = scope.trim();
+        if ("GLOBAL".equalsIgnoreCase(scopeType)) scope = "";
+
+        if (groupOid == null || groupOid.trim().isEmpty()) {
+            rsp.sendRedirect("accessManagement?error=missing"); return;
+        }
+        if (roleId == null || roleId.trim().isEmpty()) {
+            rsp.sendRedirect("groupDetail?oid=" + enc(groupOid) + "&error=invalidRole"); return;
+        }
+        String now = java.time.Instant.now().toString();
+        String by  = Jenkins.getAuthentication2().getName();
+        OmniAuthAssignment assignment = new OmniAuthAssignment(
+                groupOid, "GROUP", roleId, scope, scopeType != null ? scopeType : "GLOBAL",
+                Collections.emptyList(), now, by);
+        OmniAuthAssignmentConfig config = OmniAuthAssignmentConfig.get();
+        if (config != null) config.addAssignment(assignment);
+        OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+        if (audit != null) audit.logGrant(by, groupOid, roleId, scope, null);
+        rsp.sendRedirect("groupDetail?oid=" + enc(groupOid) + "&saved=true");
+    }
+
+    public void doRevokeGroupAssignment(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String groupOid = req.getParameter("sid");
+        String scope    = req.getParameter("scope");
+        if (scope == null) scope = "";
+        if (groupOid == null || groupOid.trim().isEmpty()) {
+            rsp.sendRedirect("accessManagement?error=missing"); return;
+        }
+        OmniAuthAssignmentConfig config = OmniAuthAssignmentConfig.get();
+        if (config != null) config.removeAssignment(groupOid, "GROUP", scope);
+        OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+        if (audit != null) audit.logRevoke(Jenkins.getAuthentication2().getName(), groupOid, scope, null);
+        rsp.sendRedirect("groupDetail?oid=" + enc(groupOid) + "&saved=true");
+    }
+
+    // -------------------------------------------------------------------------
     // Add User flow
     // -------------------------------------------------------------------------
 
@@ -2002,6 +2055,7 @@ public class OmniAuthManagementLink extends ManagementLink {
             User entraUser = User.getOrCreateByIdOrFullName(sid);
             entraUser.setFullName(sid);
             OmniAuthUserProperty placeholder = new OmniAuthUserProperty(null, sid);
+            placeholder.setProvisioningSource("INDIVIDUAL");
             try {
                 entraUser.addProperty(placeholder);
                 entraUser.save();
@@ -2012,9 +2066,121 @@ public class OmniAuthManagementLink extends ManagementLink {
             OmniAuthAuditLog audit = OmniAuthAuditLog.get();
             if (audit != null) audit.logUserCreated(Jenkins.getAuthentication2().getName(), sid);
             rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=USER&preProvisioned=true");
+        } else if ("GROUP".equalsIgnoreCase(userType)) {
+            // sid is the group OID here
+            String groupOid   = sid;
+            String groupLabel = req.getParameter("groupLabel");
+            if (groupLabel != null) groupLabel = groupLabel.trim();
+            OmniAuthAssignmentConfig assignmentConfig = OmniAuthAssignmentConfig.get();
+            if (assignmentConfig == null) {
+                rsp.sendRedirect("accessManagement?error=configError"); return;
+            }
+            if (assignmentConfig.hasGroup(groupOid)) {
+                rsp.sendRedirect("accessManagement?error=groupAlreadyExists"); return;
+            }
+            String now = java.time.Instant.now().toString();
+            String addedBy = Jenkins.getAuthentication2().getName();
+            OmniAuthGroupEntity groupEntity = new OmniAuthGroupEntity(groupOid, groupLabel, now, addedBy);
+            assignmentConfig.addGroup(groupEntity);
+            // Grant Hudson.Read at GROUP level so members can log in
+            grantGlobalRead(groupOid, AuthorizationType.GROUP);
+            OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+            if (audit != null) audit.logUserCreated(addedBy, "[GROUP] " + groupOid);
+            rsp.sendRedirect("groupDetail?oid=" + enc(groupOid) + "&added=true");
         } else {
             rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=USER");
         }
+    }
+
+    /** Removes a GROUP entity from Access Management and revokes sessions for affected members. */
+    public void doRemoveGroup(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String groupOid = req.getParameter("oid");
+        if (groupOid == null || groupOid.trim().isEmpty()) {
+            rsp.sendRedirect("accessManagement?error=missing"); return;
+        }
+        groupOid = groupOid.trim();
+        OmniAuthAssignmentConfig assignmentConfig = OmniAuthAssignmentConfig.get();
+        if (assignmentConfig == null) {
+            rsp.sendRedirect("accessManagement?error=configError"); return;
+        }
+
+        // Find all VIA_ENTRA_GROUP users whose activeGroupOids contains this OID
+        // Revoke sessions for those who have no remaining active groups after removal
+        try (hudson.security.ACLContext ignored = hudson.security.ACL.as2(hudson.security.ACL.SYSTEM2)) {
+            for (hudson.model.User user : hudson.model.User.getAll()) {
+                OmniAuthUserProperty prop = user.getProperty(OmniAuthUserProperty.class);
+                if (prop == null || !prop.isViaGroup()) continue;
+                if (!prop.getActiveGroupOids().contains(groupOid)) continue;
+
+                List<String> remaining = new ArrayList<>(prop.getActiveGroupOids());
+                remaining.remove(groupOid);
+
+                if (remaining.isEmpty()) {
+                    // No other groups — revoke all active sessions for this user immediately
+                    String uid = user.getId();
+                    ActiveSessionManager.getAll().stream()
+                            .filter(s -> uid.equals(s.getUserId()))
+                            .forEach(s -> ActiveSessionManager.revoke(s.getSessionId()));
+                    LOGGER.log(Level.INFO, "Session revoked for {0} — group {1} removed",
+                            new Object[]{uid, groupOid});
+                }
+
+                // Update activeGroupOids
+                try {
+                    OmniAuthUserProperty updated = new OmniAuthUserProperty(
+                            prop.getEntraObjectId(), prop.getEntraUpn());
+                    updated.setProvisioningSource("VIA_ENTRA_GROUP");
+                    updated.setActiveGroupOids(remaining);
+                    updated.setLastLoginAt(prop.getLastLoginAt());
+                    updated.setGroupsLastSynced(prop.getGroupsLastSynced());
+                    updated.setCachedGroups(new ArrayList<>(prop.getCachedGroups()));
+                    user.addProperty(updated);
+                    user.save();
+                } catch (Exception e) {
+                    LOGGER.log(Level.WARNING, "Could not update activeGroupOids for " + user.getId(), e);
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Error processing group removal sessions", e);
+        }
+
+        // Remove all GROUP assignments for this OID
+        final String finalGroupOid = groupOid;
+        List<OmniAuthAssignment> toRemove = assignmentConfig.getAssignments().stream()
+                .filter(a -> "GROUP".equalsIgnoreCase(a.getAuthType()) && finalGroupOid.equals(a.getUserId()))
+                .toList();
+        for (OmniAuthAssignment a : toRemove) {
+            assignmentConfig.removeAssignment(finalGroupOid, "GROUP", a.getScope());
+        }
+
+        // Remove Hudson.Read grant for this group from global matrix by rebuilding without that entry
+        try {
+            hudson.security.AuthorizationStrategy strat = Jenkins.get().getAuthorizationStrategy();
+            if (strat instanceof OmniAuthAuthorizationStrategy) {
+                OmniAuthAuthorizationStrategy current = (OmniAuthAuthorizationStrategy) strat;
+                OmniAuthAuthorizationStrategy rebuilt = new OmniAuthAuthorizationStrategy();
+                for (Map.Entry<Permission, Set<PermissionEntry>> e : current.getGrantedPermissionEntries().entrySet()) {
+                    for (PermissionEntry pe : e.getValue()) {
+                        if (!pe.getSid().equals(groupOid)) {
+                            rebuilt.add(e.getKey(), pe);
+                        }
+                    }
+                }
+                Jenkins.get().setAuthorizationStrategy(rebuilt);
+                Jenkins.get().save();
+            }
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Could not remove Hudson.Read for group " + groupOid, e);
+        }
+
+        // Remove the group entity
+        assignmentConfig.removeGroup(groupOid);
+
+        OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+        if (audit != null) audit.logUserCreated(Jenkins.getAuthentication2().getName(), "[GROUP REMOVED] " + groupOid);
+
+        rsp.sendRedirect("accessManagement?groupRemoved=true");
     }
 
     private void grantGlobalRead(String sid, AuthorizationType atype) {
@@ -2495,6 +2661,45 @@ public class OmniAuthManagementLink extends ManagementLink {
     public void doUserDetail(StaplerRequest req, StaplerResponse rsp) throws Exception {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
         req.getView(this, "userDetail.jelly").forward(req, rsp);
+    }
+
+    public void doGroupDetail(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        req.getView(this, "groupDetail.jelly").forward(req, rsp);
+    }
+
+    /** Returns all GROUP entities for display in Access Management. */
+    public List<OmniAuthGroupEntity> getGroupList() {
+        OmniAuthAssignmentConfig config = OmniAuthAssignmentConfig.get();
+        if (config == null) return Collections.emptyList();
+        return config.getGroups();
+    }
+
+    /** Returns users provisioned via a specific group OID. */
+    public List<UserStatusInfo> getGroupMembers(String groupOid) {
+        List<UserStatusInfo> members = new ArrayList<>();
+        try (hudson.security.ACLContext ignored = hudson.security.ACL.as2(hudson.security.ACL.SYSTEM2)) {
+            for (hudson.model.User user : hudson.model.User.getAll()) {
+                OmniAuthUserProperty prop = user.getProperty(OmniAuthUserProperty.class);
+                if (prop != null && prop.isViaGroup() && prop.getActiveGroupOids().contains(groupOid)) {
+                    String lastLogin = prop.getLastLoginAt();
+                    members.add(new UserStatusInfo(user.getId(), user.getFullName(), "Entra", lastLogin, null, null, "active"));
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Error fetching group members for " + groupOid, e);
+        }
+        return members;
+    }
+
+    /** Returns the OmniAuthGroupEntity for a given OID — used by groupDetail.jelly. */
+    public OmniAuthGroupEntity getGroupEntity() {
+        org.kohsuke.stapler.StaplerRequest2 req = org.kohsuke.stapler.Stapler.getCurrentRequest2();
+        if (req == null) return null;
+        String oid = req.getParameter("oid");
+        if (oid == null) return null;
+        OmniAuthAssignmentConfig config = OmniAuthAssignmentConfig.get();
+        return config != null ? config.findGroup(oid) : null;
     }
 
     /** Returns the user hierarchy as a flat list of TreeRow objects (with depth + inherited info). */

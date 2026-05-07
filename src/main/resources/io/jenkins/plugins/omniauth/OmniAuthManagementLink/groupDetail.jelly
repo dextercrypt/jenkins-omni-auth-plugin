@@ -1,0 +1,249 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:l="/lib/layout" xmlns:f="/lib/form">
+<l:layout title="Group Detail — OmniAuth" norefresh="true">
+  <st:include page="sidepanel.jelly"/>
+  <l:main-panel>
+    <st:adjunct includes="io.jenkins.plugins.omniauth.OmniAuthManagementLink.accessManagement"/>
+
+    <j:set var="req" value="${staplerRequest}"/>
+    <j:set var="oid" value="${req.getParameter('oid')}"/>
+    <j:set var="group" value="${it.getGroupEntity()}"/>
+
+    <div style="max-width:900px;margin:0 auto;padding:24px 20px;">
+
+      <!-- Back link -->
+      <div style="margin-bottom:18px;">
+        <a href="accessManagement" style="font-size:0.85em;color:#0078d4;text-decoration:none;">
+          &#8592; Back to Access Management
+        </a>
+      </div>
+
+      <j:if test="${group == null}">
+        <div class="jenkins-alert jenkins-alert-warning">Group not found.</div>
+      </j:if>
+
+      <j:if test="${group != null}">
+
+        <!-- Header -->
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+          <div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <span style="font-size:1.5em;">&#128101;</span>
+              <h1 style="margin:0;font-size:1.3em;font-weight:700;">
+                <j:choose>
+                  <j:when test="${group.resolved}">${group.displayName}</j:when>
+                  <j:otherwise>
+                    <j:choose>
+                      <j:when test="${!group.label.isEmpty()}">${group.label}</j:when>
+                      <j:otherwise><span style="font-family:monospace;font-size:0.85em;">${group.groupOid}</span></j:otherwise>
+                    </j:choose>
+                  </j:otherwise>
+                </j:choose>
+              </h1>
+              <span style="font-size:.75em;font-weight:600;padding:3px 10px;border-radius:10px;background:#dbeafe;color:#1e40af;">
+                Entra Group
+              </span>
+              <j:if test="${!group.resolved}">
+                <span style="font-size:.73em;font-weight:600;padding:3px 10px;border-radius:10px;background:#fef9c3;color:#854d0e;">
+                  &#9203; Pending
+                </span>
+              </j:if>
+            </div>
+            <div style="margin-top:6px;font-size:0.82em;color:#888;">
+              OID: <code>${group.groupOid}</code>
+              <j:if test="${!group.label.isEmpty()}">
+                &#160;&#183;&#160; Label: ${group.label}
+              </j:if>
+              &#160;&#183;&#160; Added by ${group.addedBy} on ${group.addedAt}
+            </div>
+          </div>
+
+          <!-- Remove group button -->
+          <form method="post" action="removeGroup"
+                onsubmit="return confirm('Remove this group? All members with no other allowed group will lose access immediately.');"
+                style="margin:0;">
+            <input type="hidden" name="${app.crumbRequestField}" value="${app.crumb}"/>
+            <input type="hidden" name="oid" value="${group.groupOid}"/>
+            <button type="submit" class="jenkins-button"
+                    style="font-size:0.82em;color:#c0392b;border-color:#e8c9c7;">
+              &#128465; Remove Group
+            </button>
+          </form>
+        </div>
+
+        <!-- Pending banner -->
+        <j:if test="${!group.resolved}">
+          <div class="jenkins-alert jenkins-alert-info" style="margin-bottom:20px;font-size:0.87em;">
+            &#8505; Display name not yet resolved. It will be set automatically when the first group member signs in with Microsoft.
+          </div>
+        </j:if>
+
+        <!-- Flash messages -->
+        <j:if test="${req.getParameter('added') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom:16px;">
+            Group added successfully. Assign roles below to grant access to jobs and folders.
+          </div>
+        </j:if>
+        <j:if test="${req.getParameter('saved') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom:16px;">Role assignment saved.</div>
+        </j:if>
+        <j:if test="${req.getParameter('error') == 'invalidRole'}">
+          <div class="jenkins-alert jenkins-alert-danger" style="margin-bottom:16px;">Invalid role selected.</div>
+        </j:if>
+
+        <!-- Role Assignments -->
+        <div style="background:var(--background-color,#fff);border:1px solid var(--panel-border-color,#e9ecef);border-radius:8px;margin-bottom:24px;">
+          <div style="padding:14px 18px;border-bottom:1px solid var(--panel-border-color,#e9ecef);display:flex;align-items:center;justify-content:space-between;">
+            <div style="font-weight:700;font-size:0.95em;">Role Assignments</div>
+            <button type="button" onclick="toggleGrantPanel()" class="jenkins-button jenkins-button--primary" style="font-size:0.82em;">
+              + Add Assignment
+            </button>
+          </div>
+
+          <!-- Grant panel -->
+          <div id="grantPanel" style="display:none;padding:16px 18px;border-bottom:1px solid var(--panel-border-color,#e9ecef);background:#f9fafb;">
+            <form method="post" action="doGrantGroupAssignment">
+              <input type="hidden" name="${app.crumbRequestField}" value="${app.crumb}"/>
+              <input type="hidden" name="sid" value="${group.groupOid}"/>
+              <input type="hidden" name="type" value="GROUP"/>
+              <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+                <div style="flex:1;min-width:160px;">
+                  <div class="oam-label">Role</div>
+                  <select name="roleId" class="jenkins-select" style="width:100%;">
+                    <j:forEach var="role" items="${it.roles}">
+                      <option value="${role.roleName}">${role.roleName}</option>
+                    </j:forEach>
+                    <option value="CUSTOM">Custom Permissions</option>
+                  </select>
+                </div>
+                <div style="flex:1;min-width:160px;">
+                  <div class="oam-label">Scope</div>
+                  <select name="scopeType" class="jenkins-select" style="width:100%;" onchange="onScopeTypeChange(this.value)">
+                    <option value="GLOBAL">Global</option>
+                    <option value="FOLDER">Folder</option>
+                    <option value="JOB">Job</option>
+                  </select>
+                </div>
+                <div id="scopeItemDiv" style="flex:2;min-width:200px;display:none;">
+                  <div class="oam-label">Folder / Job Path</div>
+                  <input type="text" name="scope" id="scopeItem" class="jenkins-input"
+                         placeholder="e.g. payments or payments/api" style="width:100%;box-sizing:border-box;"/>
+                </div>
+                <button type="submit" class="jenkins-button jenkins-button--primary" style="font-size:0.85em;white-space:nowrap;">Save</button>
+                <button type="button" onclick="toggleGrantPanel()" class="jenkins-button" style="font-size:0.85em;">Cancel</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Assignments table -->
+          <j:set var="groupAssignments" value="${it.getGroupAssignmentsForOid(group.groupOid)}"/>
+          <j:choose>
+            <j:when test="${groupAssignments.isEmpty()}">
+              <div style="padding:28px;text-align:center;color:#888;font-size:0.87em;">
+                No role assignments yet. Add one above to grant this group access to jobs or folders.
+              </div>
+            </j:when>
+            <j:otherwise>
+              <table style="width:100%;border-collapse:collapse;">
+                <tr>
+                  <th class="oam-th">Role</th>
+                  <th class="oam-th">Scope</th>
+                  <th class="oam-th">Granted By</th>
+                  <th class="oam-th">Expires</th>
+                  <th class="oam-th"></th>
+                </tr>
+                <j:forEach var="a" items="${groupAssignments}">
+                  <tr style="border-top:1px solid var(--panel-border-color,#f0f0f0);">
+                    <td style="padding:10px 16px;font-size:0.88em;">
+                      <span style="font-weight:600;">${a.roleId}</span>
+                    </td>
+                    <td style="padding:10px 16px;font-size:0.85em;color:#555;">
+                      <j:choose>
+                        <j:when test="${a.scope.isEmpty()}">Global</j:when>
+                        <j:otherwise><code>${a.scope}</code></j:otherwise>
+                      </j:choose>
+                    </td>
+                    <td style="padding:10px 16px;font-size:0.82em;color:#888;">${a.grantedBy}</td>
+                    <td style="padding:10px 16px;font-size:0.82em;color:#888;">
+                      <j:choose>
+                        <j:when test="${a.expiresAt == null}">&#8212;</j:when>
+                        <j:otherwise>${a.expiresAt}</j:otherwise>
+                      </j:choose>
+                    </td>
+                    <td style="padding:10px 16px;text-align:right;">
+                      <form method="post" action="doRevokeGroupAssignment" style="display:inline;">
+                        <input type="hidden" name="${app.crumbRequestField}" value="${app.crumb}"/>
+                        <input type="hidden" name="sid" value="${group.groupOid}"/>
+                        <input type="hidden" name="type" value="GROUP"/>
+                        <input type="hidden" name="scope" value="${a.scope}"/>
+                        <button type="submit" class="jenkins-button" style="font-size:0.78em;color:#c0392b;border-color:#e8c9c7;">Revoke</button>
+                      </form>
+                    </td>
+                  </tr>
+                </j:forEach>
+              </table>
+            </j:otherwise>
+          </j:choose>
+        </div>
+
+        <!-- Members provisioned via this group -->
+        <div style="background:var(--background-color,#fff);border:1px solid var(--panel-border-color,#e9ecef);border-radius:8px;">
+          <div style="padding:14px 18px;border-bottom:1px solid var(--panel-border-color,#e9ecef);font-weight:700;font-size:0.95em;">
+            Members with Jenkins Accounts
+          </div>
+          <div style="padding:10px 18px 6px;font-size:0.8em;color:#888;">
+            Accounts auto-created when group members signed in for the first time.
+          </div>
+          <j:set var="members" value="${it.getGroupMembers(group.groupOid)}"/>
+          <j:choose>
+            <j:when test="${members.isEmpty()}">
+              <div style="padding:28px;text-align:center;color:#888;font-size:0.87em;">
+                No members have signed in via this group yet.
+              </div>
+            </j:when>
+            <j:otherwise>
+              <table style="width:100%;border-collapse:collapse;">
+                <tr>
+                  <th class="oam-th">User</th>
+                  <th class="oam-th">Last Login</th>
+                </tr>
+                <j:forEach var="m" items="${members}">
+                  <tr style="border-top:1px solid var(--panel-border-color,#f0f0f0);">
+                    <td style="padding:10px 16px;font-size:0.88em;">
+                      <a href="userDetail?sid=${m.userId}&amp;type=USER" style="color:#0078d4;text-decoration:none;font-weight:600;">${m.fullName}</a>
+                      <span style="font-size:0.82em;color:#888;margin-left:6px;">${m.userId}</span>
+                    </td>
+                    <td style="padding:10px 16px;font-size:0.82em;color:#888;">
+                      <j:choose>
+                        <j:when test="${m.lastLoginAt == null}">Never</j:when>
+                        <j:otherwise>${m.lastLoginAt}</j:otherwise>
+                      </j:choose>
+                    </td>
+                  </tr>
+                </j:forEach>
+              </table>
+            </j:otherwise>
+          </j:choose>
+        </div>
+
+      </j:if>
+    </div>
+
+    <style>
+      .oam-label { font-size:.75em;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#888;margin-bottom:6px; }
+      .oam-th { padding:10px 16px;text-align:left;font-size:.78em;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-color-secondary,#888);white-space:nowrap; }
+    </style>
+
+    <script>//<![CDATA[
+      function toggleGrantPanel() {
+        var p = document.getElementById('grantPanel');
+        p.style.display = p.style.display === 'none' ? '' : 'none';
+      }
+      function onScopeTypeChange(val) {
+        document.getElementById('scopeItemDiv').style.display = (val === 'GLOBAL') ? 'none' : '';
+      }
+    //]]></script>
+
+  </l:main-panel>
+</l:layout>
+</j:jelly>

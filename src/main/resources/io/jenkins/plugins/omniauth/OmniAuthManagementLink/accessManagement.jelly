@@ -289,7 +289,7 @@
 
         <div style="position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between;
                     padding:18px 20px;border-bottom:1px solid var(--panel-border-color,#eee);background:var(--background-color,#fff);">
-          <div style="font-weight:700;font-size:1em;">Add User</div>
+          <div style="font-weight:700;font-size:1em;" id="auDrawerTitle">Add User</div>
           <button type="button" onclick="closeAddUserDrawer()"
                   style="background:none;border:none;cursor:pointer;color:#999;font-size:1.2em;padding:6px;line-height:1;">&#10005;</button>
         </div>
@@ -312,6 +312,11 @@
                        style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px;cursor:pointer;font-size:0.88em;background:var(--background-color,#fff);color:var(--text-color,#333);transition:background 0.15s;">
                   <input type="radio" name="userType" id="auTypeEntra" value="ENTRA"
                          onchange="auTypeChange('ENTRA')" style="display:none;"/> &#9729; Entra / Microsoft
+                </label>
+                <label id="auTypeGroupLabel"
+                       style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px;cursor:pointer;font-size:0.88em;background:var(--background-color,#fff);color:var(--text-color,#333);transition:background 0.15s;">
+                  <input type="radio" name="userType" id="auTypeGroup" value="GROUP"
+                         onchange="auTypeChange('GROUP')" style="display:none;"/> &#128101; Entra Group
                 </label>
               </div>
             </div>
@@ -359,7 +364,33 @@
               &#9989; Access will be pre-provisioned. When this user logs in via Microsoft for the first time, their account will be created automatically and access will already be in place.
             </div>
 
-            <div style="display:flex;gap:10px;margin-top:4px;">
+            <!-- Group: OID + label fields -->
+            <div id="auGroupFields" style="display:none;">
+              <div style="margin-bottom:10px;">
+                <div class="oam-label">Group Object ID (OID) *</div>
+                <input id="auGroupOid" type="text" name="sid"
+                       class="jenkins-input" placeholder="e.g. xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                       style="width:100%;box-sizing:border-box;font-family:monospace;font-size:0.9em;"/>
+                <div style="font-size:0.76em;color:#888;margin-top:4px;">
+                  Find in Azure portal: Azure AD &#8250; Groups &#8250; [Your Group] &#8250; Object ID
+                </div>
+              </div>
+              <div style="margin-bottom:16px;">
+                <div class="oam-label">Label (optional)</div>
+                <input id="auGroupLabel" type="text" name="groupLabel"
+                       class="jenkins-input" placeholder="e.g. Payments Team Developers"
+                       style="width:100%;box-sizing:border-box;"/>
+                <div style="font-size:0.76em;color:#888;margin-top:4px;">Your own note — shown until display name resolves on first login.</div>
+              </div>
+              <div style="margin-bottom:16px;padding:10px 12px;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;font-size:0.82em;color:#92400e;">
+                &#128101; All members of this Azure AD group will be able to log in via Microsoft SSO. Jenkins accounts are created automatically on first login. Access is re-validated on every login — removing this group immediately revokes access.
+              </div>
+              <div style="padding:10px 12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;font-size:0.82em;color:#0c4a6e;">
+                &#8505; Display name will be resolved automatically when the first group member signs in with Microsoft.
+              </div>
+            </div>
+
+            <div style="display:flex;gap:10px;margin-top:16px;">
               <button type="submit" id="auSubmitBtn" class="jenkins-button jenkins-button--primary"
                       style="font-size:0.88em;">Continue</button>
               <button type="button" onclick="closeAddUserDrawer()" class="jenkins-button" style="font-size:0.88em;">Cancel</button>
@@ -433,12 +464,17 @@
         }
 
         function auReset() {
-          document.getElementById('auSid').value = '';
+          if (auCurrentType !== 'GROUP') {
+            document.getElementById('auSid').value = '';
+          }
           document.getElementById('auStatus').style.display = 'none';
           document.getElementById('auCreateForm').style.display = 'none';
           document.getElementById('auEntraInfo').style.display = auCurrentType === 'ENTRA' ? '' : 'none';
+          document.getElementById('auGroupFields').style.display = auCurrentType === 'GROUP' ? '' : 'none';
+          document.getElementById('auSidLabel').parentElement.style.display = auCurrentType === 'GROUP' ? 'none' : '';
           document.getElementById('auAction').value = 'existing';
-          document.getElementById('auSubmitBtn').textContent = 'Continue';
+          document.getElementById('auSubmitBtn').textContent = auCurrentType === 'GROUP' ? 'Add Group' : 'Continue';
+          document.getElementById('auDrawerTitle').textContent = auCurrentType === 'GROUP' ? 'Add Entra Group' : 'Add User';
           auUserFound = false;
         }
 
@@ -446,26 +482,40 @@
           auCurrentType = type;
           var nativeLabel = document.getElementById('auTypeNativeLabel');
           var entraLabel  = document.getElementById('auTypeEntraLabel');
-          var sidLabel    = document.getElementById('auSidLabel');
-          var sid         = document.getElementById('auSid');
+          var groupLabel  = document.getElementById('auTypeGroupLabel');
+          var inactive    = 'var(--background-color,#fff)';
+          var inactiveClr = 'var(--text-color,#333)';
+          var active      = '#1a56b0';
+          var activeClr   = '#fff';
 
+          nativeLabel.style.background = type === 'NATIVE' ? active : inactive;
+          nativeLabel.style.color      = type === 'NATIVE' ? activeClr : inactiveClr;
+          entraLabel.style.background  = type === 'ENTRA'  ? active : inactive;
+          entraLabel.style.color       = type === 'ENTRA'  ? activeClr : inactiveClr;
+          groupLabel.style.background  = type === 'GROUP'  ? active : inactive;
+          groupLabel.style.color       = type === 'GROUP'  ? activeClr : inactiveClr;
+
+          var sidLabel = document.getElementById('auSidLabel');
+          var sid      = document.getElementById('auSid');
           if (type === 'NATIVE') {
-            nativeLabel.style.background = '#1a56b0'; nativeLabel.style.color = '#fff';
-            entraLabel.style.background  = 'var(--background-color,#fff)'; entraLabel.style.color = 'var(--text-color,#333)';
             sidLabel.textContent = 'Username *';
             sid.placeholder = 'e.g. mark';
-            document.getElementById('auEntraInfo').style.display = 'none';
-          } else {
-            entraLabel.style.background  = '#1a56b0'; entraLabel.style.color = '#fff';
-            nativeLabel.style.background = 'var(--background-color,#fff)'; nativeLabel.style.color = 'var(--text-color,#333)';
+          } else if (type === 'ENTRA') {
             sidLabel.textContent = 'Email / UPN *';
             sid.placeholder = 'e.g. mark@company.com';
-            document.getElementById('auEntraInfo').style.display = '';
-            document.getElementById('auStatus').style.display = 'none';
-            document.getElementById('auCreateForm').style.display = 'none';
           }
+
+          // For GROUP, swap the sid field for the group OID field
+          if (type === 'GROUP') {
+            sid.name = '';  // don't submit sid for group — groupOid field has name="sid"
+            document.getElementById('auGroupOid').name = 'sid';
+          } else {
+            sid.name = 'sid';
+            document.getElementById('auGroupOid').name = '';
+          }
+
           auReset();
-          sid.value = '';
+          if (type !== 'GROUP') sid.value = '';
         }
 
         function auOnInput(val) {

@@ -32,11 +32,26 @@ public class OmniAuthUserProperty extends UserProperty {
     /** Display names of groups cached from the last successful Entra login. */
     private List<String> cachedGroups;
 
+    /**
+     * How this account was provisioned.
+     * "INDIVIDUAL" — admin explicitly pre-provisioned this user.
+     * "VIA_ENTRA_GROUP" — auto-created on first login via Azure AD group membership.
+     */
+    private String provisioningSource;
+
+    /**
+     * OIDs of Access Management GROUP entities currently granting this user access.
+     * Only populated when provisioningSource = VIA_ENTRA_GROUP.
+     * Refreshed on every login to reflect current group membership.
+     */
+    private List<String> activeGroupOids;
+
     @DataBoundConstructor
     public OmniAuthUserProperty(String entraObjectId, String entraUpn) {
         this.entraObjectId = entraObjectId;
         this.entraUpn = entraUpn;
         this.cachedGroups = new ArrayList<>();
+        this.activeGroupOids = new ArrayList<>();
     }
 
     public String getEntraObjectId() {
@@ -69,6 +84,26 @@ public class OmniAuthUserProperty extends UserProperty {
 
     public void setCachedGroups(List<String> cachedGroups) {
         this.cachedGroups = new ArrayList<>(cachedGroups);
+    }
+
+    public String getProvisioningSource() {
+        return provisioningSource != null ? provisioningSource : "INDIVIDUAL";
+    }
+
+    public void setProvisioningSource(String provisioningSource) {
+        this.provisioningSource = provisioningSource;
+    }
+
+    public boolean isViaGroup() {
+        return "VIA_ENTRA_GROUP".equals(provisioningSource);
+    }
+
+    public List<String> getActiveGroupOids() {
+        return activeGroupOids != null ? Collections.unmodifiableList(activeGroupOids) : Collections.emptyList();
+    }
+
+    public void setActiveGroupOids(List<String> activeGroupOids) {
+        this.activeGroupOids = activeGroupOids != null ? new ArrayList<>(activeGroupOids) : new ArrayList<>();
     }
 
     @Extension

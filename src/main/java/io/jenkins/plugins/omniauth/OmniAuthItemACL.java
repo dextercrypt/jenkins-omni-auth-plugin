@@ -4,6 +4,7 @@ import hudson.security.ACL;
 import hudson.security.Permission;
 import jenkins.model.Jenkins;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 
 import java.util.Collections;
 import java.util.HashSet;
@@ -60,6 +61,20 @@ public class OmniAuthItemACL extends ACL {
             if (assignment.isExpired()) continue;
             Set<String> granted = computeGrantedPermissions(assignment, roleConfig);
             if (impliedBy(granted, permission)) return true;
+        }
+
+        // Check GROUP assignments — iterate the user's Azure AD group authorities
+        for (GrantedAuthority authority : auth.getAuthorities()) {
+            if (authority instanceof EntraGroupDetails) {
+                EntraGroupDetails group = (EntraGroupDetails) authority;
+                List<OmniAuthAssignment> groupAssignments =
+                        config.getAssignmentsForUser(group.getObjectId(), "GROUP");
+                for (OmniAuthAssignment assignment : groupAssignments) {
+                    if (assignment.isExpired()) continue;
+                    Set<String> granted = computeGrantedPermissions(assignment, roleConfig);
+                    if (impliedBy(granted, permission)) return true;
+                }
+            }
         }
 
         // Fall through to global matrix-auth for users with global grants

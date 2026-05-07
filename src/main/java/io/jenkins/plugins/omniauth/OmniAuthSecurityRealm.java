@@ -247,9 +247,12 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
             return HttpResponses.error(500, "Microsoft did not return a valid user identifier.");
         }
 
-        // Optional group sync
+        // Fetch groups if group sync is enabled OR if GROUP entities exist in Access Management.
+        // GROUP entities require group data at gate time regardless of the enableGroupSync flag.
         List<EntraGroupDetails> groups = new ArrayList<>();
-        if (entraConfig.isEnableGroupSync() && result.accessToken() != null) {
+        OmniAuthAssignmentConfig assignmentConfig = OmniAuthAssignmentConfig.get();
+        boolean needGroups = (entraConfig.isEnableGroupSync() || (assignmentConfig != null && assignmentConfig.hasAnyGroups()));
+        if (needGroups && result.accessToken() != null) {
             try {
                 groups = new GraphApiHelper().getGroupMemberships(result.accessToken());
             } catch (IOException | InterruptedException e) {
@@ -259,9 +262,8 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
             }
         }
 
-        // Gate: only users pre-provisioned by an admin can log in via SSO.
-        // Rejects first-time Microsoft logins from accounts not set up in Access Management.
-        if (!isPreProvisioned(oid, upn)) {
+        // Gate: only individually pre-provisioned users or members of allowed groups can log in.
+        if (!isPreProvisioned(oid, upn, groups)) {
             String displayId = upn != null ? upn : oid;
             LOGGER.log(Level.WARNING, "Rejected SSO login — not pre-provisioned: {0}", displayId);
             OmniAuthAuditLog audit = OmniAuthAuditLog.get();
@@ -320,13 +322,26 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
 
     private User getOrCreateEntraUser(String oid, String upn, String displayName,
                                       List<EntraGroupDetails> groups) throws IOException {
+        // Determine provisioning source and active group OIDs
+        OmniAuthAssignmentConfig assignmentConfig = OmniAuthAssignmentConfig.get();
+        List<String> matchingGroupOids = new ArrayList<>();
+        if (assignmentConfig != null) {
+            for (EntraGroupDetails g : groups) {
+                if (assignmentConfig.hasGroup(g.getObjectId())) {
+                    matchingGroupOids.add(g.getObjectId());
+                    // Resolve display name on the group entity if not yet set
+                    assignmentConfig.resolveGroupDisplayName(g.getObjectId(), g.getDisplayName());
+                }
+            }
+        }
+
         // Fast path: look up by UPN directly (UPN is the Jenkins user ID)
         if (upn != null && !upn.isEmpty()) {
             User existing = User.getById(upn, false);
             if (existing != null) {
                 OmniAuthUserProperty prop = existing.getProperty(OmniAuthUserProperty.class);
                 if (prop != null && oid.equals(prop.getEntraObjectId())) {
-                    updateUserProperty(existing, oid, upn, groups);
+                    updateUserProperty(existing, oid, upn, groups, matchingGroupOids);
                     return existing;
                 }
             }
@@ -335,7 +350,7 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
         for (User u : User.getAll()) {
             OmniAuthUserProperty prop = u.getProperty(OmniAuthUserProperty.class);
             if (prop != null && oid.equals(prop.getEntraObjectId())) {
-                updateUserProperty(u, oid, upn, groups);
+                updateUserProperty(u, oid, upn, groups, matchingGroupOids);
                 return u;
             }
         }
@@ -343,29 +358,55 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
         String userId = (upn != null && !upn.isEmpty()) ? upn : oid;
         User newUser = User.getOrCreateByIdOrFullName(userId);
         newUser.setFullName(displayName != null ? displayName : upn);
-        updateUserProperty(newUser, oid, upn, groups);
-        LOGGER.log(Level.INFO, "Provisioned Jenkins user for Entra identity: {0}", upn);
+        updateUserProperty(newUser, oid, upn, groups, matchingGroupOids);
+        String source = matchingGroupOids.isEmpty() ? "individual pre-provisioning" : "group membership";
+        LOGGER.log(Level.INFO, "Provisioned Jenkins user for Entra identity: {0} via {1}", new Object[]{upn, source});
         return newUser;
     }
 
-    private boolean isPreProvisioned(String oid, String upn) {
-        // Returning user: already has a Jenkins account with OmniAuthUserProperty for this UPN
+    private boolean isPreProvisioned(String oid, String upn, List<EntraGroupDetails> groups) {
+        // Check 1 — individually pre-provisioned (provisioningSource = INDIVIDUAL or legacy account)
         if (upn != null && !upn.isEmpty()) {
             User existing = User.getById(upn, false);
-            if (existing != null && existing.getProperty(OmniAuthUserProperty.class) != null) return true;
+            if (existing != null) {
+                OmniAuthUserProperty prop = existing.getProperty(OmniAuthUserProperty.class);
+                if (prop != null && !prop.isViaGroup()) return true;
+            }
         }
-        // Returning user whose UPN changed: find by OID
         if (oid != null) {
             for (User u : User.getAll()) {
                 OmniAuthUserProperty prop = u.getProperty(OmniAuthUserProperty.class);
-                if (prop != null && oid.equals(prop.getEntraObjectId())) return true;
+                if (prop != null && oid.equals(prop.getEntraObjectId()) && !prop.isViaGroup()) return true;
             }
         }
+
+        // Check 2 — VIA_ENTRA_GROUP: re-validate group membership on every login
+        OmniAuthAssignmentConfig assignmentConfig = OmniAuthAssignmentConfig.get();
+        if (assignmentConfig != null && assignmentConfig.hasAnyGroups()) {
+            for (EntraGroupDetails g : groups) {
+                if (assignmentConfig.hasGroup(g.getObjectId())) return true;
+            }
+        }
+
+        // Check 3 — returning VIA_ENTRA_GROUP user whose account already exists
+        // We still require their group to be present in Access Management
+        if (oid != null) {
+            for (User u : User.getAll()) {
+                OmniAuthUserProperty prop = u.getProperty(OmniAuthUserProperty.class);
+                if (prop != null && oid.equals(prop.getEntraObjectId()) && prop.isViaGroup()) {
+                    // Account exists but was group-provisioned — re-check group membership above
+                    // If we got here, none of their groups matched → blocked
+                    return false;
+                }
+            }
+        }
+
         return false;
     }
 
     private void updateUserProperty(User user, String oid, String upn,
-                                    List<EntraGroupDetails> groups) throws IOException {
+                                    List<EntraGroupDetails> groups,
+                                    List<String> matchingGroupOids) throws IOException {
         String now = Instant.now().toString();
         OmniAuthUserProperty prop = new OmniAuthUserProperty(oid, upn);
         prop.setGroupsLastSynced(now);
@@ -373,6 +414,23 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
         List<String> names = new ArrayList<>();
         for (EntraGroupDetails g : groups) names.add(g.getDisplayName());
         prop.setCachedGroups(names);
+
+        // Set provisioning source
+        if (!matchingGroupOids.isEmpty()) {
+            // Check if previously individually provisioned — preserve INDIVIDUAL if so
+            OmniAuthUserProperty existing = user.getProperty(OmniAuthUserProperty.class);
+            if (existing != null && !existing.isViaGroup()) {
+                prop.setProvisioningSource("INDIVIDUAL");
+                prop.setActiveGroupOids(new ArrayList<>());
+            } else {
+                prop.setProvisioningSource("VIA_ENTRA_GROUP");
+                prop.setActiveGroupOids(matchingGroupOids);
+            }
+        } else {
+            prop.setProvisioningSource("INDIVIDUAL");
+            prop.setActiveGroupOids(new ArrayList<>());
+        }
+
         user.addProperty(prop);
         user.save();
     }

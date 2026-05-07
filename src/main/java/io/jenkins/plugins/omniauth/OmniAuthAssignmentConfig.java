@@ -18,6 +18,7 @@ public class OmniAuthAssignmentConfig extends GlobalConfiguration {
     private static final Logger LOGGER = Logger.getLogger(OmniAuthAssignmentConfig.class.getName());
 
     private List<OmniAuthAssignment> assignments = new CopyOnWriteArrayList<>();
+    private List<OmniAuthGroupEntity> groups = new CopyOnWriteArrayList<>();
 
     public OmniAuthAssignmentConfig() {
         load();
@@ -26,6 +27,9 @@ public class OmniAuthAssignmentConfig extends GlobalConfiguration {
     private Object readResolve() {
         if (!(assignments instanceof CopyOnWriteArrayList)) {
             assignments = new CopyOnWriteArrayList<>(assignments != null ? assignments : Collections.emptyList());
+        }
+        if (!(groups instanceof CopyOnWriteArrayList)) {
+            groups = new CopyOnWriteArrayList<>(groups != null ? groups : Collections.emptyList());
         }
         return this;
     }
@@ -95,5 +99,47 @@ public class OmniAuthAssignmentConfig extends GlobalConfiguration {
                 a.getUserId().equals(userId)
                 && a.getAuthType().equalsIgnoreCase(authType)
                 && a.getScope().equals(normalizedScope));
+    }
+
+    // ── Group entity methods ──────────────────────────────────────────────────
+
+    public List<OmniAuthGroupEntity> getGroups() {
+        return Collections.unmodifiableList(groups);
+    }
+
+    public synchronized void addGroup(OmniAuthGroupEntity group) {
+        groups.add(group);
+        save();
+    }
+
+    public synchronized void removeGroup(String groupOid) {
+        groups.removeIf(g -> g.getGroupOid().equals(groupOid));
+        save();
+    }
+
+    public OmniAuthGroupEntity findGroup(String groupOid) {
+        return groups.stream()
+                .filter(g -> g.getGroupOid().equals(groupOid))
+                .findFirst().orElse(null);
+    }
+
+    public boolean hasGroup(String groupOid) {
+        return groups.stream().anyMatch(g -> g.getGroupOid().equals(groupOid));
+    }
+
+    /** Returns true if any GROUP entities have been added to Access Management. */
+    public boolean hasAnyGroups() {
+        return !groups.isEmpty();
+    }
+
+    /** Resolves display name for a group — called when first member logs in. */
+    public synchronized void resolveGroupDisplayName(String groupOid, String displayName) {
+        for (OmniAuthGroupEntity g : groups) {
+            if (g.getGroupOid().equals(groupOid) && !g.isResolved()) {
+                g.setDisplayName(displayName);
+                save();
+                break;
+            }
+        }
     }
 }
