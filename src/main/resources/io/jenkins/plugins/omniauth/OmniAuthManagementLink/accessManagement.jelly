@@ -37,6 +37,15 @@
         <j:if test="${request2.getParameter('error') == 'invalidRole'}">
           <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom:12px;">Role not found — check the Roles tab.</div>
         </j:if>
+        <j:if test="${request2.getParameter('error') == 'missingSid'}">
+          <div class="jenkins-alert jenkins-alert-danger" style="margin-bottom:12px;">User ID / Group OID is required.</div>
+        </j:if>
+        <j:if test="${request2.getParameter('error') == 'groupAlreadyExists'}">
+          <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom:12px;">This group has already been added.</div>
+        </j:if>
+        <j:if test="${request2.getParameter('error') == 'configError'}">
+          <div class="jenkins-alert jenkins-alert-danger" style="margin-bottom:12px;">Assignment configuration is not available.</div>
+        </j:if>
         <j:if test="${request2.getParameter('error') == 'missingRoleName'}">
           <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom:12px;">Role name is required.</div>
         </j:if>
@@ -110,10 +119,20 @@
                           <div style="display:flex;align-items:center;gap:11px;">
                             <div style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.9em;font-weight:700;flex-shrink:0;color:#fff;background:#1a56b0;">${u.avatarLetter}</div>
                             <div>
-                              <div style="font-weight:600;font-size:0.9em;">${u.sid}</div>
-                              <j:if test="${u.displayName != null and u.displayName != u.sid}">
-                                <div style="font-size:0.76em;color:var(--text-color-secondary,#888);">${u.displayName}</div>
-                              </j:if>
+                              <j:choose>
+                                <j:when test="${u.type.name() == 'GROUP'}">
+                                  <div style="font-weight:600;font-size:0.9em;">${u.displayName != null and u.displayName != u.sid ? u.displayName : u.sid}</div>
+                                  <j:if test="${u.displayName != null and u.displayName != u.sid}">
+                                    <div style="font-size:0.76em;color:var(--text-color-secondary,#888);font-family:monospace;">${u.sid}</div>
+                                  </j:if>
+                                </j:when>
+                                <j:otherwise>
+                                  <div style="font-weight:600;font-size:0.9em;">${u.sid}</div>
+                                  <j:if test="${u.displayName != null and u.displayName != u.sid}">
+                                    <div style="font-size:0.76em;color:var(--text-color-secondary,#888);">${u.displayName}</div>
+                                  </j:if>
+                                </j:otherwise>
+                              </j:choose>
                             </div>
                           </div>
                         </td>
@@ -368,7 +387,7 @@
             <div id="auGroupFields" style="display:none;">
               <div style="margin-bottom:10px;">
                 <div class="oam-label">Group Object ID (OID) *</div>
-                <input id="auGroupOid" type="text" name="sid"
+                <input id="auGroupOid" type="text" name="groupOid"
                        class="jenkins-input" placeholder="e.g. xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
                        style="width:100%;box-sizing:border-box;font-family:monospace;font-size:0.9em;"/>
                 <div style="font-size:0.76em;color:#888;margin-top:4px;">
@@ -425,8 +444,12 @@
         }
 
         function gotoDetail(rowEl) {
-          window.location.href = 'userDetail?sid=' + encodeURIComponent(rowEl.dataset.sid) +
-                                  '&type=' + encodeURIComponent(rowEl.dataset.type);
+          if (rowEl.dataset.type === 'GROUP') {
+            window.location.href = 'groupDetail?oid=' + encodeURIComponent(rowEl.dataset.sid);
+          } else {
+            window.location.href = 'userDetail?sid=' + encodeURIComponent(rowEl.dataset.sid) +
+                                    '&type=' + encodeURIComponent(rowEl.dataset.type);
+          }
         }
 
         function filterUsers(q) {
@@ -505,17 +528,7 @@
             sid.placeholder = 'e.g. mark@company.com';
           }
 
-          // For GROUP, swap the sid field for the group OID field
-          if (type === 'GROUP') {
-            sid.name = '';  // don't submit sid for group — groupOid field has name="sid"
-            document.getElementById('auGroupOid').name = 'sid';
-          } else {
-            sid.name = 'sid';
-            document.getElementById('auGroupOid').name = '';
-          }
-
           auReset();
-          if (type !== 'GROUP') sid.value = '';
         }
 
         function auOnInput(val) {

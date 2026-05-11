@@ -853,6 +853,20 @@ public class OmniAuthManagementLink extends ManagementLink {
     public int getLegacyUserCount()    { return getTotalUserCount() - getEntraUserCount(); }
     public int getStaleUserCount()     { return getStaleUsers(staleThresholdDays()).size(); }
     public int getProtectedUserCount() { OmniAuthGlobalConfig c = OmniAuthGlobalConfig.get(); return c == null ? 0 : c.getProtectedUsers().size(); }
+
+    /** Returns true if this user is VIA_ENTRA_GROUP and at least one of their groups is still active in Access Management. */
+    public boolean isActiveGroupUser(String userId) {
+        User user = User.getById(userId, false);
+        if (user == null) return false;
+        OmniAuthUserProperty prop = user.getProperty(OmniAuthUserProperty.class);
+        if (prop == null || !prop.isViaGroup()) return false;
+        OmniAuthAssignmentConfig assignmentConfig = OmniAuthAssignmentConfig.get();
+        if (assignmentConfig == null) return false;
+        for (String oid : prop.getActiveGroupOids()) {
+            if (assignmentConfig.hasGroup(oid)) return true;
+        }
+        return false;
+    }
     public int getActiveUserCount() {
         int threshold = activeThresholdDays();
         Instant cutoff = Instant.now().minus(threshold, ChronoUnit.DAYS);
@@ -896,6 +910,36 @@ public class OmniAuthManagementLink extends ManagementLink {
                     status
             );
             if (histProp != null) info.setLatestEvent(histProp.getLatestEvent());
+
+            // Extended fields
+            if (entraProp != null) {
+                info.setProvisioningSource(entraProp.getProvisioningSource());
+                info.setEntraUpn(entraProp.getEntraUpn());
+                if (entraProp.isViaGroup()) {
+                    OmniAuthAssignmentConfig assignmentConfig = OmniAuthAssignmentConfig.get();
+                    if (assignmentConfig != null) {
+                        for (String oid : entraProp.getActiveGroupOids()) {
+                            if (assignmentConfig.hasGroup(oid)) {
+                                info.setActiveGroupUser(true);
+                                OmniAuthGroupEntity groupEntity = assignmentConfig.findGroup(oid);
+                                if (groupEntity != null) info.setGroupName(groupEntity.getEffectiveName());
+                                break;
+                            }
+                        }
+                    }
+                }
+            } else {
+                info.setProvisioningSource("NATIVE");
+            }
+
+            // Stale warning — would this user be flagged by cleanup?
+            Instant staleCutoff = Instant.now().minus(staleThresholdDays(), ChronoUnit.DAYS);
+            boolean isStale = (lastLogin == null) || Instant.parse(lastLogin).isBefore(staleCutoff);
+            info.setStaleWarning(isStale);
+
+            // Pending deletion flag
+            if (entraProp != null) info.setPendingDeletion(entraProp.isPendingDeletion());
+
             result.add(info);
         }
 
@@ -926,6 +970,9 @@ public class OmniAuthManagementLink extends ManagementLink {
             OmniAuthUserProperty entraProp = user.getProperty(OmniAuthUserProperty.class);
             LastLoginProperty    loginProp = user.getProperty(LastLoginProperty.class);
 
+            // Exclude pending deletion accounts — shown in their own section
+            if (entraProp != null && entraProp.isPendingDeletion()) continue;
+
             String lastLogin = resolveLastLogin(entraProp, loginProp);
             boolean isStale  = (lastLogin == null) || Instant.parse(lastLogin).isBefore(cutoff);
             if (!isStale) continue;
@@ -943,6 +990,41 @@ public class OmniAuthManagementLink extends ManagementLink {
             if (a.getLastLoginAt() == null) return -1;
             if (b.getLastLoginAt() == null) return 1;
             return a.getLastLoginAt().compareTo(b.getLastLoginAt()); // oldest first
+        });
+
+        return result;
+    }
+
+    public List<UserInfo> getPendingDeletionUsers() {
+        List<UserInfo> result = new ArrayList<>();
+        OmniAuthAssignmentConfig assignmentConfig = OmniAuthAssignmentConfig.get();
+
+        for (User user : User.getAll()) {
+            if (isInternalUser(user)) continue;
+            OmniAuthUserProperty entraProp = user.getProperty(OmniAuthUserProperty.class);
+            if (entraProp == null || !entraProp.isPendingDeletion()) continue;
+
+            LastLoginProperty loginProp = user.getProperty(LastLoginProperty.class);
+            String lastLogin = resolveLastLogin(entraProp, loginProp);
+
+            UserInfo info = new UserInfo(
+                    user.getId(),
+                    user.getFullName(),
+                    (entraProp != null) ? "Entra" : "Legacy",
+                    lastLogin,
+                    entraProp.getEntraObjectId()
+            );
+
+            // Determine reason: orphaned group account vs manually marked
+            boolean isOrphanedGroup = entraProp.isViaGroup() && entraProp.getActiveGroupOids().isEmpty();
+            info.setPendingReason(isOrphanedGroup ? "Group access revoked" : "Manually marked");
+            result.add(info);
+        }
+
+        result.sort((a, b) -> {
+            if (a.getLastLoginAt() == null) return -1;
+            if (b.getLastLoginAt() == null) return 1;
+            return a.getLastLoginAt().compareTo(b.getLastLoginAt());
         });
 
         return result;
@@ -1092,6 +1174,21 @@ public class OmniAuthManagementLink extends ManagementLink {
             }
             result.add(new AccessManagementUserInfo(sid, dn, atype, roleName, entry.getValue(), lastLogin));
         }
+        // Also include GROUP entities from OmniAuthAssignmentConfig that may not have matrix entries
+        // (e.g. if grantGlobalRead failed during initial add, or strategy was not active yet)
+        OmniAuthAssignmentConfig aConfig = OmniAuthAssignmentConfig.get();
+        if (aConfig != null) {
+            for (OmniAuthGroupEntity groupEntity : aConfig.getGroups()) {
+                String gOid = groupEntity.getGroupOid();
+                boolean alreadyPresent = result.stream()
+                        .anyMatch(r -> r.getType() == AuthorizationType.GROUP && r.getSid().equals(gOid));
+                if (!alreadyPresent) {
+                    result.add(new AccessManagementUserInfo(gOid, groupEntity.getEffectiveName(),
+                            AuthorizationType.GROUP, "—", Collections.emptySet(), null));
+                }
+            }
+        }
+
         result.sort((a, b) -> a.getSid().compareToIgnoreCase(b.getSid()));
         return result;
     }
@@ -1278,6 +1375,11 @@ public class OmniAuthManagementLink extends ManagementLink {
         String back   = ("userStatus".equals(from)) ? "userStatus" : "staleUsers";
         if (userId != null && !userId.isEmpty()) {
             OmniAuthGlobalConfig config = OmniAuthGlobalConfig.get();
+            if (isActiveGroupUser(userId)) {
+                LOGGER.warning("Deletion blocked — user is managed via active Entra group: " + userId);
+                rsp.sendRedirect(back + "?error=activeGroup");
+                return;
+            }
             if (config != null && config.isProtected(userId)) {
                 LOGGER.warning("Deletion blocked — user is protected: " + userId);
                 rsp.sendRedirect(back + "?error=protected");
@@ -1296,6 +1398,46 @@ public class OmniAuthManagementLink extends ManagementLink {
             purgeMatrixEntries(userId);
         }
         rsp.sendRedirect(back + "?deleted=true");
+    }
+
+    public void doMarkForDeletion(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String userId = req.getParameter("userId");
+        String from   = req.getParameter("from");
+        if (userId != null && !userId.isEmpty()) {
+            User user = User.getById(userId, false);
+            if (user != null) {
+                OmniAuthUserProperty prop = user.getProperty(OmniAuthUserProperty.class);
+                if (prop != null) {
+                    prop.setPendingDeletion(true);
+                    user.addProperty(prop);
+                    user.save();
+                    LOGGER.info("User marked for deletion by " + currentUserId() + ": " + userId);
+                }
+            }
+        }
+        String back = ("userStatus".equals(from)) ? "userStatus" : "staleUsers";
+        rsp.sendRedirect(back + "?marked=true");
+    }
+
+    public void doUnmarkForDeletion(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String userId = req.getParameter("userId");
+        String from   = req.getParameter("from");
+        if (userId != null && !userId.isEmpty()) {
+            User user = User.getById(userId, false);
+            if (user != null) {
+                OmniAuthUserProperty prop = user.getProperty(OmniAuthUserProperty.class);
+                if (prop != null) {
+                    prop.setPendingDeletion(false);
+                    user.addProperty(prop);
+                    user.save();
+                    LOGGER.info("Pending deletion cleared by " + currentUserId() + ": " + userId);
+                }
+            }
+        }
+        String back = ("userStatus".equals(from)) ? "userStatus" : "staleUsers";
+        rsp.sendRedirect(back + "?unmarked=true");
     }
 
     private void purgeMatrixEntries(String userId) {
@@ -1780,12 +1922,12 @@ public class OmniAuthManagementLink extends ManagementLink {
             OmniAuthRoleConfig roleConfig = OmniAuthRoleConfig.get();
             OmniAuthRoleConfig.RoleDefinition roleDef = roleConfig != null ? roleConfig.findRole(roleName) : null;
             if (roleDef == null) {
-                rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type) + "&error=invalidRole"); return;
+                rsp.sendRedirect(detailUrl(sid, atype, "error=invalidRole")); return;
             }
             permIds = new HashSet<>(roleDef.getPermissionIds());
         }
         if (permIds.isEmpty()) {
-            rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type) + "&error=noPermissions"); return;
+            rsp.sendRedirect(detailUrl(sid, atype, "error=noPermissions")); return;
         }
 
         String expiresAt = toInstantString(req.getParameter("expiresAt"));
@@ -1795,7 +1937,7 @@ public class OmniAuthManagementLink extends ManagementLink {
         } else {
             Item item = Jenkins.get().getItemByFullName(scope);
             if (item == null) {
-                rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type) + "&error=notFound"); return;
+                rsp.sendRedirect(detailUrl(sid, atype, "error=notFound")); return;
             }
             String scopeType = (item instanceof com.cloudbees.hudson.plugins.folder.AbstractFolder) ? "FOLDER" : "JOB";
             String authTypeStr = atype == AuthorizationType.GROUP ? "GROUP" : "USER";
@@ -1812,7 +1954,7 @@ public class OmniAuthManagementLink extends ManagementLink {
             grantGlobalRead(sid, atype);
             OmniAuthAuditLog audit = OmniAuthAuditLog.get();
             if (audit != null) audit.logGrant(Jenkins.getAuthentication2().getName(), sid, roleName, scope, expiresAt);
-            rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type(atype)) + "&saved=true");
+            rsp.sendRedirect(detailUrl(sid, atype, "saved=true"));
         }
     }
 
@@ -1843,12 +1985,12 @@ public class OmniAuthManagementLink extends ManagementLink {
             OmniAuthRoleConfig roleConfig = OmniAuthRoleConfig.get();
             OmniAuthRoleConfig.RoleDefinition roleDef = roleConfig != null ? roleConfig.findRole(roleName) : null;
             if (roleDef == null) {
-                rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type) + "&error=invalidRole"); return;
+                rsp.sendRedirect(detailUrl(sid, atype, "error=invalidRole")); return;
             }
             permIds = new HashSet<>(roleDef.getPermissionIds());
         }
         if (permIds.isEmpty()) {
-            rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type) + "&error=noPermissions"); return;
+            rsp.sendRedirect(detailUrl(sid, atype, "error=noPermissions")); return;
         }
 
         String scopeType;
@@ -1881,7 +2023,7 @@ public class OmniAuthManagementLink extends ManagementLink {
         }
         OmniAuthAuditLog audit = OmniAuthAuditLog.get();
         if (audit != null) audit.logEdit(Jenkins.getAuthentication2().getName(), sid, scope, oldRole != null ? oldRole : "?", roleName, expiresAt);
-        rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type(atype)) + "&saved=true");
+        rsp.sendRedirect(detailUrl(sid, atype, "saved=true"));
     }
 
     /** Revoke a specific access assignment (global or scoped to an item path). */
@@ -1913,7 +2055,7 @@ public class OmniAuthManagementLink extends ManagementLink {
             }
             OmniAuthAuditLog audit = OmniAuthAuditLog.get();
             if (audit != null) audit.logRevoke(Jenkins.getAuthentication2().getName(), sid, scope, revokedRole);
-            rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type(atype)) + "&saved=true");
+            rsp.sendRedirect(detailUrl(sid, atype, "saved=true"));
         }
     }
 
@@ -1925,6 +2067,49 @@ public class OmniAuthManagementLink extends ManagementLink {
         OmniAuthAssignmentConfig config = OmniAuthAssignmentConfig.get();
         if (config == null) return Collections.emptyList();
         return config.getAssignmentsForUser(groupOid, "GROUP");
+    }
+
+    /** Returns group assignments as the same rich view model used by userDetail.jelly. */
+    public List<UserAssignmentInfo> getGroupDetailAssignments() {
+        org.kohsuke.stapler.StaplerRequest2 req = org.kohsuke.stapler.Stapler.getCurrentRequest2();
+        if (req == null) return Collections.emptyList();
+        String oid = req.getParameter("oid");
+        if (oid == null) return Collections.emptyList();
+
+        OmniAuthRoleConfig roleConfig = OmniAuthRoleConfig.get();
+        List<UserAssignmentInfo> result = new ArrayList<>();
+
+        // Global assignment from matrix
+        hudson.security.AuthorizationStrategy strat = Jenkins.get().getAuthorizationStrategy();
+        if (strat instanceof GlobalMatrixAuthorizationStrategy) {
+            Set<String> perms = collectDirectPermsForUser(
+                    ((GlobalMatrixAuthorizationStrategy) strat).getGrantedPermissionEntries(),
+                    oid, AuthorizationType.GROUP);
+            if (!perms.isEmpty()) {
+                String roleName = roleConfig != null ? roleConfig.matchRole(perms) : null;
+                result.add(new UserAssignmentInfo("", "Jenkins (Global)", "global",
+                        roleName != null ? roleName : "Custom", new ArrayList<>(perms), null, null));
+            }
+        }
+
+        // Item-level assignments
+        OmniAuthAssignmentConfig aConfig = OmniAuthAssignmentConfig.get();
+        if (aConfig != null) {
+            for (OmniAuthAssignment a : aConfig.getAssignmentsForUser(oid, "GROUP")) {
+                if (a.getScope().isEmpty()) continue;
+                String itemType = "FOLDER".equals(a.getScopeType()) ? "folder" : "job";
+                List<String> perms = "CUSTOM".equalsIgnoreCase(a.getRoleId())
+                        ? a.getCustomPermissions()
+                        : (roleConfig != null && roleConfig.findRole(a.getRoleId()) != null
+                                ? roleConfig.findRole(a.getRoleId()).getPermissionIds()
+                                : Collections.emptyList());
+                List<String> customPerms = "CUSTOM".equalsIgnoreCase(a.getRoleId())
+                        ? a.getCustomPermissions() : Collections.emptyList();
+                result.add(new UserAssignmentInfo(a.getScope(), a.getScope(), itemType,
+                        a.getRoleId(), new ArrayList<>(perms), a.getExpiresAt(), new ArrayList<>(customPerms)));
+            }
+        }
+        return result;
     }
 
     public void doGrantGroupAssignment(StaplerRequest req, StaplerResponse rsp) throws Exception {
@@ -1998,12 +2183,20 @@ public class OmniAuthManagementLink extends ManagementLink {
     @POST
     public void doAddUser(StaplerRequest req, StaplerResponse rsp) throws Exception {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
-        String userType           = req.getParameter("userType"); // NATIVE or ENTRA
+        String userType           = req.getParameter("userType"); // NATIVE, ENTRA, or GROUP
         String sid                = req.getParameter("sid");
         String action             = req.getParameter("action");   // "existing" or "create"
         String fullName           = req.getParameter("fullName");
         String email              = req.getParameter("email");
         boolean forcePasswordChange = "true".equals(req.getParameter("forcePasswordChange"));
+
+        // For GROUP type the OID comes from a dedicated field to avoid conflicts with the sid field
+        if ("GROUP".equalsIgnoreCase(userType)) {
+            String groupOidParam = req.getParameter("groupOid");
+            if (groupOidParam != null && !groupOidParam.trim().isEmpty()) {
+                sid = groupOidParam.trim();
+            }
+        }
 
         if (sid == null || sid.trim().isEmpty()) {
             rsp.sendRedirect("accessManagement?error=missingSid"); return;
@@ -2247,6 +2440,12 @@ public class OmniAuthManagementLink extends ManagementLink {
             if (u != null && u.getFullName() != null && !u.getFullName().equals(sid)) {
                 return u.getFullName();
             }
+        } else if (type == AuthorizationType.GROUP) {
+            OmniAuthAssignmentConfig config = OmniAuthAssignmentConfig.get();
+            if (config != null) {
+                OmniAuthGroupEntity group = config.findGroup(sid);
+                if (group != null) return group.getEffectiveName();
+            }
         }
         return sid;
     }
@@ -2360,6 +2559,13 @@ public class OmniAuthManagementLink extends ManagementLink {
         private final String lastJobTriggeredAt;
         private final String status;
 
+        // Extended fields
+        private String provisioningSource; // NATIVE, INDIVIDUAL, VIA_ENTRA_GROUP
+        private String entraUpn;
+        private String groupName;          // effective group name if VIA_ENTRA_GROUP
+        private boolean activeGroupUser;
+        private boolean staleWarning;
+
         public UserStatusInfo(String userId, String fullName, String userType,
                               String lastLoginAt, String lastJobName,
                               String lastJobTriggeredAt, String status) {
@@ -2386,7 +2592,22 @@ public class OmniAuthManagementLink extends ManagementLink {
         public String getFormattedLastLoginAt()       { return formatDate(lastLoginAt); }
         public String getFormattedLastJobTriggeredAt(){ return formatDate(lastJobTriggeredAt); }
 
-        private LoginEvent latestEvent; // set externally after construction
+        public String getProvisioningSource()        { return provisioningSource != null ? provisioningSource : "NATIVE"; }
+        public void setProvisioningSource(String s)  { this.provisioningSource = s; }
+        public String getEntraUpn()                  { return entraUpn; }
+        public void setEntraUpn(String s)            { this.entraUpn = s; }
+        public String getGroupName()                 { return groupName; }
+        public void setGroupName(String s)           { this.groupName = s; }
+        public boolean isActiveGroupUser()           { return activeGroupUser; }
+        public void setActiveGroupUser(boolean b)    { this.activeGroupUser = b; }
+        public boolean isStaleWarning()              { return staleWarning; }
+        public void setStaleWarning(boolean b)       { this.staleWarning = b; }
+
+        private boolean pendingDeletion;
+        public boolean isPendingDeletion()           { return pendingDeletion; }
+        public void setPendingDeletion(boolean b)    { this.pendingDeletion = b; }
+
+        private LoginEvent latestEvent;
         public void setLatestEvent(LoginEvent e) { this.latestEvent = e; }
         public LoginEvent getLatestEvent()        { return latestEvent; }
     }
@@ -2429,6 +2650,7 @@ public class OmniAuthManagementLink extends ManagementLink {
         private final String userType;
         private final String lastLoginAt;
         private final String entraOid;
+        private String pendingReason; // null = not pending; "Group access revoked" or "Manually marked"
 
         public UserInfo(String userId, String fullName, String userType,
                         String lastLoginAt, String entraOid) {
@@ -2439,12 +2661,14 @@ public class OmniAuthManagementLink extends ManagementLink {
             this.entraOid    = entraOid;
         }
 
-        public String getUserId()      { return userId; }
-        public String getFullName()    { return fullName; }
-        public String getUserType()    { return userType; }
-        public String getLastLoginAt() { return lastLoginAt; }
-        public String getEntraOid()    { return entraOid; }
+        public String getUserId()        { return userId; }
+        public String getFullName()      { return fullName; }
+        public String getUserType()      { return userType; }
+        public String getLastLoginAt()   { return lastLoginAt; }
+        public String getEntraOid()      { return entraOid; }
         public boolean isNeverLoggedIn() { return lastLoginAt == null; }
+        public String getPendingReason() { return pendingReason; }
+        public void setPendingReason(String r) { this.pendingReason = r; }
     }
 
     public static final class AccessInfo {
@@ -2501,7 +2725,9 @@ public class OmniAuthManagementLink extends ManagementLink {
         public List<LoginEvent> getLoginHistory()  { return loginHistory; }
         public boolean isEntraUser()               { return "Entra".equals(userType); }
         public boolean isPerJobSupported() {
-            return authStrategy != null && authStrategy.toLowerCase().contains("projectmatrix");
+            return authStrategy != null &&
+                   (authStrategy.toLowerCase().contains("projectmatrix") ||
+                    authStrategy.toLowerCase().contains("omniauth"));
         }
     }
 
@@ -2928,7 +3154,7 @@ public class OmniAuthManagementLink extends ManagementLink {
                                       StaplerResponse rsp, boolean removing) throws Exception {
         hudson.security.AuthorizationStrategy strat = Jenkins.get().getAuthorizationStrategy();
         if (!(strat instanceof OmniAuthAuthorizationStrategy)) {
-            rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type(atype)) + "&error=notOmniAuth");
+            rsp.sendRedirect(detailUrl(sid, atype, "error=notOmniAuth"));
             return;
         }
         OmniAuthAuthorizationStrategy current = (OmniAuthAuthorizationStrategy) strat;
@@ -2950,12 +3176,19 @@ public class OmniAuthManagementLink extends ManagementLink {
         }
         Set<PermissionEntry> adminSet = rebuilt.getGrantedPermissionEntries().get(Jenkins.ADMINISTER);
         if (adminSet == null || adminSet.isEmpty()) {
-            rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type(atype)) + "&error=lastAdmin");
+            rsp.sendRedirect(detailUrl(sid, atype, "error=lastAdmin"));
             return;
         }
         Jenkins.get().setAuthorizationStrategy(rebuilt);
         Jenkins.get().save();
-        rsp.sendRedirect("userDetail?sid=" + enc(sid) + "&type=" + enc(type(atype)) + "&saved=true");
+        rsp.sendRedirect(detailUrl(sid, atype, "saved=true"));
+    }
+
+    private String detailUrl(String sid, AuthorizationType atype, String extra) {
+        if (atype == AuthorizationType.GROUP) {
+            return "groupDetail?oid=" + enc(sid) + (extra != null ? "&" + extra : "");
+        }
+        return "userDetail?sid=" + enc(sid) + "&type=USER" + (extra != null ? "&" + extra : "");
     }
 
     /**

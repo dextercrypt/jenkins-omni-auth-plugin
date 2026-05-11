@@ -268,6 +268,9 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
             LOGGER.log(Level.WARNING, "Rejected SSO login — not pre-provisioned: {0}", displayId);
             OmniAuthAuditLog audit = OmniAuthAuditLog.get();
             if (audit != null) audit.logLoginFailure(displayId, req.getRemoteAddr());
+            // If the rejected user was previously VIA_ENTRA_GROUP, clear their group OIDs
+            // and mark pending deletion so the orphaned account can be cleaned up.
+            markOrphanedGroupAccount(oid, upn);
             return HttpResponses.redirectTo(Jenkins.get().getRootUrl() + "loginError?error=notProvisioned");
         }
 
@@ -404,6 +407,35 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
         return false;
     }
 
+    /** When a VIA_ENTRA_GROUP user is rejected at login, clear their group OIDs and flag for deletion. */
+    private void markOrphanedGroupAccount(String oid, String upn) {
+        try {
+            User existing = null;
+            if (upn != null) existing = User.getById(upn, false);
+            if (existing == null && oid != null) {
+                for (User u : User.getAll()) {
+                    OmniAuthUserProperty p = u.getProperty(OmniAuthUserProperty.class);
+                    if (p != null && oid.equals(p.getEntraObjectId())) { existing = u; break; }
+                }
+            }
+            if (existing == null) return;
+            OmniAuthUserProperty prop = existing.getProperty(OmniAuthUserProperty.class);
+            if (prop == null || !prop.isViaGroup()) return;
+            OmniAuthUserProperty updated = new OmniAuthUserProperty(prop.getEntraObjectId(), prop.getEntraUpn());
+            updated.setGroupsLastSynced(prop.getGroupsLastSynced());
+            updated.setLastLoginAt(prop.getLastLoginAt());
+            updated.setCachedGroups(prop.getCachedGroups());
+            updated.setProvisioningSource("VIA_ENTRA_GROUP");
+            updated.setActiveGroupOids(new java.util.ArrayList<>());
+            updated.setPendingDeletion(true);
+            existing.addProperty(updated);
+            existing.save();
+            LOGGER.log(Level.INFO, "Marked orphaned group account for deletion: {0}", existing.getId());
+        } catch (Exception e) {
+            LOGGER.log(java.util.logging.Level.WARNING, "Failed to mark orphaned group account", e);
+        }
+    }
+
     private void updateUserProperty(User user, String oid, String upn,
                                     List<EntraGroupDetails> groups,
                                     List<String> matchingGroupOids) throws IOException {
@@ -430,6 +462,8 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
             prop.setProvisioningSource("INDIVIDUAL");
             prop.setActiveGroupOids(new ArrayList<>());
         }
+        // Successful login always clears any pending-deletion flag
+        prop.setPendingDeletion(false);
 
         user.addProperty(prop);
         user.save();

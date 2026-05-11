@@ -46,6 +46,14 @@ public class OmniAuthUserProperty extends UserProperty {
      */
     private List<String> activeGroupOids;
 
+    /**
+     * When true, this account is queued for deletion.
+     * Set automatically when a VIA_ENTRA_GROUP user is rejected at login (removed from AD group).
+     * Set manually by an admin via the User Status kebab menu.
+     * Cleared automatically on a successful login (group re-added in Azure).
+     */
+    private boolean pendingDeletion;
+
     @DataBoundConstructor
     public OmniAuthUserProperty(String entraObjectId, String entraUpn) {
         this.entraObjectId = entraObjectId;
@@ -105,6 +113,9 @@ public class OmniAuthUserProperty extends UserProperty {
     public void setActiveGroupOids(List<String> activeGroupOids) {
         this.activeGroupOids = activeGroupOids != null ? new ArrayList<>(activeGroupOids) : new ArrayList<>();
     }
+
+    public boolean isPendingDeletion() { return pendingDeletion; }
+    public void setPendingDeletion(boolean pendingDeletion) { this.pendingDeletion = pendingDeletion; }
 
     @Extension
     public static class DescriptorImpl extends UserPropertyDescriptor {

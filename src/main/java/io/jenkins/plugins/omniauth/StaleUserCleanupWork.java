@@ -74,15 +74,30 @@ public class StaleUserCleanupWork extends AsyncPeriodicWork {
                     continue;
                 }
 
+                // Skip active group users — their account is owned by AD group membership
+                OmniAuthUserProperty groupCheck = user.getProperty(OmniAuthUserProperty.class);
+                if (groupCheck != null && groupCheck.isViaGroup()) {
+                    OmniAuthAssignmentConfig assignmentConfig = OmniAuthAssignmentConfig.get();
+                    if (assignmentConfig != null) {
+                        boolean activeGroup = false;
+                        for (String oid : groupCheck.getActiveGroupOids()) {
+                            if (assignmentConfig.hasGroup(oid)) { activeGroup = true; break; }
+                        }
+                        if (activeGroup) { skippedProt++; continue; }
+                    }
+                }
+
                 OmniAuthUserProperty entraProp = user.getProperty(OmniAuthUserProperty.class);
                 LastLoginProperty    loginProp  = user.getProperty(LastLoginProperty.class);
                 String lastLogin = resolveLastLogin(entraProp, loginProp);
 
+                boolean isPendingDeletion = (entraProp != null && entraProp.isPendingDeletion());
                 boolean isStale = (lastLogin == null) || Instant.parse(lastLogin).isBefore(cutoff);
-                if (!isStale) continue;
+                if (!isStale && !isPendingDeletion) continue;
 
                 if (dryRun) {
-                    LOGGER.info("[DRY-RUN] Would delete stale user: " + userId);
+                    String reason = isPendingDeletion ? "pending-deletion" : "stale";
+                    LOGGER.info("[DRY-RUN] Would delete user (" + reason + "): " + userId);
                     affected.add(userId);
                 } else {
                     if (affected.size() >= maxDeletions) {

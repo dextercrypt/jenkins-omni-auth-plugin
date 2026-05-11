@@ -39,6 +39,11 @@
       <div style="padding: 16px; max-width: 1100px;">
 
         <!-- Banners -->
+        <j:if test="${request2.getParameter('error') == 'activeGroup'}">
+          <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom: 16px;">
+            Deletion blocked — this account is managed via an active Azure Entra group. Remove the user from the group in Azure to revoke access.
+          </div>
+        </j:if>
         <j:if test="${request2.getParameter('error') == 'protected'}">
           <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom: 16px;">
             Deletion blocked — that user is protected. Remove protection first on the
@@ -85,6 +90,68 @@
             </j:choose>
           </div>
         </div>
+
+        <!-- Pending Deletion section -->
+        <j:set var="pendingUsers" value="${it.pendingDeletionUsers}"/>
+        <j:if test="${!pendingUsers.isEmpty()}">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <h3 style="font-size:0.95em;font-weight:600;margin:0;color:#7f1d1d;">
+              Pending Deletion
+              <span style="font-weight:400;color:#9ca3af;font-size:0.85em;"> — will be removed on next cleanup run</span>
+            </h3>
+          </div>
+          <div class="jenkins-card" style="padding:0;margin-bottom:24px;border-color:#fca5a5;overflow:hidden;">
+            <table class="jenkins-table" style="margin:0;">
+              <thead>
+                <tr>
+                  <th>Username</th>
+                  <th>Full Name</th>
+                  <th>Type</th>
+                  <th>Last Login</th>
+                  <th>Reason</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <j:forEach var="u" items="${pendingUsers}">
+                  <tr style="background:#fff7f7;">
+                    <td style="font-weight:600;">${u.userId}</td>
+                    <td>${u.fullName}</td>
+                    <td>
+                      <j:choose>
+                        <j:when test="${u.userType == 'Entra'}">
+                          <span style="background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:4px;font-size:0.82em;">Entra</span>
+                        </j:when>
+                        <j:otherwise>
+                          <span style="background:#f3f4f6;color:#6b7280;padding:2px 8px;border-radius:4px;font-size:0.82em;">Native</span>
+                        </j:otherwise>
+                      </j:choose>
+                    </td>
+                    <td>
+                      <j:choose>
+                        <j:when test="${u.neverLoggedIn}"><em style="color:#9ca3af;">Never</em></j:when>
+                        <j:otherwise><span class="oau-reltime" data-iso="${u.lastLoginAt}" title="${u.lastLoginAt}">${u.lastLoginAt}</span></j:otherwise>
+                      </j:choose>
+                    </td>
+                    <td>
+                      <span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:4px;font-size:0.82em;">${u.pendingReason}</span>
+                    </td>
+                    <td>
+                      <button type="button"
+                              class="jenkins-button jenkins-button--danger jenkins-button--small"
+                              onclick="oauShowDeleteModal(this)"
+                              data-userid="${u.userId}"
+                              data-crumb-field="${app.crumbRequestField}"
+                              data-crumb-value="${app.crumb}">
+                        Delete Now
+                      </button>
+                    </td>
+                  </tr>
+                </j:forEach>
+              </tbody>
+            </table>
+          </div>
+        </j:if>
 
         <!-- Stale users table -->
         <j:set var="staleUsers" value="${it.getStaleUsers(threshold)}"/>
@@ -287,7 +354,7 @@
               Run Cleanup — Live Mode
             </div>
             <div class="oau-modal-body">
-              <p style="margin:0 0 12px 0;">This will <strong>permanently delete</strong> all stale users that have not logged in within the configured threshold.</p>
+              <p style="margin:0 0 12px 0;">This will <strong>permanently delete</strong> all stale users that have not logged in within the configured threshold, plus any accounts marked for pending deletion.</p>
               <div style="background:#f8d7da;border:1px solid #f5c6cb;border-radius:6px;padding:10px 14px;font-size:0.85em;color:#721c24;">
                 <strong>This action cannot be undone.</strong> Protected users will be skipped.
                 SSO users will be re-provisioned on their next login.
