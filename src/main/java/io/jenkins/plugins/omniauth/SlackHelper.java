@@ -45,13 +45,14 @@ public class SlackHelper {
     // -------------------------------------------------------------------------
 
     private static void post(String webhookUrl, String title, String body, String subject) {
+        String payload = buildPayload(title, body);
         try {
-            postJson(webhookUrl, buildPayload(title, body));
+            NotifyRetry.run(() -> postJson(webhookUrl, payload), LOGGER, "Slack", subject);
             NotificationLog.get().addEntry("[Slack] " + subject, webhookUrl, true, null);
             LOGGER.info("OmniAuth Slack sent: " + subject);
         } catch (Exception e) {
             NotificationLog.get().addEntry("[Slack] " + subject, webhookUrl, false, e.getMessage());
-            LOGGER.log(Level.WARNING, "OmniAuth Slack failed: " + subject, e);
+            LOGGER.log(Level.WARNING, "OmniAuth Slack failed after 3 attempts: " + subject, e);
         }
     }
 

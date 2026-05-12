@@ -82,35 +82,45 @@ public class SmtpHelper {
                         String replyTo, String recipients,
                         String subject, String htmlBody, String plainBody) {
         try {
-            Session session = Session.getInstance(buildProps(host, port, tls), new Authenticator() {
-                @Override protected PasswordAuthentication getPasswordAuthentication() {
-                    return new PasswordAuthentication(username, password);
-                }
-            });
-            MimeMessage msg = new MimeMessage(session);
-            msg.setFrom(new InternetAddress(fromAddress, fromName));
-            msg.setRecipients(Message.RecipientType.TO, InternetAddress.parse(recipients));
-            msg.setSubject(subject);
-            if (replyTo != null && !replyTo.trim().isEmpty())
-                msg.setReplyTo(InternetAddress.parse(replyTo));
-
-            MimeBodyPart textPart = new MimeBodyPart();
-            textPart.setText(plainBody, "UTF-8");
-            MimeBodyPart htmlPart = new MimeBodyPart();
-            htmlPart.setContent(htmlBody, "text/html; charset=UTF-8");
-            Multipart mp = new MimeMultipart("alternative");
-            mp.addBodyPart(textPart);
-            mp.addBodyPart(htmlPart);
-            msg.setContent(mp);
-
-            Transport.send(msg);
+            NotifyRetry.run(
+                () -> doSend(host, port, username, password, tls, fromAddress, fromName,
+                             replyTo, recipients, subject, htmlBody, plainBody),
+                LOGGER, "SMTP", subject);
             LOGGER.info("OmniAuth email sent: " + subject + " → " + recipients);
             NotificationLog.get().addEntry("[Email] " + subject, recipients, true, null);
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "OmniAuth email failed: " + subject, e);
+            LOGGER.log(Level.WARNING, "OmniAuth email failed after 3 attempts: " + subject, e);
             NotificationLog.get().addEntry("[Email] " + subject, recipients, false,
                     e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
         }
+    }
+
+    private static void doSend(String host, int port, String username, String password,
+                                boolean tls, String fromAddress, String fromName,
+                                String replyTo, String recipients,
+                                String subject, String htmlBody, String plainBody) throws Exception {
+        Session session = Session.getInstance(buildProps(host, port, tls), new Authenticator() {
+            @Override protected PasswordAuthentication getPasswordAuthentication() {
+                return new PasswordAuthentication(username, password);
+            }
+        });
+        MimeMessage msg = new MimeMessage(session);
+        msg.setFrom(new InternetAddress(fromAddress, fromName));
+        msg.setRecipients(Message.RecipientType.TO, InternetAddress.parse(recipients));
+        msg.setSubject(subject);
+        if (replyTo != null && !replyTo.trim().isEmpty())
+            msg.setReplyTo(InternetAddress.parse(replyTo));
+
+        MimeBodyPart textPart = new MimeBodyPart();
+        textPart.setText(plainBody, "UTF-8");
+        MimeBodyPart htmlPart = new MimeBodyPart();
+        htmlPart.setContent(htmlBody, "text/html; charset=UTF-8");
+        Multipart mp = new MimeMultipart("alternative");
+        mp.addBodyPart(textPart);
+        mp.addBodyPart(htmlPart);
+        msg.setContent(mp);
+
+        Transport.send(msg);
     }
 
     // -------------------------------------------------------------------------
