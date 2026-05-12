@@ -293,6 +293,7 @@ public class OmniAuthManagementLink extends ManagementLink {
             putParam(json, req, "smtpReplyTo");
             putParam(json, req, "notifyEmails");
             putParam(json, req, "notificationLogoUrl");
+            putParam(json, req, "notificationFooterNote");
             // brute force
             String bft = req.getParameter("bruteForceThreshold");
             if (bft != null) json.put("bruteForceThreshold", bft.trim());
@@ -425,10 +426,12 @@ public class OmniAuthManagementLink extends ManagementLink {
                 for (String line : diff) body.append("  + ").append(line).append("\n");
                 body.append(mgmtCta("Review Settings", "notifications"));
                 body.append("\n---\nJenkins OmniAuth Plugin");
-                // Use new config — channels are now live
-                if (smtpGained)  SmtpHelper.send(config, subject, body.toString());
-                if (slackGained) SlackHelper.send(config, subject, body.toString());
-                if (teamsGained) TeamsHelper.send(config, subject, body.toString());
+                // Use new config — channels are now live; respect master toggle
+                if (config.isNotificationsEnabled()) {
+                    if (smtpGained)  SmtpHelper.send(config, subject, body.toString());
+                    if (slackGained) SlackHelper.send(config, subject, body.toString());
+                    if (teamsGained) TeamsHelper.send(config, subject, body.toString());
+                }
             }
         }
         rsp.sendRedirect("notifications?saved=true");
@@ -620,29 +623,82 @@ public class OmniAuthManagementLink extends ManagementLink {
     public void doPreviewEmail(StaplerRequest req, StaplerResponse rsp) throws Exception {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
         OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
-        String logoUrl = cfg != null ? cfg.getNotificationLogoUrl() : "";
-        String rootUrl = "";
-        try {
-            String r = Jenkins.get().getRootUrl();
-            if (r != null && !r.isEmpty()) rootUrl = r.endsWith("/") ? r.substring(0, r.length() - 1) : r;
-        } catch (Exception ignored) {}
-        String subject = "Configuration Changed by admin";
-        String body =
-            "Notification Settings Change\n============================\n\n"
-            + "Changed by: admin\nWhen:       " + java.time.Instant.now() + "\n\n"
-            + "Settings changed:\n\n"
-            + "  smtpHost: old-mail.corp.com \u2192 mail.corp.com\n"
-            + "  smtpPort: 25 \u2192 587\n"
-            + "  smtpTls: false \u2192 true\n"
-            + "  + Brute force alerting enabled\n"
-            + "  - Legacy relay removed\n"
-            + (rootUrl.isEmpty() ? "" : "\nCTA: Review Settings | " + rootUrl + "/manage/omniauth-management/notifications")
-            + "\n---\nJenkins OmniAuth Plugin";
-        String html = SmtpHelper.buildHtml(subject, body, logoUrl);
+        String eventType = param(req, "eventType", "configChanged");
+        String logoOverride     = param(req, "logoUrl",     "");
+        String footerNoteOverride = req.getParameter("footerNote"); // null = not sent, "" = cleared
+        String html = buildPreviewHtml(cfg, eventType, logoOverride, footerNoteOverride);
         byte[] bytes = html.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         rsp.setContentType("text/html;charset=UTF-8");
         rsp.setContentLength(bytes.length);
         rsp.getOutputStream().write(bytes);
+    }
+
+    private static String buildPreviewHtml(OmniAuthGlobalConfig cfg, String eventType,
+                                            String logoOverride, String footerNoteOverride) {
+        String now = java.time.Instant.now().toString();
+        String html;
+        switch (eventType) {
+            case "bruteForce":
+                html = SmtpHelper.buildBruteForceHtml(cfg, "john.doe@corp.com", 8); break;
+            case "userDeleted":
+                html = SmtpHelper.buildUserDeletedHtml(cfg, "alice.smith", "admin"); break;
+            case "cleanup": {
+                OmniAuthGlobalConfig.CleanupRunRecord rec = new OmniAuthGlobalConfig.CleanupRunRecord(
+                    now, false, 142, 3, 5,
+                    java.util.Arrays.asList("inactive.user1", "old.contractor", "ex.employee99"));
+                html = SmtpHelper.buildCleanupReportHtml(cfg, rec); break;
+            }
+            case "adminGranted":
+                html = SmtpHelper.buildAdminGrantedHtml(cfg,
+                    java.util.Arrays.asList("bob.jones", "carol.dev"), "admin"); break;
+            case "staleWarning":
+                html = SmtpHelper.buildStaleWarningHtml(cfg,
+                    java.util.Arrays.asList("dave.legacy", "eve.contractor", "frank.temp"), 7, 90); break;
+            case "protectedListChanged":
+                html = SmtpHelper.buildProtectedListChangedHtml(cfg, "admin",
+                    java.util.Arrays.asList("alice.smith"),
+                    java.util.Arrays.asList("old.vendor")); break;
+            case "graphApiFailure":
+                html = SmtpHelper.buildGraphApiFailedHtml(cfg, "john.doe@corp.com",
+                    "403 Forbidden: Insufficient privileges to complete the operation."); break;
+            case "smtpTest": {
+                String host = cfg != null ? cfg.getSmtpHost()        : "mail.corp.com";
+                int port    = cfg != null ? cfg.getSmtpPort()        : 587;
+                String from = cfg != null ? cfg.getSmtpFromAddress() : "jenkins@corp.com";
+                String to   = cfg != null ? cfg.getNotifyEmails()    : "admin@corp.com";
+                html = SmtpHelper.buildSmtpTestHtml(host, port, from, to); break;
+            }
+            default: // configChanged
+                html = SmtpHelper.buildConfigChangedHtml(cfg, "admin", now,
+                    java.util.Arrays.asList(
+                        "smtpHost: old-mail.corp.com \u2192 mail.corp.com",
+                        "smtpPort: 25 \u2192 587",
+                        "smtpTls: false \u2192 true",
+                        "staleThresholdDays: 60 \u2192 90"));
+        }
+        if (!logoOverride.isEmpty()) {
+            String savedLogo = (cfg != null && cfg.getNotificationLogoUrl() != null
+                                && !cfg.getNotificationLogoUrl().trim().isEmpty())
+                ? cfg.getNotificationLogoUrl().trim()
+                : SmtpHelper.LOGO_DEFAULT;
+            html = html.replace("src='" + savedLogo + "'", "src='" + logoOverride + "'");
+        }
+        if (footerNoteOverride != null) {
+            // Splice the live footer note between the separator line and the fine-print div.
+            String sep      = "<div style='height:1px;background:#e8edf3;margin:12px 0;'></div>";
+            String finePrint = "<div style='font-size:10.5px;color:#b0bac7;line-height:1.7;text-align:center;'>";
+            int sepIdx = html.indexOf(sep);
+            int fpIdx  = html.indexOf(finePrint);
+            if (sepIdx >= 0 && fpIdx > sepIdx) {
+                String escaped = footerNoteOverride.trim()
+                    .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+                String noteHtml = escaped.isEmpty() ? ""
+                    : "<div style='font-size:11px;color:#64748b;line-height:1.6;"
+                      + "text-align:center;margin-bottom:8px;'>" + escaped + "</div>";
+                html = html.substring(0, sepIdx + sep.length()) + noteHtml + html.substring(fpIdx);
+            }
+        }
+        return html;
     }
 
     private static String param(StaplerRequest req, String name, String fallback) {
@@ -917,15 +973,23 @@ public class OmniAuthManagementLink extends ManagementLink {
                 info.setEntraUpn(entraProp.getEntraUpn());
                 if (entraProp.isViaGroup()) {
                     OmniAuthAssignmentConfig assignmentConfig = OmniAuthAssignmentConfig.get();
+                    boolean foundActive = false;
                     if (assignmentConfig != null) {
                         for (String oid : entraProp.getActiveGroupOids()) {
                             if (assignmentConfig.hasGroup(oid)) {
                                 info.setActiveGroupUser(true);
+                                info.setGroupOid(oid);
                                 OmniAuthGroupEntity groupEntity = assignmentConfig.findGroup(oid);
                                 if (groupEntity != null) info.setGroupName(groupEntity.getEffectiveName());
+                                foundActive = true;
                                 break;
                             }
                         }
+                    }
+                    // Orphaned — fall back to last known group name/OID saved at orphan time
+                    if (!foundActive) {
+                        info.setGroupName(entraProp.getLastKnownGroupName());
+                        info.setGroupOid(entraProp.getLastKnownGroupOid());
                     }
                 }
             } else {
@@ -1079,7 +1143,7 @@ public class OmniAuthManagementLink extends ManagementLink {
         List<LoginEvent> loginHistory = histProp != null
                 ? new ArrayList<>(histProp.getEvents()) : Collections.emptyList();
 
-        return new AccessInfo(
+        AccessInfo accessInfo = new AccessInfo(
                 userId,
                 user.getFullName(),
                 userType,
@@ -1091,6 +1155,32 @@ public class OmniAuthManagementLink extends ManagementLink {
                 isAdmin, canRead, canBuild, canCreate, canConfigure,
                 loginHistory
         );
+
+        // Provisioning source
+        if (entraProp != null) accessInfo.setProvisioningSource(entraProp.getProvisioningSource());
+
+        // Populate group info for VIA_ENTRA_GROUP users
+        if (entraProp != null && entraProp.isViaGroup()) {
+            String gName = null, gOid = null;
+            OmniAuthAssignmentConfig ac = OmniAuthAssignmentConfig.get();
+            for (String oid : entraProp.getActiveGroupOids()) {
+                if (ac != null && ac.hasGroup(oid)) {
+                    OmniAuthGroupEntity ge = ac.findGroup(oid);
+                    gName = ge != null ? ge.getEffectiveName() : null;
+                    gOid  = oid;
+                    break;
+                }
+            }
+            // Orphaned — fall back to last known
+            if (gOid == null) {
+                gName = entraProp.getLastKnownGroupName();
+                gOid  = entraProp.getLastKnownGroupOid();
+            }
+            accessInfo.setGroupName(gName);
+            accessInfo.setGroupOid(gOid);
+        }
+
+        return accessInfo;
     }
 
     // -------------------------------------------------------------------------
@@ -1164,15 +1254,19 @@ public class OmniAuthManagementLink extends ManagementLink {
             String roleName = roleConfig != null ? roleConfig.matchRole(entry.getValue()) : null;
             if (roleName == null) roleName = "Custom";
             String lastLogin = null;
+            String provisioningSource = "NATIVE";
             if (atype == AuthorizationType.USER) {
                 User u = User.getById(sid, false);
                 if (u != null) {
                     OmniAuthUserProperty ep = u.getProperty(OmniAuthUserProperty.class);
                     LastLoginProperty lp = u.getProperty(LastLoginProperty.class);
                     lastLogin = resolveLastLogin(ep, lp);
+                    if (ep != null) provisioningSource = ep.getProvisioningSource();
                 }
             }
-            result.add(new AccessManagementUserInfo(sid, dn, atype, roleName, entry.getValue(), lastLogin));
+            AccessManagementUserInfo userInfo = new AccessManagementUserInfo(sid, dn, atype, roleName, entry.getValue(), lastLogin);
+            userInfo.setProvisioningSource(provisioningSource);
+            result.add(userInfo);
         }
         // Also include GROUP entities from OmniAuthAssignmentConfig that may not have matrix entries
         // (e.g. if grantGlobalRead failed during initial add, or strategy was not active yet)
@@ -2563,6 +2657,7 @@ public class OmniAuthManagementLink extends ManagementLink {
         private String provisioningSource; // NATIVE, INDIVIDUAL, VIA_ENTRA_GROUP
         private String entraUpn;
         private String groupName;          // effective group name if VIA_ENTRA_GROUP
+        private String groupOid;           // OID of the group
         private boolean activeGroupUser;
         private boolean staleWarning;
 
@@ -2598,6 +2693,8 @@ public class OmniAuthManagementLink extends ManagementLink {
         public void setEntraUpn(String s)            { this.entraUpn = s; }
         public String getGroupName()                 { return groupName; }
         public void setGroupName(String s)           { this.groupName = s; }
+        public String getGroupOid()                  { return groupOid; }
+        public void setGroupOid(String s)            { this.groupOid = s; }
         public boolean isActiveGroupUser()           { return activeGroupUser; }
         public void setActiveGroupUser(boolean b)    { this.activeGroupUser = b; }
         public boolean isStaleWarning()              { return staleWarning; }
@@ -2686,6 +2783,9 @@ public class OmniAuthManagementLink extends ManagementLink {
         private final boolean canCreate;
         private final boolean canConfigure;
         private final List<LoginEvent> loginHistory;
+        private String groupName;
+        private String groupOid;
+        private String provisioningSource;
 
         public AccessInfo(String userId, String fullName, String userType,
                           String entraOid, String entraUpn, String lastLoginAt,
@@ -2724,6 +2824,13 @@ public class OmniAuthManagementLink extends ManagementLink {
         public boolean isCanConfigure()            { return canConfigure; }
         public List<LoginEvent> getLoginHistory()  { return loginHistory; }
         public boolean isEntraUser()               { return "Entra".equals(userType); }
+        public String getGroupName()               { return groupName; }
+        public void setGroupName(String s)         { this.groupName = s; }
+        public String getGroupOid()                { return groupOid; }
+        public void setGroupOid(String s)          { this.groupOid = s; }
+        public String getProvisioningSource()      { return provisioningSource != null ? provisioningSource : "NATIVE"; }
+        public void setProvisioningSource(String s){ this.provisioningSource = s; }
+        public boolean isViaGroup()                { return "VIA_ENTRA_GROUP".equals(provisioningSource); }
         public boolean isPerJobSupported() {
             return authStrategy != null &&
                    (authStrategy.toLowerCase().contains("projectmatrix") ||
@@ -2809,6 +2916,7 @@ public class OmniAuthManagementLink extends ManagementLink {
         private final String roleName;
         private final Set<String> permissionIds;
         private final String lastLoginAt;
+        private String provisioningSource = "NATIVE";
 
         public AccessManagementUserInfo(String sid, String displayName, AuthorizationType type,
                                         String roleName, Set<String> permissionIds, String lastLoginAt) {
@@ -2827,6 +2935,9 @@ public class OmniAuthManagementLink extends ManagementLink {
         public Set<String> getPermissionIds() { return permissionIds; }
         public String getLastLoginAt()     { return lastLoginAt; }
         public boolean isUserEntry()       { return type == AuthorizationType.USER; }
+        public String getProvisioningSource()       { return provisioningSource; }
+        public void setProvisioningSource(String s) { this.provisioningSource = s != null ? s : "NATIVE"; }
+        public boolean isGroupManaged()             { return "VIA_ENTRA_GROUP".equals(provisioningSource); }
 
         public String getAvatarLetter() {
             String src = (displayName != null && !displayName.equals(sid)) ? displayName : sid;
@@ -2886,6 +2997,17 @@ public class OmniAuthManagementLink extends ManagementLink {
 
     public void doUserDetail(StaplerRequest req, StaplerResponse rsp) throws Exception {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String sid = req.getParameter("sid");
+        if (sid != null) {
+            User u = User.getById(sid, false);
+            if (u != null) {
+                OmniAuthUserProperty ep = u.getProperty(OmniAuthUserProperty.class);
+                if (ep != null && ep.isPendingDeletion()) {
+                    rsp.sendRedirect(req.getContextPath() + "/manage/omniauth-management/userStatus?info=pendingDeletion");
+                    return;
+                }
+            }
+        }
         req.getView(this, "userDetail.jelly").forward(req, rsp);
     }
 
@@ -2960,8 +3082,18 @@ public class OmniAuthManagementLink extends ManagementLink {
         }
         // Build a minimal placeholder if not found in the list (e.g. user being added)
         String display = resolveDisplayName(sid, atype);
-        return new AccessManagementUserInfo(sid, display, atype, "NONE",
+        String ps = "NATIVE";
+        if (atype == AuthorizationType.USER) {
+            User u2 = User.getById(sid, false);
+            if (u2 != null) {
+                OmniAuthUserProperty ep2 = u2.getProperty(OmniAuthUserProperty.class);
+                if (ep2 != null) ps = ep2.getProvisioningSource();
+            }
+        }
+        AccessManagementUserInfo placeholder = new AccessManagementUserInfo(sid, display, atype, "NONE",
                 Collections.emptySet(), null);
+        placeholder.setProvisioningSource(ps);
+        return placeholder;
     }
 
     private TreeNode buildHierarchy(String sid, AuthorizationType atype) {

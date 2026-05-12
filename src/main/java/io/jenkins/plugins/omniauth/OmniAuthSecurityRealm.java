@@ -421,6 +421,19 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
             if (existing == null) return;
             OmniAuthUserProperty prop = existing.getProperty(OmniAuthUserProperty.class);
             if (prop == null || !prop.isViaGroup()) return;
+            // Preserve last known group name + OID before clearing activeGroupOids
+            String savedGroupName = prop.getLastKnownGroupName();
+            String savedGroupOid  = prop.getLastKnownGroupOid();
+            if (!prop.getActiveGroupOids().isEmpty()) {
+                String firstOid = prop.getActiveGroupOids().get(0);
+                OmniAuthAssignmentConfig ac = OmniAuthAssignmentConfig.get();
+                if (ac != null) {
+                    OmniAuthGroupEntity ge = ac.findGroup(firstOid);
+                    if (ge != null) { savedGroupName = ge.getEffectiveName(); savedGroupOid = firstOid; }
+                }
+                if (savedGroupOid == null) savedGroupOid = firstOid;
+            }
+
             OmniAuthUserProperty updated = new OmniAuthUserProperty(prop.getEntraObjectId(), prop.getEntraUpn());
             updated.setGroupsLastSynced(prop.getGroupsLastSynced());
             updated.setLastLoginAt(prop.getLastLoginAt());
@@ -428,6 +441,8 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
             updated.setProvisioningSource("VIA_ENTRA_GROUP");
             updated.setActiveGroupOids(new java.util.ArrayList<>());
             updated.setPendingDeletion(true);
+            updated.setLastKnownGroupName(savedGroupName);
+            updated.setLastKnownGroupOid(savedGroupOid);
             existing.addProperty(updated);
             existing.save();
             LOGGER.log(Level.INFO, "Marked orphaned group account for deletion: {0}", existing.getId());

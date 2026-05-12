@@ -5,6 +5,7 @@ import java.util.List;
 /**
  * Dispatches OmniAuth notification events to all subscribed channels (SMTP, Slack, Teams).
  * Each channel independently decides which events it receives.
+ * SMTP receives full HTML; Slack/Teams receive plain text.
  */
 public class NotificationService {
 
@@ -24,55 +25,63 @@ public class NotificationService {
         return "\nCTA: " + label + " | " + root + "/manage/omniauth-management/" + path;
     }
 
-    private static void dispatch(OmniAuthGlobalConfig cfg, String event, String subject, String body) {
+    private static void dispatch(OmniAuthGlobalConfig cfg, String event,
+                                  String subject, String plainBody, String htmlBody) {
         if (cfg == null || !cfg.isNotificationsEnabled()) return;
-        if (cfg.isSmtpEvent(event))  SmtpHelper.send(cfg, subject, body);
-        if (cfg.isSlackEvent(event)) SlackHelper.send(cfg, subject, body);
-        if (cfg.isTeamsEvent(event)) TeamsHelper.send(cfg, subject, body);
+        if (cfg.isSmtpEvent(event))  SmtpHelper.send(cfg, subject, htmlBody, plainBody);
+        if (cfg.isSlackEvent(event)) SlackHelper.send(cfg, subject, plainBody);
+        if (cfg.isTeamsEvent(event)) TeamsHelper.send(cfg, subject, plainBody);
     }
 
     // -------------------------------------------------------------------------
     // Event: Stale cleanup ran
     // -------------------------------------------------------------------------
 
-    public static void sendCleanupReport(OmniAuthGlobalConfig cfg, OmniAuthGlobalConfig.CleanupRunRecord record) {
+    public static void sendCleanupReport(OmniAuthGlobalConfig cfg,
+                                          OmniAuthGlobalConfig.CleanupRunRecord record) {
         if (cfg == null) return;
         String mode    = record.isDryRun() ? "Dry-run" : "Live";
         String subject = "[Jenkins OmniAuth] Stale user cleanup ran (" + mode + ")";
-        StringBuilder body = new StringBuilder();
-        body.append("OmniAuth Stale User Cleanup Report\n");
-        body.append("===================================\n\n");
-        body.append("Mode:              ").append(mode).append("\n");
-        body.append("Run at:            ").append(record.getTimestamp()).append("\n");
-        body.append("Users scanned:     ").append(record.getUsersScanned()).append("\n");
-        body.append("Users affected:    ").append(record.getUsersAffected()).append("\n");
-        body.append("Protected skipped: ").append(record.getSkippedProtected()).append("\n");
+
+        StringBuilder plain = new StringBuilder();
+        plain.append("OmniAuth Stale User Cleanup Report\n")
+             .append("===================================\n\n")
+             .append("Mode:              ").append(mode).append("\n")
+             .append("Run at:            ").append(record.getTimestamp()).append("\n")
+             .append("Users scanned:     ").append(record.getUsersScanned()).append("\n")
+             .append("Users affected:    ").append(record.getUsersAffected()).append("\n")
+             .append("Protected skipped: ").append(record.getSkippedProtected()).append("\n");
         List<String> affected = record.getAffectedUserIds();
         if (!affected.isEmpty()) {
-            body.append("\n").append(record.isDryRun() ? "Would delete:" : "Deleted users:").append("\n");
-            for (String uid : affected) body.append("  - ").append(uid).append("\n");
+            plain.append("\n").append(record.isDryRun() ? "Would delete:" : "Deleted users:").append("\n");
+            for (String uid : affected) plain.append("  - ").append(uid).append("\n");
         } else {
-            body.append("\nNo users were ").append(record.isDryRun() ? "flagged" : "deleted").append(".\n");
+            plain.append("\nNo users were ").append(record.isDryRun() ? "flagged" : "deleted").append(".\n");
         }
-        body.append(ctaLine("View Stale Users", "staleUsers"));
-        body.append("\n---\nJenkins OmniAuth Plugin");
-        dispatch(cfg, "cleanup", subject, body.toString());
+        plain.append(ctaLine("View Stale Users", "staleUsers"))
+             .append("\n---\nJenkins OmniAuth Plugin");
+
+        dispatch(cfg, "cleanup", subject, plain.toString(),
+                SmtpHelper.buildCleanupReportHtml(cfg, record));
     }
 
     // -------------------------------------------------------------------------
     // Event: User manually deleted
     // -------------------------------------------------------------------------
 
-    public static void sendUserDeleted(OmniAuthGlobalConfig cfg, String deletedUserId, String deletedBy) {
+    public static void sendUserDeleted(OmniAuthGlobalConfig cfg,
+                                        String deletedUserId, String deletedBy) {
         if (cfg == null) return;
         String subject = "[Jenkins OmniAuth] User deleted: " + deletedUserId;
-        String body = "OmniAuth User Deletion Notice\n"
+        String plain = "OmniAuth User Deletion Notice\n"
                 + "=============================\n\n"
                 + "Deleted user: " + deletedUserId + "\n"
                 + "Deleted by:   " + deletedBy + "\n"
                 + ctaLine("View User Status", "userStatus")
                 + "\n---\nJenkins OmniAuth Plugin";
-        dispatch(cfg, "userDeleted", subject, body);
+
+        dispatch(cfg, "userDeleted", subject, plain,
+                SmtpHelper.buildUserDeletedHtml(cfg, deletedUserId, deletedBy));
     }
 
     // -------------------------------------------------------------------------
@@ -80,19 +89,22 @@ public class NotificationService {
     // -------------------------------------------------------------------------
 
     public static void sendConfigChanged(OmniAuthGlobalConfig cfg, String changedBy,
-                                         String timestamp, List<String> diffLines) {
+                                          String timestamp, List<String> diffLines) {
         if (cfg == null) return;
         String subject = "[Jenkins OmniAuth] Configuration changed by " + changedBy;
-        StringBuilder body = new StringBuilder();
-        body.append("OmniAuth Configuration Change\n");
-        body.append("=============================\n\n");
-        body.append("Changed by: ").append(changedBy).append("\n");
-        body.append("When:       ").append(timestamp).append("\n\n");
-        body.append("Changes:\n");
-        for (String line : diffLines) body.append("  ").append(line).append("\n");
-        body.append(ctaLine("Review Settings", "notifications"));
-        body.append("\n---\nJenkins OmniAuth Plugin");
-        dispatch(cfg, "configChanged", subject, body.toString());
+
+        StringBuilder plain = new StringBuilder();
+        plain.append("OmniAuth Configuration Change\n")
+             .append("=============================\n\n")
+             .append("Changed by: ").append(changedBy).append("\n")
+             .append("When:       ").append(timestamp).append("\n\n")
+             .append("Changes:\n");
+        for (String line : diffLines) plain.append("  ").append(line).append("\n");
+        plain.append(ctaLine("Review Settings", "notifications"))
+             .append("\n---\nJenkins OmniAuth Plugin");
+
+        dispatch(cfg, "configChanged", subject, plain.toString(),
+                SmtpHelper.buildConfigChangedHtml(cfg, changedBy, timestamp, diffLines));
     }
 
     // -------------------------------------------------------------------------
@@ -100,35 +112,40 @@ public class NotificationService {
     // -------------------------------------------------------------------------
 
     public static void sendProtectedListChanged(OmniAuthGlobalConfig cfg, String changedBy,
-                                                 List<String> added, List<String> removed) {
+                                                  List<String> added, List<String> removed) {
         if (cfg == null) return;
         if (added.isEmpty() && removed.isEmpty()) return;
         String subject = "[Jenkins OmniAuth] Protected users list changed";
-        StringBuilder body = new StringBuilder();
-        body.append("OmniAuth Protected Users Change\n");
-        body.append("================================\n\n");
-        body.append("Changed by: ").append(changedBy).append("\n\n");
+
+        StringBuilder plain = new StringBuilder();
+        plain.append("OmniAuth Protected Users Change\n")
+             .append("================================\n\n")
+             .append("Changed by: ").append(changedBy).append("\n\n");
         if (!added.isEmpty()) {
-            body.append("Added to protected:\n");
-            for (String u : added) body.append("  + ").append(u).append("\n");
+            plain.append("Added to protected:\n");
+            for (String u : added) plain.append("  + ").append(u).append("\n");
         }
         if (!removed.isEmpty()) {
-            body.append("Removed from protected:\n");
-            for (String u : removed) body.append("  - ").append(u).append("\n");
+            plain.append("Removed from protected:\n");
+            for (String u : removed) plain.append("  - ").append(u).append("\n");
         }
-        body.append(ctaLine("View Protected Users", "protectedUsers"));
-        body.append("\n---\nJenkins OmniAuth Plugin");
-        dispatch(cfg, "protectedListChanged", subject, body.toString());
+        plain.append(ctaLine("View Protected Users", "staleUsers"))
+             .append("\n---\nJenkins OmniAuth Plugin");
+
+        dispatch(cfg, "protectedListChanged", subject, plain.toString(),
+                SmtpHelper.buildProtectedListChangedHtml(cfg, changedBy, added, removed));
     }
 
     // -------------------------------------------------------------------------
     // Event: Brute force threshold hit
     // -------------------------------------------------------------------------
 
-    public static void sendBruteForceAlert(OmniAuthGlobalConfig cfg, String username, int failureCount) {
+    public static void sendBruteForceAlert(OmniAuthGlobalConfig cfg,
+                                            String username, int failureCount) {
         if (cfg == null) return;
-        String subject = "[Jenkins OmniAuth] Possible brute force — " + failureCount + " failed logins for: " + username;
-        String body = "OmniAuth Brute Force Alert\n"
+        String subject = "[Jenkins OmniAuth] Possible brute force — "
+                + failureCount + " failed logins for: " + username;
+        String plain = "OmniAuth Brute Force Alert\n"
                 + "==========================\n\n"
                 + "Username:       " + username + "\n"
                 + "Failed logins:  " + failureCount + "\n\n"
@@ -137,58 +154,71 @@ public class NotificationService {
                 + "The counter resets after a successful login.\n"
                 + ctaLine("View User Status", "userStatus")
                 + "\n---\nJenkins OmniAuth Plugin";
-        dispatch(cfg, "bruteForce", subject, body);
+
+        dispatch(cfg, "bruteForce", subject, plain,
+                SmtpHelper.buildBruteForceHtml(cfg, username, failureCount));
     }
 
     // -------------------------------------------------------------------------
     // Event: Stale warning digest
     // -------------------------------------------------------------------------
 
-    public static void sendStaleWarningDigest(OmniAuthGlobalConfig cfg, List<String> approachingUsers,
+    public static void sendStaleWarningDigest(OmniAuthGlobalConfig cfg,
+                                               List<String> approachingUsers,
                                                int windowDays, int thresholdDays) {
         if (cfg == null || approachingUsers.isEmpty()) return;
-        String subject = "[Jenkins OmniAuth] " + approachingUsers.size() + " user(s) approaching stale threshold";
-        StringBuilder body = new StringBuilder();
-        body.append("OmniAuth Stale User Warning\n");
-        body.append("===========================\n\n");
-        body.append("The following users have not logged in for more than ")
-            .append(thresholdDays - windowDays).append(" days\n");
-        body.append("and will become stale (").append(thresholdDays).append(" days) within the next ")
-            .append(windowDays).append(" days:\n\n");
-        for (String uid : approachingUsers) body.append("  - ").append(uid).append("\n");
-        body.append("\nConsider reaching out or adding them to the protected list if they should be kept.\n");
-        body.append(ctaLine("View Stale Users", "staleUsers"));
-        body.append("\n---\nJenkins OmniAuth Plugin");
-        dispatch(cfg, "staleWarning", subject, body.toString());
+        String subject = "[Jenkins OmniAuth] " + approachingUsers.size()
+                + " user(s) approaching stale threshold";
+
+        StringBuilder plain = new StringBuilder();
+        plain.append("OmniAuth Stale User Warning\n")
+             .append("===========================\n\n")
+             .append("The following users have not logged in for more than ")
+             .append(thresholdDays - windowDays).append(" days\n")
+             .append("and will become stale (").append(thresholdDays)
+             .append(" days) within the next ").append(windowDays).append(" days:\n\n");
+        for (String uid : approachingUsers) plain.append("  - ").append(uid).append("\n");
+        plain.append("\nConsider reaching out or adding them to the protected list if they should be kept.\n")
+             .append(ctaLine("View Stale Users", "staleUsers"))
+             .append("\n---\nJenkins OmniAuth Plugin");
+
+        dispatch(cfg, "staleWarning", subject, plain.toString(),
+                SmtpHelper.buildStaleWarningHtml(cfg, approachingUsers, windowDays, thresholdDays));
     }
 
     // -------------------------------------------------------------------------
     // Event: Admin permission granted
     // -------------------------------------------------------------------------
 
-    public static void sendAdminGranted(OmniAuthGlobalConfig cfg, List<String> newAdmins, String grantedBy) {
+    public static void sendAdminGranted(OmniAuthGlobalConfig cfg,
+                                         List<String> newAdmins, String grantedBy) {
         if (cfg == null || newAdmins.isEmpty()) return;
-        String subject = "[Jenkins OmniAuth] Admin permission granted to " + newAdmins.size() + " user(s)";
-        StringBuilder body = new StringBuilder();
-        body.append("OmniAuth Admin Grant Alert\n");
-        body.append("==========================\n\n");
-        body.append("Granted by: ").append(grantedBy).append("\n\n");
-        body.append("New admins:\n");
-        for (String uid : newAdmins) body.append("  + ").append(uid).append("\n");
-        body.append("\nThese users now have full Jenkins ADMINISTER permission.\n");
-        body.append(ctaLine("Review Access", "access"));
-        body.append("\n---\nJenkins OmniAuth Plugin");
-        dispatch(cfg, "adminGranted", subject, body.toString());
+        String subject = "[Jenkins OmniAuth] Admin permission granted to "
+                + newAdmins.size() + " user(s)";
+
+        StringBuilder plain = new StringBuilder();
+        plain.append("OmniAuth Admin Grant Alert\n")
+             .append("==========================\n\n")
+             .append("Granted by: ").append(grantedBy).append("\n\n")
+             .append("New admins:\n");
+        for (String uid : newAdmins) plain.append("  + ").append(uid).append("\n");
+        plain.append("\nThese users now have full Jenkins ADMINISTER permission.\n")
+             .append(ctaLine("Review Access", "access"))
+             .append("\n---\nJenkins OmniAuth Plugin");
+
+        dispatch(cfg, "adminGranted", subject, plain.toString(),
+                SmtpHelper.buildAdminGrantedHtml(cfg, newAdmins, grantedBy));
     }
 
     // -------------------------------------------------------------------------
     // Event: Graph API failed
     // -------------------------------------------------------------------------
 
-    public static void sendGraphApiFailed(OmniAuthGlobalConfig cfg, String userId, String errorMessage) {
+    public static void sendGraphApiFailed(OmniAuthGlobalConfig cfg,
+                                           String userId, String errorMessage) {
         if (cfg == null) return;
         String subject = "[Jenkins OmniAuth] Graph API failure — group sync broken";
-        String body = "OmniAuth Graph API Failure\n"
+        String plain = "OmniAuth Graph API Failure\n"
                 + "==========================\n\n"
                 + "User affected: " + userId + "\n"
                 + "Error:         " + errorMessage + "\n\n"
@@ -196,6 +226,8 @@ public class NotificationService {
                 + "Required: GroupMember.Read.All with admin consent.\n"
                 + ctaLine("Open Dashboard", "")
                 + "\n---\nJenkins OmniAuth Plugin";
-        dispatch(cfg, "graphApiFailure", subject, body);
+
+        dispatch(cfg, "graphApiFailure", subject, plain,
+                SmtpHelper.buildGraphApiFailedHtml(cfg, userId, errorMessage));
     }
 }

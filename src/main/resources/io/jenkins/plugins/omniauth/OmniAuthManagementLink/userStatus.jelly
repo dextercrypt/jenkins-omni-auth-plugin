@@ -124,7 +124,7 @@
                         <span class="us-badge us-gray">Native</span>
                       </j:when>
                       <j:when test="${u.provisioningSource == 'VIA_ENTRA_GROUP'}">
-                        <span class="us-badge us-purple" title="${u.groupName != null ? u.groupName : ''}">Entra · Group</span>
+                        <span class="us-badge us-purple">Entra · Group</span>
                       </j:when>
                       <j:otherwise>
                         <span class="us-badge us-blue">Entra · Indiv.</span>
@@ -280,6 +280,29 @@
           </div>
         </div>
       </div>
+      <!-- Pending deletion info modal -->
+      <div id="usPDModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.4);align-items:center;justify-content:center;" onclick="if(event.target===this)usPDClose()">
+        <div class="us-modal">
+          <div class="us-modal-hdr" style="background:#fffbeb;border-bottom-color:#fcd34d;color:#92400e;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            Access Detail Unavailable
+          </div>
+          <div class="us-modal-body">
+            <p style="margin:0 0 10px;">This account is <strong>pending deletion</strong>.</p>
+            <div class="us-modal-warn" style="background:#fffbeb;border-color:#fcd34d;color:#92400e;">
+              Its permissions were granted via group membership, which has been revoked.
+              The access detail page is not available for accounts in this state.
+            </div>
+            <p style="margin:8px 0 0;font-size:.86em;color:#6b7280;">
+              To restore access, re-add the user to the Azure AD group. The account will be automatically recovered on their next login.
+            </p>
+          </div>
+          <div class="us-modal-ftr">
+            <button type="button" class="jenkins-button jenkins-button--primary" onclick="usPDClose()">OK</button>
+          </div>
+        </div>
+      </div>
+
       <form id="usDForm" method="post" action="deleteUser" style="display:none;">
         <input type="hidden" name="userId" id="usDUser"/>
         <input type="hidden" name="from"   value="userStatus"/>
@@ -369,8 +392,8 @@
         .us-menu-disabled svg { color:#d1d5db !important; }
         .us-menu-disabled:hover { background:transparent !important; }
         .us-menu-tipped { position:relative; }
-        .us-menu-tipbox { position:absolute;bottom:calc(100% + 5px);left:13px;background:#1f2937;color:#f9fafb;font-size:.74em;padding:5px 9px;border-radius:5px;white-space:nowrap;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.18);opacity:0;transition:opacity .08s ease;z-index:9999; }
-        .us-menu-tipbox::after { content:'';position:absolute;top:100%;left:14px;border:4px solid transparent;border-top-color:#1f2937; }
+        .us-menu-tipbox { position:absolute;bottom:calc(100% + 5px);right:0;left:auto;background:#1f2937;color:#f9fafb;font-size:.74em;padding:5px 9px;border-radius:5px;white-space:nowrap;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.18);opacity:0;transition:opacity .08s ease;z-index:9999; }
+        .us-menu-tipbox::after { content:'';position:absolute;top:100%;right:14px;left:auto;border:4px solid transparent;border-top-color:#1f2937; }
         .us-menu-tipped:hover .us-menu-tipbox { opacity:1; }
 
         /* Modal */
@@ -455,8 +478,20 @@
 
         document.addEventListener('click', usCloseMenus);
         document.addEventListener('keydown', function(e) {
-          if (e.key === 'Escape') { usCloseMenus(); usCloseD(); }
+          if (e.key === 'Escape') { usCloseMenus(); usCloseD(); usPDClose(); }
         });
+
+        // ── Pending-deletion info modal ──────────────────────────────────────
+        function usPDClose() {
+          document.getElementById('usPDModal').style.display = 'none';
+        }
+
+        (function() {
+          var params = new URLSearchParams(window.location.search);
+          if (params.get('info') === 'pendingDeletion') {
+            document.getElementById('usPDModal').style.display = 'flex';
+          }
+        })();
 
         // ── Delete modal ─────────────────────────────────────────────────────
         // ── Mark / Unmark for deletion ───────────────────────────────────────

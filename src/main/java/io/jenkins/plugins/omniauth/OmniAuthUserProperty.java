@@ -54,6 +54,12 @@ public class OmniAuthUserProperty extends UserProperty {
      */
     private boolean pendingDeletion;
 
+    /** Last known Azure group display name — preserved when the account is orphaned. */
+    private String lastKnownGroupName;
+
+    /** Last known Azure group OID — preserved when the account is orphaned. */
+    private String lastKnownGroupOid;
+
     @DataBoundConstructor
     public OmniAuthUserProperty(String entraObjectId, String entraUpn) {
         this.entraObjectId = entraObjectId;
@@ -116,6 +122,12 @@ public class OmniAuthUserProperty extends UserProperty {
 
     public boolean isPendingDeletion() { return pendingDeletion; }
     public void setPendingDeletion(boolean pendingDeletion) { this.pendingDeletion = pendingDeletion; }
+
+    public String getLastKnownGroupName() { return lastKnownGroupName; }
+    public void setLastKnownGroupName(String s) { this.lastKnownGroupName = s; }
+
+    public String getLastKnownGroupOid() { return lastKnownGroupOid; }
+    public void setLastKnownGroupOid(String s) { this.lastKnownGroupOid = s; }
 
     @Extension
     public static class DescriptorImpl extends UserPropertyDescriptor {

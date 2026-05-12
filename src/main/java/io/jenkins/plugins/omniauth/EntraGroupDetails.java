@@ -20,12 +20,12 @@ public class EntraGroupDetails implements GrantedAuthority {
     }
 
     /**
-     * Returns the group display name. This string is what Jenkins' authorization
-     * strategies compare against when checking group membership.
+     * Returns the group OID. All matrix entries and assignment configs key groups by OID,
+     * so this must match what is stored in the authorization strategy.
      */
     @Override
     public String getAuthority() {
-        return displayName;
+        return objectId;
     }
 
     public String getObjectId() {

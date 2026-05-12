@@ -59,7 +59,8 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     private int     staleWarningWindowDays = 14;
 
     // ── Notification branding ─────────────────────────────────────────────────
-    private String notificationLogoUrl = "";
+    private String notificationLogoUrl  = "";
+    private String notificationFooterNote = "";
 
     // ── Per-channel event subscriptions ──────────────────────────────────────
     private List<String> smtpEvents  = new ArrayList<>(java.util.Arrays.asList(ALL_EVENTS));
@@ -104,6 +105,9 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     public String  getSmtpFromName()    { return smtpFromName; }
     public String  getNotificationLogoUrl() {
         return notificationLogoUrl != null ? notificationLogoUrl.trim() : "";
+    }
+    public String  getNotificationFooterNote() {
+        return notificationFooterNote != null ? notificationFooterNote.trim() : "";
     }
     public String  getSmtpReplyTo()     { return smtpReplyTo; }
     public String  getNotifyEmails()    { return notifyEmails; }
@@ -203,6 +207,7 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
         smtpReplyTo     = jsonStr(json, "smtpReplyTo",     "");
         notifyEmails          = jsonStr(json, "notifyEmails",          "");
         notificationLogoUrl   = jsonStr(json, "notificationLogoUrl",   "");
+        notificationFooterNote = jsonStr(json, "notificationFooterNote", "");
 
         // Notifications master + channels
         notificationsEnabled = json.optBoolean("notificationsEnabled", false);
