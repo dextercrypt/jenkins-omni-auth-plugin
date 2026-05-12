@@ -32,11 +32,40 @@ public class OmniAuthUserProperty extends UserProperty {
     /** Display names of groups cached from the last successful Entra login. */
     private List<String> cachedGroups;
 
+    /**
+     * How this account was provisioned.
+     * "INDIVIDUAL" — admin explicitly pre-provisioned this user.
+     * "VIA_ENTRA_GROUP" — auto-created on first login via Azure AD group membership.
+     */
+    private String provisioningSource;
+
+    /**
+     * OIDs of Access Management GROUP entities currently granting this user access.
+     * Only populated when provisioningSource = VIA_ENTRA_GROUP.
+     * Refreshed on every login to reflect current group membership.
+     */
+    private List<String> activeGroupOids;
+
+    /**
+     * When true, this account is queued for deletion.
+     * Set automatically when a VIA_ENTRA_GROUP user is rejected at login (removed from AD group).
+     * Set manually by an admin via the User Status kebab menu.
+     * Cleared automatically on a successful login (group re-added in Azure).
+     */
+    private boolean pendingDeletion;
+
+    /** Last known Azure group display name — preserved when the account is orphaned. */
+    private String lastKnownGroupName;
+
+    /** Last known Azure group OID — preserved when the account is orphaned. */
+    private String lastKnownGroupOid;
+
     @DataBoundConstructor
     public OmniAuthUserProperty(String entraObjectId, String entraUpn) {
         this.entraObjectId = entraObjectId;
         this.entraUpn = entraUpn;
         this.cachedGroups = new ArrayList<>();
+        this.activeGroupOids = new ArrayList<>();
     }
 
     public String getEntraObjectId() {
@@ -70,6 +99,35 @@ public class OmniAuthUserProperty extends UserProperty {
     public void setCachedGroups(List<String> cachedGroups) {
         this.cachedGroups = new ArrayList<>(cachedGroups);
     }
+
+    public String getProvisioningSource() {
+        return provisioningSource != null ? provisioningSource : "INDIVIDUAL";
+    }
+
+    public void setProvisioningSource(String provisioningSource) {
+        this.provisioningSource = provisioningSource;
+    }
+
+    public boolean isViaGroup() {
+        return "VIA_ENTRA_GROUP".equals(provisioningSource);
+    }
+
+    public List<String> getActiveGroupOids() {
+        return activeGroupOids != null ? Collections.unmodifiableList(activeGroupOids) : Collections.emptyList();
+    }
+
+    public void setActiveGroupOids(List<String> activeGroupOids) {
+        this.activeGroupOids = activeGroupOids != null ? new ArrayList<>(activeGroupOids) : new ArrayList<>();
+    }
+
+    public boolean isPendingDeletion() { return pendingDeletion; }
+    public void setPendingDeletion(boolean pendingDeletion) { this.pendingDeletion = pendingDeletion; }
+
+    public String getLastKnownGroupName() { return lastKnownGroupName; }
+    public void setLastKnownGroupName(String s) { this.lastKnownGroupName = s; }
+
+    public String getLastKnownGroupOid() { return lastKnownGroupOid; }
+    public void setLastKnownGroupOid(String s) { this.lastKnownGroupOid = s; }
 
     @Extension
     public static class DescriptorImpl extends UserPropertyDescriptor {

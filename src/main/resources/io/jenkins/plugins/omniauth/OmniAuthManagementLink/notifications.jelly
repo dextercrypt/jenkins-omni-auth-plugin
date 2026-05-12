@@ -57,19 +57,68 @@
                NOTIFICATIONS LOGO
                ================================================================ -->
           <div id="oauLogoSection" class="jenkins-card" style="padding: 16px 20px; margin-bottom: 20px;">
-            <div style="font-weight: 700; font-size: 0.95em; margin-bottom: 4px;">Notifications Logo</div>
-            <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.82em; margin-bottom: 12px;">
-              URL of an image to display in the email header (PNG, SVG, or JPEG — ideally 32 px tall).
-              Leave blank to use the default <strong>OA</strong> monogram.
+            <!-- Toggle row -->
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+              <div>
+                <div style="font-weight:700; font-size:0.95em;">Email Logo</div>
+                <div style="color:var(--text-color-secondary,#6c757d); font-size:0.82em; margin-top:2px;">
+                  Use the official OmniAuth logo in notification emails.
+                </div>
+              </div>
+              <label class="oau-toggle-wrap" style="flex-shrink:0;">
+                <j:if test="${cfg.notificationLogoUrl != null and cfg.notificationLogoUrl != ''}">
+                  <input type="checkbox" id="oauUseCustomLogo" class="oau-toggle-chk" onchange="oauToggleCustomLogo(this)" checked="checked"/>
+                </j:if>
+                <j:if test="${cfg.notificationLogoUrl == null or cfg.notificationLogoUrl == ''}">
+                  <input type="checkbox" id="oauUseCustomLogo" class="oau-toggle-chk" onchange="oauToggleCustomLogo(this)"/>
+                </j:if>
+                <div class="oau-toggle-track"><div class="oau-toggle-thumb"></div></div>
+              </label>
             </div>
-            <input type="url" name="notificationLogoUrl" value="${cfg.notificationLogoUrl}"
-                   placeholder="https://your-domain.com/logo.png"
-                   style="width: 400px; max-width: 100%;"/>
-            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--panel-border-color,#f0f0f0);">
+
+            <!-- Custom URL (revealed when toggled on) -->
+            <j:if test="${cfg.notificationLogoUrl != null and cfg.notificationLogoUrl != ''}">
+              <div id="oauCustomLogoField" style="margin-top:12px; padding-top:12px;
+                   border-top:1px solid var(--panel-border-color,#f0f0f0);">
+                <div style="font-size:0.82em; color:var(--text-color-secondary,#6c757d); margin-bottom:6px;">
+                  Custom logo URL (PNG, SVG, or JPEG — ideally 32 px tall)
+                </div>
+                <input type="url" id="oauLogoUrlInput" name="notificationLogoUrl"
+                       value="${cfg.notificationLogoUrl}"
+                       placeholder="https://your-domain.com/logo.png"
+                       style="width:400px; max-width:100%;"/>
+              </div>
+            </j:if>
+            <j:if test="${cfg.notificationLogoUrl == null or cfg.notificationLogoUrl == ''}">
+              <div id="oauCustomLogoField" style="display:none; margin-top:12px; padding-top:12px;
+                   border-top:1px solid var(--panel-border-color,#f0f0f0);">
+                <div style="font-size:0.82em; color:var(--text-color-secondary,#6c757d); margin-bottom:6px;">
+                  Custom logo URL (PNG, SVG, or JPEG — ideally 32 px tall)
+                </div>
+                <input type="url" id="oauLogoUrlInput" name="notificationLogoUrl"
+                       value=""
+                       placeholder="https://your-domain.com/logo.png"
+                       style="width:400px; max-width:100%;"/>
+              </div>
+            </j:if>
+
+            <!-- Footer note -->
+            <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--panel-border-color,#f0f0f0);">
+              <div style="font-weight:600; font-size:0.88em; margin-bottom:4px;">Footer Note</div>
+              <div style="color:var(--text-color-secondary,#6c757d); font-size:0.82em; margin-bottom:6px;">
+                Optional line shown above the fine print in every notification email (e.g. "Contact IT: helpdesk@corp.com").
+              </div>
+              <input type="text" name="notificationFooterNote" value="${cfg.notificationFooterNote}"
+                     placeholder="e.g. For support contact helpdesk@corp.com"
+                     style="width:440px; max-width:100%;"/>
+            </div>
+
+            <!-- Preview button -->
+            <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--panel-border-color,#f0f0f0);">
               <button type="button" class="jenkins-button" onclick="oauPreviewEmail()">
                 Preview Email
               </button>
-              <span style="margin-left: 10px; color: var(--text-color-secondary,#888); font-size: 0.82em;">
+              <span style="margin-left:10px; color:var(--text-color-secondary,#888); font-size:0.82em;">
                 Shows a sample notification email with the current logo.
               </span>
             </div>
@@ -81,11 +130,24 @@
             <div style="background:#fff; border-radius:10px; box-shadow:0 8px 40px rgba(0,0,0,0.35);
                         width:min(780px,95vw); max-height:90vh; display:flex; flex-direction:column; overflow:hidden;">
               <div style="padding:14px 20px; border-bottom:1px solid #e5e7eb;
-                          display:flex; align-items:center; justify-content:space-between;">
-                <span style="font-weight:700; font-size:0.95em;">Email Preview</span>
+                          display:flex; align-items:center; gap:12px;">
+                <span style="font-weight:700; font-size:0.95em; white-space:nowrap;">Email Preview</span>
+                <select id="oauPreviewEventType" onchange="oauReloadPreview()"
+                        style="flex:1; max-width:260px; font-size:0.85em; padding:4px 8px;
+                               border:1px solid #d1d5db; border-radius:6px; background:#fff; cursor:pointer;">
+                  <option value="configChanged">Config Changed</option>
+                  <option value="bruteForce">Brute Force Alert</option>
+                  <option value="userDeleted">User Deleted</option>
+                  <option value="cleanup">Stale User Cleanup</option>
+                  <option value="adminGranted">Admin Granted</option>
+                  <option value="staleWarning">Stale Warning Digest</option>
+                  <option value="protectedListChanged">Protected List Changed</option>
+                  <option value="graphApiFailure">Graph API Failure</option>
+                  <option value="smtpTest">SMTP Test Email</option>
+                </select>
                 <button type="button" onclick="oauClosePreview()"
                         style="background:none; border:none; font-size:1.3em; cursor:pointer; line-height:1;
-                               color:#6c757d; padding:2px 6px; border-radius:4px;"
+                               color:#6c757d; padding:2px 6px; border-radius:4px; margin-left:auto;"
                         title="Close">&#x2715;</button>
               </div>
               <div style="flex:1; overflow:hidden; padding:0;">
@@ -647,6 +709,17 @@
           el.style.pointerEvents = on ? ''   : 'none';
         }
 
+        function oauToggleCustomLogo(checkbox) {
+          var field = document.getElementById('oauCustomLogoField');
+          var input = document.getElementById('oauLogoUrlInput');
+          if (checkbox.checked) {
+            field.style.display = 'block';
+          } else {
+            field.style.display = 'none';
+            input.value = '';
+          }
+        }
+
         // Event label tooltips — set on the <label> so hover always works
         var oauEventTitles = {
           cleanup:              'Report after each automated cleanup run (dry-run or live).',
@@ -675,11 +748,27 @@
         oauToggleWebhook('teamsEnabled', 'teamsConfig');
         oauToggleSection('staleWarningEnabled', 'staleWarningConfig');
 
+        function oauPreviewUrl() {
+          var type    = document.getElementById('oauPreviewEventType').value;
+          var logoEl  = document.getElementById('oauLogoUrlInput');
+          var noteEl  = document.querySelector('[name="notificationFooterNote"]');
+          var logoVal = logoEl ? logoEl.value.trim() : '';
+          var noteVal = noteEl ? noteEl.value.trim() : '';
+          var url = '${rootURL}/manage/omniauth-management/previewEmail?eventType=' + type;
+          if (logoVal) { url = url + '\x26logoUrl='    + encodeURIComponent(logoVal); }
+          url = url + '\x26footerNote=' + encodeURIComponent(noteVal);
+          return url;
+        }
+
         function oauPreviewEmail() {
-          var modal  = document.getElementById('oauPreviewModal');
-          var frame  = document.getElementById('oauPreviewFrame');
+          var modal = document.getElementById('oauPreviewModal');
+          var frame = document.getElementById('oauPreviewFrame');
           modal.style.display = 'flex';
-          frame.src = '${rootURL}/manage/omniauth-management/previewEmail';
+          frame.src = oauPreviewUrl();
+        }
+
+        function oauReloadPreview() {
+          document.getElementById('oauPreviewFrame').src = oauPreviewUrl();
         }
 
         function oauClosePreview() {

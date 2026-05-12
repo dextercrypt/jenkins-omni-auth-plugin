@@ -1,0 +1,342 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:l="/lib/layout">
+  <l:layout title="OmniAuth — Audit Log" norefresh="true">
+    <l:main-panel>
+
+      <div class="jenkins-app-bar">
+        <div class="jenkins-app-bar__content">
+          <h1 class="jenkins-app-bar__heading">Audit Log</h1>
+        </div>
+      </div>
+
+      <div style="padding:0 16px 60px;">
+
+        <j:if test="${request2.getParameter('purged') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom:12px;">All audit log files have been deleted.</div>
+        </j:if>
+        <!-- Filter bar -->
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+          <input id="alxSearch" type="text" placeholder="Filter by user, action, scope…"
+                 class="jenkins-input" style="max-width:260px;font-size:0.88em;"
+                 oninput="alxFilter()"/>
+          <select id="alxActionFilter" class="jenkins-input" style="max-width:180px;font-size:0.88em;"
+                  onchange="alxFilter()">
+            <option value="">All actions</option>
+            <option value="grant">Grant</option>
+            <option value="revoke">Revoke</option>
+            <option value="edit">Edit</option>
+            <option value="expired">Expired</option>
+            <option value="role_created">Role Created</option>
+            <option value="role_edited">Role Edited</option>
+            <option value="role_deleted">Role Deleted</option>
+            <option value="login_success">Login Success</option>
+            <option value="login_failure">Login Failure</option>
+            <option value="user_created">User Created</option>
+            <option value="user_deleted">User Deleted</option>
+          </select>
+          <input id="alxIpFilter" type="text" placeholder="Filter by IP…"
+                 class="jenkins-input" style="max-width:160px;font-size:0.88em;"
+                 oninput="alxFilter()"/>
+          <span id="alxCount" style="font-size:0.8em;color:#999;margin-left:4px;"></span>
+          <div style="margin-left:auto;">
+            <button type="button" onclick="alxPurgeOpen()"
+                    class="jenkins-button"
+                    style="font-size:0.82em;color:#dc3545;border-color:#dc3545;">
+              Purge All Logs
+            </button>
+          </div>
+        </div>
+        <!-- Date range row -->
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
+          <label style="font-size:0.8em;color:#888;white-space:nowrap;">From</label>
+          <input id="alxDateFrom" type="date" class="jenkins-input" style="max-width:160px;font-size:0.88em;" oninput="alxFilter()"/>
+          <label style="font-size:0.8em;color:#888;white-space:nowrap;">To</label>
+          <input id="alxDateTo"   type="date" class="jenkins-input" style="max-width:160px;font-size:0.88em;" oninput="alxFilter()"/>
+          <button type="button" onclick="alxClearFilters()"
+                  class="jenkins-button" style="font-size:0.8em;">Clear filters</button>
+        </div>
+
+        <div style="border:1px solid var(--panel-border-color,#e0e0e0);border-radius:8px;overflow:hidden;background:var(--background-color,#fff);">
+          <j:choose>
+            <j:when test="${it.auditEvents.isEmpty()}">
+              <div style="padding:56px;text-align:center;color:#888;">
+                <div style="font-size:2em;margin-bottom:8px;opacity:0.3;">&#128196;</div>
+                <div style="font-size:0.9em;">No audit events recorded yet.</div>
+              </div>
+            </j:when>
+            <j:otherwise>
+              <table id="alxTable" style="width:100%;border-collapse:collapse;">
+                <thead>
+                  <tr style="background:var(--background-color,#fafafa);border-bottom:2px solid var(--panel-border-color,#e0e0e0);">
+                    <th class="alx-th">Time</th>
+                    <th class="alx-th">Action</th>
+                    <th class="alx-th">User</th>
+                    <th class="alx-th">By</th>
+                    <th class="alx-th">Details</th>
+                    <th class="alx-th">IP</th>
+                  </tr>
+                </thead>
+                <tbody id="alxBody">
+                  <j:forEach var="ev" items="${it.auditEvents}">
+                    <tr class="alx-row"
+                        data-action="${ev.get('action')}"
+                        data-ip="${ev.get('ip')}"
+                        data-ts="${ev.get('ts')}"
+                        data-text="${ev.get('user')} ${ev.get('by')} ${ev.get('scope')} ${ev.get('role')} ${ev.get('action')} ${ev.get('ip')} ${ev.get('authType')}"
+                        style="border-bottom:1px solid var(--panel-border-color,#f0f0f0);">
+                      <td style="padding:10px 16px;font-size:0.8em;color:#999;white-space:nowrap;">
+                        <span class="alx-ts" data-ts="${ev.get('ts')}">${ev.get('ts')}</span>
+                      </td>
+                      <td style="padding:10px 16px;">
+                        <span class="alx-badge alx-badge-${ev.get('action')}">${ev.get('action')}</span>
+                      </td>
+                      <td style="padding:10px 16px;font-size:0.88em;font-weight:600;">
+                        ${ev.get('user')}
+                      </td>
+                      <td style="padding:10px 16px;font-size:0.82em;color:#777;">
+                        <j:if test="${ev.get('by') != null and ev.get('by') != ''}">
+                          ${ev.get('by')}
+                        </j:if>
+                        <j:if test="${ev.get('by') == null or ev.get('by') == ''}">
+                          <span style="color:#ccc;">—</span>
+                        </j:if>
+                      </td>
+                      <td style="padding:10px 16px;font-size:0.82em;color:#555;">
+                        <j:if test="${ev.get('scope') != null and ev.get('scope') != ''}">
+                          <span style="font-family:monospace;font-size:0.9em;">${ev.get('scope')}</span>
+                        </j:if>
+                        <j:if test="${ev.get('role') != null and ev.get('role') != ''}">
+                          <j:choose>
+                            <j:when test="${ev.get('action') == 'revoke'}">
+                              &#8201;<span class="alx-role" style="text-decoration:line-through;opacity:0.5;">${ev.get('role')}</span>
+                            </j:when>
+                            <j:otherwise>
+                              &#8201;&#8594;&#8201;<span class="alx-role">${ev.get('role')}</span>
+                            </j:otherwise>
+                          </j:choose>
+                        </j:if>
+                        <j:if test="${ev.get('oldRole') != null and ev.get('oldRole') != ''}">
+                          <span class="alx-role" style="text-decoration:line-through;opacity:0.5;">${ev.get('oldRole')}</span>
+                          &#8201;&#8594;&#8201;<span class="alx-role">${ev.get('newRole')}</span>
+                        </j:if>
+                        <j:if test="${ev.get('expiresAt') != null and ev.get('expiresAt') != ''}">
+                          &#8201;<span style="color:#856404;font-size:0.88em;">(expires <span class="alx-ts" data-ts="${ev.get('expiresAt')}">${ev.get('expiresAt')}</span>)</span>
+                        </j:if>
+                        <j:if test="${ev.get('authType') != null and ev.get('authType') != ''}">
+                          via&#160;<strong>${ev.get('authType')}</strong>
+                        </j:if>
+                      </td>
+                      <td style="padding:10px 16px;font-size:0.82em;font-family:monospace;color:#666;">
+                        <j:if test="${ev.get('ip') != null and ev.get('ip') != ''}">
+                          ${ev.get('ip')}
+                        </j:if>
+                        <j:if test="${ev.get('ip') == null or ev.get('ip') == ''}">
+                          <span style="color:#ccc;">—</span>
+                        </j:if>
+                      </td>
+                    </tr>
+                  </j:forEach>
+                </tbody>
+              </table>
+            </j:otherwise>
+          </j:choose>
+        </div>
+
+      </div>
+
+      <style>
+        .alx-th {
+          padding:10px 16px;text-align:left;font-size:0.78em;font-weight:700;
+          text-transform:uppercase;letter-spacing:0.05em;
+          color:var(--text-color-secondary,#888);white-space:nowrap;
+        }
+        .alx-badge {
+          display:inline-block;padding:2px 9px;border-radius:10px;font-size:0.75em;
+          font-weight:700;white-space:nowrap;text-transform:uppercase;letter-spacing:0.04em;
+        }
+        .alx-badge-grant        { background:#d1fae5;color:#065f46; }
+        .alx-badge-revoke       { background:#fee2e2;color:#991b1b; }
+        .alx-badge-edit         { background:#dbeafe;color:#1e40af; }
+        .alx-badge-expired      { background:#fef3c7;color:#92400e; }
+        .alx-badge-role_created { background:#ede9fe;color:#5b21b6; }
+        .alx-badge-role_edited  { background:#e0e7ff;color:#3730a3; }
+        .alx-badge-role_deleted { background:#fce7f3;color:#9d174d; }
+        .alx-badge-login_success { background:#d1fae5;color:#065f46; }
+        .alx-badge-login_failure { background:#fee2e2;color:#991b1b; }
+        .alx-badge-user_created  { background:#d1fae5;color:#065f46; }
+        .alx-badge-user_deleted  { background:#fee2e2;color:#991b1b; }
+        .alx-role {
+          display:inline-block;padding:1px 7px;background:#e8f0fe;color:#1a56b0;
+          border-radius:8px;font-size:0.88em;font-weight:600;
+        }
+        .alx-row.alx-hidden { display:none; }
+      </style>
+
+      <script>//<![CDATA[
+        // Format timestamps
+        document.addEventListener('DOMContentLoaded', function() {
+          document.querySelectorAll('.alx-ts').forEach(function(el) {
+            var ts = el.getAttribute('data-ts');
+            if (!ts) return;
+            try {
+              var d = new Date(ts);
+              el.textContent = d.toLocaleString(undefined, {
+                year:'numeric', month:'short', day:'numeric',
+                hour:'2-digit', minute:'2-digit'
+              });
+            } catch(e) {}
+          });
+          alxFilter();
+        });
+
+        function alxFilter() {
+          var q       = document.getElementById('alxSearch').value.toLowerCase();
+          var action  = document.getElementById('alxActionFilter').value;
+          var ip      = document.getElementById('alxIpFilter').value.toLowerCase();
+          var fromVal = document.getElementById('alxDateFrom').value;
+          var toVal   = document.getElementById('alxDateTo').value;
+          var fromTs  = fromVal ? new Date(fromVal).getTime() : null;
+          var toTs    = toVal   ? new Date(toVal + 'T23:59:59').getTime() : null;
+          var rows    = document.querySelectorAll('.alx-row');
+          var shown   = 0;
+          rows.forEach(function(row) {
+            var text   = (row.getAttribute('data-text') || '').toLowerCase();
+            var act    = row.getAttribute('data-action') || '';
+            var rowIp  = (row.getAttribute('data-ip') || '').toLowerCase();
+            var rowTs  = row.getAttribute('data-ts');
+            var rowTime = rowTs ? new Date(rowTs).getTime() : null;
+            var match  = (!q      || text.indexOf(q) >= 0)
+                      && (!action || act === action)
+                      && (!ip     || rowIp.indexOf(ip) >= 0)
+                      && (!fromTs || (rowTime !== null && rowTime >= fromTs))
+                      && (!toTs   || (rowTime !== null && rowTime <= toTs));
+            row.classList.toggle('alx-hidden', !match);
+            if (match) shown++;
+          });
+          var count = document.getElementById('alxCount');
+          if (count) count.textContent = shown + ' event' + (shown === 1 ? '' : 's');
+        }
+
+        function alxClearFilters() {
+          document.getElementById('alxSearch').value      = '';
+          document.getElementById('alxActionFilter').value = '';
+          document.getElementById('alxIpFilter').value    = '';
+          document.getElementById('alxDateFrom').value    = '';
+          document.getElementById('alxDateTo').value      = '';
+          alxFilter();
+        }
+      //]]></script>
+
+    <!-- Purge confirmation modal -->
+    <div id="alxPurgeModal" onclick="if(event.target===this)alxPurgeClose()"
+         style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(15,20,30,0.55);
+                backdrop-filter:blur(3px);align-items:center;justify-content:center;">
+      <div id="alxPurgeBox" style="background:#fff;border-radius:14px;width:420px;max-width:92vw;
+                  box-shadow:0 32px 80px rgba(0,0,0,0.28);padding:32px 32px 28px;">
+
+        <!-- Icon + title -->
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;">
+          <div style="width:44px;height:44px;border-radius:12px;background:#fee2e2;
+                      display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1.3em;">
+            &#128465;
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:1.05em;color:#1a1a1a;">Purge All Audit Logs</div>
+            <div style="font-size:0.82em;color:#999;margin-top:2px;">This action is permanent and cannot be undone.</div>
+          </div>
+        </div>
+
+        <div style="font-size:0.87em;color:#555;margin-bottom:20px;line-height:1.5;">
+          All audit log files will be permanently deleted. Enter your password to confirm.
+        </div>
+
+        <div style="margin-bottom:18px;">
+          <div style="font-size:0.75em;font-weight:700;text-transform:uppercase;
+                      letter-spacing:0.05em;color:#888;margin-bottom:6px;">Your Password</div>
+          <input type="password" id="alxPurgePwd"
+                 class="jenkins-input" style="width:100%;box-sizing:border-box;"
+                 placeholder="Enter your password…"
+                 oninput="document.getElementById('alxPurgeBtn').disabled = this.value.length === 0;
+                          document.getElementById('alxPurgeErr').style.display='none';"
+                 onkeydown="if(event.key==='Enter' &amp;&amp; this.value.length > 0) alxPurgeSubmit()"/>
+          <div id="alxPurgeErr" style="display:none;font-size:0.82em;color:#dc3545;margin-top:7px;
+               font-weight:600;">&#10005; Incorrect password. Try again.</div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+          <button type="button" onclick="alxPurgeClose()"
+                  class="jenkins-button" style="font-size:0.88em;">Cancel</button>
+          <button type="button" id="alxPurgeBtn" onclick="alxPurgeSubmit()"
+                  class="jenkins-button" disabled="disabled"
+                  style="font-size:0.88em;background:#dc3545;color:#fff;border-color:#dc3545;">
+            Delete All Logs
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <style>
+      @keyframes alxShake {
+        0%,100% { transform:translateX(0); }
+        15%,45%,75% { transform:translateX(-10px); }
+        30%,60%,90% { transform:translateX(10px); }
+      }
+      .alx-shake { animation: alxShake 0.5s ease; }
+    </style>
+
+    <script>//<![CDATA[
+      function alxPurgeOpen() {
+        var modal = document.getElementById('alxPurgeModal');
+        modal.style.display = 'flex';
+        document.getElementById('alxPurgePwd').value = '';
+        document.getElementById('alxPurgeBtn').disabled = true;
+        document.getElementById('alxPurgeErr').style.display = 'none';
+        document.getElementById('alxPurgeBox').classList.remove('alx-shake');
+        setTimeout(function(){ document.getElementById('alxPurgePwd').focus(); }, 60);
+        document.addEventListener('keydown', alxPurgeKey);
+      }
+      function alxPurgeClose() {
+        document.getElementById('alxPurgeModal').style.display = 'none';
+        document.removeEventListener('keydown', alxPurgeKey);
+      }
+      function alxPurgeKey(e) {
+        if (e.key === 'Escape') alxPurgeClose();
+      }
+      function alxPurgeSubmit() {
+        var pwd = document.getElementById('alxPurgePwd').value;
+        if (!pwd) return;
+        var btn = document.getElementById('alxPurgeBtn');
+        btn.disabled = true;
+        btn.textContent = 'Verifying…';
+
+        var body = new URLSearchParams();
+        body.append('confirmPassword', pwd);
+        var head = document.head;
+        body.append(head.dataset.crumbHeader || 'Jenkins-Crumb', head.dataset.crumbValue || '');
+
+        fetch('purgeAuditLog', { method:'POST', body: body })
+          .then(function(res) { return res.json(); })
+          .then(function(data) {
+            if (data.error) {
+              var box = document.getElementById('alxPurgeBox');
+              box.classList.remove('alx-shake');
+              void box.offsetWidth;
+              box.classList.add('alx-shake');
+              document.getElementById('alxPurgeErr').style.display = '';
+              document.getElementById('alxPurgePwd').value = '';
+              document.getElementById('alxPurgePwd').focus();
+              btn.disabled = true;
+              btn.textContent = 'Delete All Logs';
+            } else {
+              window.location.href = 'auditLog?purged=true';
+            }
+          })
+          .catch(function() {
+            btn.disabled = false;
+            btn.textContent = 'Delete All Logs';
+          });
+      }
+    //]]></script>
+
+    </l:main-panel>
+  </l:layout>
+</j:jelly>

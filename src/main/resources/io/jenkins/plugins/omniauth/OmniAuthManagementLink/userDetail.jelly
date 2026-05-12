@@ -1,0 +1,976 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:l="/lib/layout">
+  <l:layout title="OmniAuth — User Access" norefresh="true">
+    <l:main-panel>
+
+      <j:set var="sid"              value="${request2.getParameter('sid')}"/>
+      <j:set var="type"             value="${request2.getParameter('type')}"/>
+      <j:set var="header"           value="${it.userDetailHeader}"/>
+      <j:set var="assignments"      value="${it.userAssignments}"/>
+      <j:set var="roles"            value="${it.roles}"/>
+      <j:set var="tmpPwd"           value="${it.tempPassword}"/>
+      <j:set var="isNewUser"        value="${request2.getParameter('newUser') == 'true'}"/>
+      <j:set var="isPreProvisioned" value="${request2.getParameter('preProvisioned') == 'true'}"/>
+
+      <!-- Breadcrumb -->
+      <div class="jenkins-app-bar">
+        <div class="jenkins-app-bar__content">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <a href="${rootURL}/manage/omniauth-management/"
+               style="color:var(--text-color-secondary,#6c757d);font-size:0.82em;text-decoration:none;">
+              &#8592; OmniAuth Management
+            </a>
+            <span style="color:#ccc;">/</span>
+            <a href="accessManagement"
+               style="color:var(--text-color-secondary,#6c757d);font-size:0.82em;text-decoration:none;">
+              Access Management
+            </a>
+            <span style="color:#ccc;">/</span>
+            <h1 class="jenkins-app-bar__heading">
+              <j:choose>
+                <j:when test="${header != null}">${header.sid}</j:when>
+                <j:otherwise>User</j:otherwise>
+              </j:choose>
+            </h1>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding:0 16px 60px;">
+
+        <!-- Flash -->
+        <j:if test="${request2.getParameter('saved') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom:12px;">Access updated.</div>
+        </j:if>
+        <j:if test="${request2.getParameter('error') == 'lastAdmin'}">
+          <div class="jenkins-alert jenkins-alert-danger" style="margin-bottom:12px;">Cannot remove — this would leave Jenkins with no administrators.</div>
+        </j:if>
+        <j:if test="${request2.getParameter('error') == 'notOmniAuth'}">
+          <div class="jenkins-alert jenkins-alert-danger" style="margin-bottom:12px;">OmniAuth Authorization Strategy must be active.</div>
+        </j:if>
+        <j:if test="${request2.getParameter('error') == 'invalidRole'}">
+          <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom:12px;">Role not found. Check that it still exists in the Roles tab.</div>
+        </j:if>
+        <j:if test="${request2.getParameter('error') == 'notFound'}">
+          <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom:12px;">Job or folder not found at that path.</div>
+        </j:if>
+        <j:if test="${request2.getParameter('error') == 'missingSid'}">
+          <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom:12px;">User or group ID is required.</div>
+        </j:if>
+        <j:if test="${request2.getParameter('error') == 'noPermissions'}">
+          <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom:12px;">No permissions selected — choose at least one permission from the Custom picker.</div>
+        </j:if>
+
+        <!-- Group-managed notice -->
+        <j:if test="${header != null and header.groupManaged}">
+          <div style="margin-bottom:16px;padding:12px 16px;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;font-size:0.88em;color:#856404;display:flex;align-items:flex-start;gap:10px;">
+            <span style="font-size:1.1em;flex-shrink:0;">&#9888;</span>
+            <span>
+              <strong>Group-provisioned user.</strong>
+              Access is controlled by the Azure AD group assignment — individual grants are not permitted.
+              To change this user's permissions, edit the group entity in Access Management.
+            </span>
+          </div>
+        </j:if>
+
+        <!-- Pre-provisioned banner -->
+        <j:if test="${isPreProvisioned}">
+          <div style="margin-bottom:16px;padding:12px 16px;background:#f0fff4;border:1px solid #9ae6b4;border-radius:8px;font-size:0.88em;color:#276749;">
+            &#9989; <strong>${sid}</strong> has been pre-provisioned. Their account will be created automatically when they log in via Microsoft for the first time. Assign access below so it's ready when they arrive.
+          </div>
+        </j:if>
+
+        <!-- New native user banner -->
+        <j:if test="${isNewUser}">
+          <div style="margin-bottom:16px;padding:12px 16px;background:#ebf8ff;border:1px solid #90cdf4;border-radius:8px;font-size:0.88em;color:#2b6cb0;">
+            &#10003; Account created for <strong>${sid}</strong>. Assign access below.
+          </div>
+        </j:if>
+
+        <!-- Temp password modal (shown once, read from session) -->
+        <j:if test="${tmpPwd != null}">
+          <div id="tmpPwdOverlay"
+               style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:10px;padding:28px 32px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.25);">
+              <div style="font-weight:700;font-size:1.05em;margin-bottom:6px;">Account Created</div>
+              <div style="font-size:0.85em;color:#555;margin-bottom:18px;">
+                Share this temporary password with <strong>${sid}</strong>.
+                <j:if test="${request2.getParameter('mustChange') == 'true'}">
+                  They will be prompted to set a new password on first login.
+                </j:if>
+                <j:if test="${request2.getParameter('mustChange') != 'true'}">
+                  They can log in directly with this password.
+                </j:if>
+              </div>
+              <div style="font-size:0.75em;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#888;margin-bottom:6px;">Temporary Password</div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:18px;">
+                <div id="tmpPwdVal"
+                     style="flex:1;font-family:monospace;font-size:1.1em;font-weight:700;letter-spacing:0.08em;padding:10px 14px;background:#f7fafc;border:1px solid #e2e8f0;border-radius:6px;color:#1a202c;">
+                  ${tmpPwd}
+                </div>
+                <button type="button" onclick="copyTmpPwd()"
+                        class="jenkins-button" style="font-size:0.82em;padding:8px 14px;white-space:nowrap;">
+                  Copy
+                </button>
+              </div>
+              <div style="font-size:0.78em;color:#e53e3e;margin-bottom:18px;">
+                &#9888; This password will not be shown again. Copy it now.
+              </div>
+              <button type="button" onclick="document.getElementById('tmpPwdOverlay').style.display='none'"
+                      class="jenkins-button jenkins-button--primary" style="width:100%;font-size:0.88em;">
+                Done — I've copied the password
+              </button>
+            </div>
+          </div>
+          <script>//<![CDATA[
+            function copyTmpPwd() {
+              var pwd = document.getElementById('tmpPwdVal').textContent.trim();
+              navigator.clipboard.writeText(pwd).then(function() {
+                var btn = event.target;
+                btn.textContent = 'Copied!';
+                setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+              });
+            }
+          //]]></script>
+        </j:if>
+
+        <!-- User card -->
+        <j:if test="${header != null}">
+          <div style="display:flex;align-items:center;gap:14px;padding:16px 20px;background:var(--background-color,#fff);border:1px solid var(--panel-border-color,#e0e0e0);border-radius:10px;margin-bottom:20px;">
+            <div class="udx-avatar"
+                 style="width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.15em;font-weight:700;color:#fff;flex-shrink:0;background:#1a56b0;">
+              ${header.avatarLetter}
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:700;font-size:1.05em;">${header.sid}</div>
+              <div style="font-size:0.83em;color:var(--text-color-secondary,#888);margin-top:2px;">
+                <j:choose>
+                  <j:when test="${header.userEntry}">User</j:when>
+                  <j:otherwise>Group</j:otherwise>
+                </j:choose>
+                <j:if test="${header.displayName != null and header.displayName != header.sid}"> · ${header.displayName}</j:if>
+                <j:if test="${header.relativeLastLogin != null}"> · Last login: ${header.relativeLastLogin}</j:if>
+              </div>
+            </div>
+          </div>
+        </j:if>
+
+        <!-- Assignments section -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div style="font-size:1em;font-weight:700;">Access Assignments</div>
+          <j:if test="${it.omniAuthActive and (header == null or !header.groupManaged)}">
+            <button type="button" onclick="udxShowAdd()"
+                    class="jenkins-button jenkins-button--primary"
+                    style="font-size:0.85em;">+ Add Access</button>
+          </j:if>
+        </div>
+
+        <div style="border:1px solid var(--panel-border-color,#e0e0e0);border-radius:8px;overflow:hidden;background:var(--background-color,#fff);">
+          <j:choose>
+            <j:when test="${assignments.isEmpty()}">
+              <div style="padding:56px;text-align:center;color:#888;">
+                <div style="font-size:2em;margin-bottom:8px;opacity:0.3;">&#128275;</div>
+                <div style="font-size:0.9em;">No access assigned to this user yet.</div>
+                <j:if test="${it.omniAuthActive and (header == null or !header.groupManaged)}">
+                  <button type="button" onclick="udxShowAdd()"
+                          class="jenkins-button jenkins-button--primary"
+                          style="margin-top:12px;font-size:0.85em;">+ Add Access</button>
+                </j:if>
+              </div>
+            </j:when>
+            <j:otherwise>
+              <table style="width:100%;border-collapse:collapse;">
+                <thead>
+                  <tr style="background:var(--background-color,#fafafa);border-bottom:2px solid var(--panel-border-color,#e0e0e0);">
+                    <th class="udx-th">Scope</th>
+                    <th class="udx-th">Role</th>
+                    <th class="udx-th">Permissions</th>
+                    <th class="udx-th">Expires</th>
+                    <th class="udx-th" style="width:140px;"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <j:forEach var="a" items="${assignments}">
+                    <tr style="border-bottom:1px solid var(--panel-border-color,#f0f0f0);">
+                      <!-- Scope -->
+                      <td style="padding:12px 16px;">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                          <span style="font-size:1em;">
+                            <j:choose>
+                              <j:when test="${a.global}">&#127760;</j:when>
+                              <j:when test="${a.scopeType == 'folder'}">&#128193;</j:when>
+                              <j:otherwise>&#9881;</j:otherwise>
+                            </j:choose>
+                          </span>
+                          <div>
+                            <div style="font-weight:600;font-size:0.9em;">${a.displayScope}</div>
+                            <j:if test="${!a.global}">
+                              <div style="font-size:0.72em;color:#aaa;">${a.scope}</div>
+                            </j:if>
+                          </div>
+                        </div>
+                      </td>
+                      <!-- Role -->
+                      <td style="padding:12px 16px;">
+                        <span class="udx-role-badge">${a.roleName}</span>
+                      </td>
+                      <!-- Permissions summary -->
+                      <td style="padding:12px 16px;font-size:0.82em;color:var(--text-color-secondary,#777);">
+                        ${a.permissionSummary}
+                      </td>
+                      <!-- Expires -->
+                      <td style="padding:12px 16px;font-size:0.82em;">
+                        <j:choose>
+                          <j:when test="${a.expiresAt != null and a.expiresAt != ''}">
+                            <span class="udx-expiry-badge" data-expires="${a.expiresAt}"></span>
+                          </j:when>
+                          <j:otherwise>
+                            <span style="color:#ccc;">—</span>
+                          </j:otherwise>
+                        </j:choose>
+                      </td>
+                      <!-- Edit + Revoke -->
+                      <td style="padding:12px 16px;text-align:right;">
+                        <j:if test="${it.omniAuthActive}">
+                          <div style="display:flex;gap:6px;justify-content:flex-end;align-items:center;">
+                            <j:if test="${!a.global and (header == null or !header.groupManaged)}">
+                              <button type="button"
+                                      onclick="udxShowEdit('${a.scope}','${a.displayScope}','${a.roleName}',${a.customPermissionsJson},'${a.expiresAt != null ? a.expiresAt : ''}')"
+                                      class="jenkins-button"
+                                      style="font-size:0.78em;padding:3px 10px;">
+                                Edit
+                              </button>
+                            </j:if>
+                            <form method="post" action="revokeAssignment" style="display:inline;">
+                              <input type="hidden" name="${app.crumbRequestField}" value="${app.crumb}"/>
+                              <input type="hidden" name="sid"   value="${sid}"/>
+                              <input type="hidden" name="type"  value="${type}"/>
+                              <input type="hidden" name="scope" value="${a.scope}"/>
+                              <button type="submit"
+                                      onclick="return confirm('Revoke ${a.roleName} on ${a.displayScope}?')"
+                                      class="jenkins-button"
+                                      style="font-size:0.78em;padding:3px 10px;color:#dc3545;border-color:#dc3545;">
+                                Revoke
+                              </button>
+                            </form>
+                          </div>
+                        </j:if>
+                      </td>
+                    </tr>
+                  </j:forEach>
+                </tbody>
+              </table>
+            </j:otherwise>
+          </j:choose>
+        </div>
+
+        <!-- Add Access panel (hidden by default; suppressed entirely for group-managed users) -->
+        <j:if test="${header == null or !header.groupManaged}">
+        <div id="udxAddPanel" style="display:none;margin-top:20px;border:1px solid #bee3f8;border-radius:8px;padding:20px 22px;background:#f5faff;">
+          <div style="font-size:0.95em;font-weight:700;margin-bottom:16px;">Add Access</div>
+
+          <form method="post" action="grantAssignment">
+            <input type="hidden" name="${app.crumbRequestField}" value="${app.crumb}"/>
+            <input type="hidden" name="sid"  value="${sid}"/>
+            <input type="hidden" name="type" value="${type}"/>
+
+            <!-- Scope -->
+            <div style="margin-bottom:14px;">
+              <div class="udx-label">Scope</div>
+              <div style="display:flex;gap:16px;margin-bottom:8px;">
+                <label style="display:flex;align-items:center;gap:6px;font-size:0.88em;cursor:pointer;">
+                  <input type="radio" name="scopeType" value="global" checked="checked"
+                         onchange="udxScopeChange(this.value)"/> Global (all of Jenkins)
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:0.88em;cursor:pointer;">
+                  <input type="radio" name="scopeType" value="item"
+                         onchange="udxScopeChange(this.value)"/> Specific job or folder
+                </label>
+              </div>
+              <div id="udxItemInput" style="display:none;">
+                <input id="udxScopeValue" name="scope" type="hidden" value=""/>
+                <div style="display:inline-flex;align-items:center;gap:6px;max-width:420px;">
+                  <button type="button" id="udxScopeBtn" onclick="udxModalOpen()"
+                          style="display:inline-flex;align-items:center;gap:8px;padding:7px 14px;
+                                 border:1.5px solid var(--input-border,#d0d0d0);border-radius:6px;
+                                 background:var(--input-color,#fff);cursor:pointer;font-size:0.88em;
+                                 min-width:280px;flex:1;justify-content:space-between;
+                                 transition:border-color 0.15s,box-shadow 0.15s;"
+                          onmouseenter="this.style.borderColor='#1a73e8';this.style.boxShadow='0 0 0 3px rgba(26,115,232,0.12)'"
+                          onmouseleave="this.style.borderColor='var(--input-border,#d0d0d0)';this.style.boxShadow='none'">
+                    <span style="display:flex;align-items:center;gap:7px;flex:1;min-width:0;">
+                      <span id="udxScopeIcon" style="font-size:1em;flex-shrink:0;">📁</span>
+                      <span id="udxScopeLbl" style="color:#aaa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                        Select a job or folder…
+                      </span>
+                    </span>
+                    <span style="font-size:0.6em;color:#aaa;flex-shrink:0;margin-left:4px;">&#9660;</span>
+                  </button>
+                  <button type="button" id="udxScopeClear" onclick="udxScopeClearFn()"
+                          style="display:none;align-items:center;justify-content:center;width:28px;height:28px;
+                                 border:1.5px solid #e0e0e0;border-radius:6px;background:#fff;cursor:pointer;
+                                 font-size:0.8em;color:#999;flex-shrink:0;padding:0;
+                                 transition:border-color 0.15s,color 0.15s;"
+                          onmouseenter="this.style.borderColor='#e05252';this.style.color='#e05252'"
+                          onmouseleave="this.style.borderColor='#e0e0e0';this.style.color='#999'"
+                          title="Clear selection">&#x2715;</button>
+                </div>
+                <div style="font-size:0.76em;color:#666;margin-top:5px;">
+                  Parent folders automatically receive Read access.
+                </div>
+              </div>
+              <input id="udxScopeGlobal" type="hidden" name="scope" value=""/>
+            </div>
+
+            <!-- Role -->
+            <div style="margin-bottom:16px;">
+              <div class="udx-label">Role</div>
+              <select name="role" id="udxRoleSelect" class="jenkins-input"
+                      style="width:100%;max-width:320px;" onchange="udxRoleChange(this.value)">
+                <j:forEach var="r" items="${roles}">
+                  <option value="${r.name}">${r.name} (${r.permissionCount} permissions)</option>
+                </j:forEach>
+                <option value="CUSTOM">— Custom (pick permissions manually) —</option>
+              </select>
+              <j:if test="${roles.isEmpty()}">
+                <div style="font-size:0.82em;color:#777;margin-top:6px;">
+                  No named roles yet — or use <strong>Custom</strong> to pick permissions directly.
+                </div>
+              </j:if>
+            </div>
+
+            <!-- Custom permission picker (hidden unless Custom is selected) -->
+            <div id="udxCustomPerms" style="display:none;margin-bottom:16px;">
+              <div class="udx-label" style="margin-bottom:8px;">Permissions</div>
+              <div style="border:1px solid var(--panel-border-color,#dee2e6);border-radius:6px;overflow:hidden;max-height:320px;overflow-y:auto;">
+                <j:forEach var="group" items="${it.availablePermissions}">
+                  <details style="border-bottom:1px solid var(--panel-border-color,#f0f0f0);">
+                    <summary style="padding:8px 14px;cursor:pointer;background:var(--background-color,#fafafa);user-select:none;list-style:none;display:flex;align-items:center;gap:6px;">
+                      <span class="udx-arr">&#9656;</span>
+                      <span style="display:flex;flex-direction:column;gap:1px;">
+                        <span style="font-size:0.83em;font-weight:600;line-height:1.2;">${group.groupName}</span>
+                        <j:if test="${group.subtitle != null and group.subtitle != ''}">
+                          <span style="font-size:0.72em;font-weight:400;color:#999;line-height:1.2;">${group.subtitle}</span>
+                        </j:if>
+                      </span>
+                    </summary>
+                    <div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:6px;">
+                      <j:forEach var="perm" items="${group.permissions}">
+                        <label class="udx-perm-label" style="display:inline-flex;align-items:center;gap:6px;background:#f8f9fa;border:1px solid #e9ecef;border-radius:4px;padding:5px 10px;cursor:pointer;transition:background 0.1s,border-color 0.1s;">
+                          <input type="checkbox" name="customPermissions" value="${perm.id}"/>
+                          <span style="display:flex;flex-direction:column;gap:1px;">
+                            <span style="font-size:0.82em;font-weight:500;line-height:1.2;">${perm.name}</span>
+                            <span style="font-size:0.68em;color:#999;font-family:monospace;line-height:1.2;">${perm.shortId}</span>
+                          </span>
+                        </label>
+                      </j:forEach>
+                    </div>
+                  </details>
+                </j:forEach>
+              </div>
+            </div>
+
+            <!-- Expiry Date -->
+            <div style="margin-bottom:16px;">
+              <div class="udx-label">Expiry Date <span style="font-weight:400;color:#aaa;text-transform:none;">(optional)</span></div>
+              <input type="date" name="expiresAt" id="udxExpiresAt"
+                     style="padding:7px 10px;border:1.5px solid var(--input-border,#d0d0d0);border-radius:6px;font-size:0.88em;background:var(--input-color,#fff);color:inherit;"
+                     onchange="udxUpdateExpiryHint(this.value,'udxExpiryHint')"/>
+              <div id="udxExpiryHint" style="font-size:0.78em;color:#999;margin-top:4px;">Access will be automatically revoked at end of this day.</div>
+            </div>
+
+            <div style="display:flex;gap:10px;">
+              <button type="submit" class="jenkins-button jenkins-button--primary"
+                      style="font-size:0.85em;">Grant Access</button>
+              <button type="button" onclick="udxHideAdd()"
+                      class="jenkins-button" style="font-size:0.85em;">Cancel</button>
+            </div>
+          </form>
+        </div>
+        </j:if>
+
+        <!-- Edit Access panel (hidden by default) -->
+        <div id="udxEditPanel" style="display:none;margin-top:20px;border:1px solid #d4edda;border-radius:8px;padding:20px 22px;background:#f6fff8;">
+          <div style="font-size:0.95em;font-weight:700;margin-bottom:16px;">Edit Access</div>
+
+          <form method="post" action="editAssignment">
+            <input type="hidden" name="${app.crumbRequestField}" value="${app.crumb}"/>
+            <input type="hidden" name="sid"  value="${sid}"/>
+            <input type="hidden" name="type" value="${type}"/>
+            <input type="hidden" name="scope" id="udxEditScope" value=""/>
+
+            <!-- Scope (read-only) -->
+            <div style="margin-bottom:14px;">
+              <div class="udx-label">Scope</div>
+              <div id="udxEditScopeDisplay"
+                   style="font-size:0.9em;font-weight:600;padding:7px 12px;background:#f0f0f0;border-radius:6px;display:inline-block;color:#555;">
+              </div>
+            </div>
+
+            <!-- Role -->
+            <div style="margin-bottom:16px;">
+              <div class="udx-label">Role</div>
+              <select name="role" id="udxEditRoleSelect" class="jenkins-input"
+                      style="width:100%;max-width:320px;" onchange="udxEditRoleChange(this.value)">
+                <j:forEach var="r" items="${roles}">
+                  <option value="${r.name}">${r.name} (${r.permissionCount} permissions)</option>
+                </j:forEach>
+                <option value="CUSTOM">— Custom (pick permissions manually) —</option>
+              </select>
+            </div>
+
+            <!-- Custom permission picker for edit panel -->
+            <div id="udxEditCustomPerms" style="display:none;margin-bottom:16px;">
+              <div class="udx-label" style="margin-bottom:8px;">Permissions</div>
+              <div style="border:1px solid var(--panel-border-color,#dee2e6);border-radius:6px;overflow:hidden;max-height:320px;overflow-y:auto;">
+                <j:forEach var="group" items="${it.availablePermissions}">
+                  <details style="border-bottom:1px solid var(--panel-border-color,#f0f0f0);">
+                    <summary style="padding:8px 14px;cursor:pointer;background:var(--background-color,#fafafa);user-select:none;list-style:none;display:flex;align-items:center;gap:6px;">
+                      <span class="udx-arr">&#9656;</span>
+                      <span style="display:flex;flex-direction:column;gap:1px;">
+                        <span style="font-size:0.83em;font-weight:600;line-height:1.2;">${group.groupName}</span>
+                        <j:if test="${group.subtitle != null and group.subtitle != ''}">
+                          <span style="font-size:0.72em;font-weight:400;color:#999;line-height:1.2;">${group.subtitle}</span>
+                        </j:if>
+                      </span>
+                    </summary>
+                    <div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:6px;">
+                      <j:forEach var="perm" items="${group.permissions}">
+                        <label class="udx-perm-label" style="display:inline-flex;align-items:center;gap:6px;background:#f8f9fa;border:1px solid #e9ecef;border-radius:4px;padding:5px 10px;cursor:pointer;transition:background 0.1s,border-color 0.1s;">
+                          <input type="checkbox" name="customPermissions" value="${perm.id}" class="udx-edit-perm-cb"/>
+                          <span style="display:flex;flex-direction:column;gap:1px;">
+                            <span style="font-size:0.82em;font-weight:500;line-height:1.2;">${perm.name}</span>
+                            <span style="font-size:0.68em;color:#999;font-family:monospace;line-height:1.2;">${perm.shortId}</span>
+                          </span>
+                        </label>
+                      </j:forEach>
+                    </div>
+                  </details>
+                </j:forEach>
+              </div>
+            </div>
+
+            <!-- Expiry Date -->
+            <div style="margin-bottom:16px;">
+              <div class="udx-label">Expiry Date <span style="font-weight:400;color:#aaa;text-transform:none;">(optional)</span></div>
+              <input type="date" name="expiresAt" id="udxEditExpiresAt"
+                     style="padding:7px 10px;border:1.5px solid var(--input-border,#d0d0d0);border-radius:6px;font-size:0.88em;background:var(--input-color,#fff);color:inherit;"
+                     onchange="udxUpdateExpiryHint(this.value,'udxEditExpiryHint')"/>
+              <div id="udxEditExpiryHint" style="font-size:0.78em;color:#999;margin-top:4px;">Access will be automatically revoked at end of this day.</div>
+            </div>
+
+            <div style="display:flex;gap:10px;">
+              <button type="submit" class="jenkins-button jenkins-button--primary"
+                      style="font-size:0.85em;">Save Changes</button>
+              <button type="button" onclick="udxHideEdit()"
+                      class="jenkins-button" style="font-size:0.85em;">Cancel</button>
+            </div>
+          </form>
+        </div>
+
+      </div>
+
+      <style>
+        .udx-th {
+          padding: 10px 16px; text-align: left; font-size: 0.78em; font-weight: 700;
+          text-transform: uppercase; letter-spacing: 0.05em;
+          color: var(--text-color-secondary, #888); white-space: nowrap;
+        }
+        .udx-role-badge {
+          display: inline-block; padding: 3px 10px; border-radius: 10px; font-size: 0.78em;
+          font-weight: 700; background: #e8f0fe; color: #1a56b0; white-space: nowrap;
+        }
+        .udx-label {
+          font-size: 0.75em; font-weight: 700; text-transform: uppercase;
+          letter-spacing: 0.05em; color: #888; margin-bottom: 6px;
+        }
+        details[open] .udx-arr { display:inline-block;transform:rotate(90deg); }
+        details > summary::-webkit-details-marker { display:none; }
+        .udx-perm-label:hover { background:#e8f0fe !important; border-color:#c2d4f8 !important; }
+        .udx-perm-label:has(input:checked) { background:#dbeafe !important; border-color:#93c5fd !important; font-weight:600; }
+        .udx-expiry-badge {
+          display:inline-block; padding:2px 8px; border-radius:8px; font-size:0.78em; font-weight:600;
+          background:#fff3cd; color:#856404; border:1px solid #ffc107; white-space:nowrap;
+        }
+        .udx-expiry-badge.udx-expiry-soon {
+          background:#ffe0e0; color:#dc3545; border-color:#dc3545;
+        }
+        @keyframes udxModalIn {
+          0%   { opacity:0; transform:translate(var(--genie-dx,0px),var(--genie-dy,0px)) scale(0.08); filter:blur(3px); }
+          60%  { filter:blur(0); }
+          100% { opacity:1; transform:translate(0,0) scale(1); filter:blur(0); }
+        }
+        @keyframes udxModalOut {
+          0%   { opacity:1; transform:translate(0,0) scale(1); filter:blur(0); }
+          40%  { filter:blur(0); }
+          100% { opacity:0; transform:translate(var(--genie-dx,0px),var(--genie-dy,0px)) scale(0.08); filter:blur(3px); }
+        }
+      </style>
+
+      <script>//<![CDATA[
+        function udxShowAdd() {
+          document.getElementById('udxEditPanel').style.display = 'none';
+          document.getElementById('udxAddPanel').style.display = '';
+          document.getElementById('udxAddPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          var sel = document.getElementById('udxRoleSelect');
+          if (sel) udxRoleChange(sel.value);
+        }
+        function udxHideAdd() {
+          document.getElementById('udxAddPanel').style.display = 'none';
+        }
+        function udxShowEdit(scope, scopeDisplay, roleId, customPermsArr, expiresAt) {
+          document.getElementById('udxAddPanel').style.display = 'none';
+          document.getElementById('udxEditScope').value = scope;
+          document.getElementById('udxEditScopeDisplay').textContent = scopeDisplay || scope;
+
+          // Pre-select role
+          var sel = document.getElementById('udxEditRoleSelect');
+          for (var i = 0; i < sel.options.length; i++) {
+            if (sel.options[i].value === roleId) { sel.selectedIndex = i; break; }
+          }
+          udxEditRoleChange(roleId);
+
+          // Pre-check custom permissions
+          document.querySelectorAll('.udx-edit-perm-cb').forEach(function(cb) {
+            cb.checked = Array.isArray(customPermsArr) && customPermsArr.indexOf(cb.value) >= 0;
+          });
+
+          // Pre-fill expiry date (extract YYYY-MM-DD from ISO string)
+          var dateInput = document.getElementById('udxEditExpiresAt');
+          dateInput.value = expiresAt ? expiresAt.substring(0, 10) : '';
+          udxUpdateExpiryHint(dateInput.value, 'udxEditExpiryHint');
+
+          document.getElementById('udxEditPanel').style.display = '';
+          document.getElementById('udxEditPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+        function udxHideEdit() {
+          document.getElementById('udxEditPanel').style.display = 'none';
+        }
+        function udxEditRoleChange(val) {
+          var picker = document.getElementById('udxEditCustomPerms');
+          picker.style.display = val === 'CUSTOM' ? '' : 'none';
+          if (val !== 'CUSTOM') {
+            document.querySelectorAll('.udx-edit-perm-cb').forEach(function(cb) { cb.checked = false; });
+          }
+        }
+        function udxUpdateExpiryHint(val, hintId) {
+          var hint = document.getElementById(hintId);
+          if (!hint) return;
+          if (!val) { hint.textContent = 'Access will be automatically revoked at end of this day.'; hint.style.color = '#999'; return; }
+          var d = new Date(val + 'T00:00:00');
+          var opts = { year:'numeric', month:'long', day:'numeric' };
+          hint.textContent = 'Access will be revoked after ' + d.toLocaleDateString(undefined, opts) + '.';
+          hint.style.color = '#856404';
+        }
+
+        // Render expiry badges from ISO strings
+        document.addEventListener('DOMContentLoaded', function() {
+          document.querySelectorAll('.udx-expiry-badge').forEach(function(el) {
+            var iso = el.getAttribute('data-expires');
+            if (!iso) return;
+            var exp = new Date(iso);
+            var now = new Date();
+            var diffDays = Math.ceil((exp - now) / 86400000);
+            var dateStr = exp.toLocaleDateString(undefined, { month:'short', day:'numeric', year:'numeric' });
+            if (diffDays < 0) {
+              el.textContent = 'Expired';
+              el.classList.add('udx-expiry-soon');
+            } else if (diffDays <= 7) {
+              el.textContent = diffDays === 0 ? 'Expires today' : 'Expires in ' + diffDays + 'd';
+              el.classList.add('udx-expiry-soon');
+            } else {
+              el.textContent = dateStr;
+            }
+          });
+        });
+        function udxRoleChange(val) {
+          var picker = document.getElementById('udxCustomPerms');
+          picker.style.display = val === 'CUSTOM' ? '' : 'none';
+          if (val !== 'CUSTOM') {
+            picker.querySelectorAll('input[type=checkbox]').forEach(function(cb) { cb.checked = false; });
+          }
+        }
+        function udxScopeChange(val) {
+          var itemDiv    = document.getElementById('udxItemInput');
+          var scopeVal   = document.getElementById('udxScopeValue');
+          var globalHid  = document.getElementById('udxScopeGlobal');
+          if (val === 'item') {
+            itemDiv.style.display = '';
+            scopeVal.setAttribute('name', 'scope');
+            globalHid.removeAttribute('name');
+          } else {
+            itemDiv.style.display = 'none';
+            globalHid.setAttribute('name', 'scope');
+            scopeVal.removeAttribute('name');
+          }
+        }
+
+        // --- Scope picker modal ---
+        var udxScopeItems = ${it.allScopeNamesJson}; // [{path, type}, ...]
+        var udxScopeTree  = null;
+        var udxPending    = null;
+        var udxArrowIdx   = -1;
+
+        function udxBuildTree(items) {
+          var root = {};
+          items.forEach(function(item) {
+            var parts = item.path.split('/');
+            var node = root;
+            var cur = '';
+            parts.forEach(function(part) {
+              cur = cur ? cur + '/' + part : part;
+              if (!node[part]) node[part] = { _path: cur, _type: item.type, _children: {} };
+              node = node[part]._children;
+            });
+          });
+          return root;
+        }
+
+        function udxModalOpen() {
+          if (!udxScopeTree) udxScopeTree = udxBuildTree(udxScopeItems);
+          udxPending  = document.getElementById('udxScopeValue').value || null;
+          udxArrowIdx = -1;
+          var modal = document.getElementById('udxScopeModal');
+          modal.style.opacity = '1';
+          modal.style.pointerEvents = 'auto';
+          var box = modal.querySelector('[data-modal-box]');
+          if (box) {
+            var btn = document.getElementById('udxScopeBtn');
+            if (btn) {
+              var r = btn.getBoundingClientRect();
+              var dx = (r.left + r.width  / 2) - window.innerWidth  / 2;
+              var dy = (r.top  + r.height / 2) - window.innerHeight / 2;
+              box.style.setProperty('--genie-dx', dx.toFixed(1) + 'px');
+              box.style.setProperty('--genie-dy', dy.toFixed(1) + 'px');
+            }
+            box.style.animation = 'none'; box.offsetHeight; box.style.animation = 'udxModalIn 0.45s cubic-bezier(0.34,1.56,0.64,1)';
+          }
+          var search = document.getElementById('udxModalSearch');
+          search.value = '';
+          udxModalFilter('');
+          udxModalFooter();
+          if (udxPending) {
+            setTimeout(function() {
+              var rows = document.querySelectorAll('.udx-mrow');
+              for (var i = 0; i < rows.length; i++) {
+                if (rows[i].getAttribute('data-path') === udxPending) {
+                  rows[i].scrollIntoView({ block: 'center' });
+                  break;
+                }
+              }
+            }, 30);
+          }
+          setTimeout(function(){ search.focus(); }, 60);
+          document.addEventListener('keydown', udxModalKey);
+        }
+
+        function udxModalClose() {
+          var modal = document.getElementById('udxScopeModal');
+          var box   = modal.querySelector('[data-modal-box]');
+          document.removeEventListener('keydown', udxModalKey);
+          udxArrowIdx = -1;
+          modal.style.pointerEvents = 'none';
+          if (box) {
+            var btn = document.getElementById('udxScopeBtn');
+            if (btn) {
+              var r = btn.getBoundingClientRect();
+              var dx = (r.left + r.width  / 2) - window.innerWidth  / 2;
+              var dy = (r.top  + r.height / 2) - window.innerHeight / 2;
+              box.style.setProperty('--genie-dx', dx.toFixed(1) + 'px');
+              box.style.setProperty('--genie-dy', dy.toFixed(1) + 'px');
+            }
+            box.style.animation = 'udxModalOut 0.28s ease-in forwards';
+            setTimeout(function() { modal.style.opacity = '0'; }, 240);
+          } else {
+            modal.style.opacity = '0';
+          }
+        }
+
+        function udxModalConfirm() {
+          if (!udxPending) return;
+          var selItem = udxScopeItems.find(function(i){ return i.path === udxPending; });
+          document.getElementById('udxScopeValue').value = udxPending;
+          var lbl  = document.getElementById('udxScopeLbl');
+          var icon = document.getElementById('udxScopeIcon');
+          lbl.textContent  = udxPending;
+          lbl.style.color  = 'inherit';
+          icon.textContent = (selItem && selItem.type === 'folder') ? '📁' : '⚙';
+          document.getElementById('udxScopeClear').style.display = 'inline-flex';
+          udxModalClose();
+        }
+
+        function udxScopeClearFn() {
+          document.getElementById('udxScopeValue').value = '';
+          var lbl  = document.getElementById('udxScopeLbl');
+          var icon = document.getElementById('udxScopeIcon');
+          lbl.textContent  = 'Select a job or folder…';
+          lbl.style.color  = '#aaa';
+          icon.textContent = '📁';
+          document.getElementById('udxScopeClear').style.display = 'none';
+          udxPending = null;
+        }
+
+        function udxModalKey(e) {
+          if (e.key === 'Escape') { udxModalClose(); return; }
+          var rows = Array.from(document.querySelectorAll('.udx-mrow'));
+          if (!rows.length) return;
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            udxArrowIdx = Math.min(udxArrowIdx + 1, rows.length - 1);
+            udxArrowFocus(rows);
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            udxArrowIdx = Math.max(udxArrowIdx - 1, 0);
+            udxArrowFocus(rows);
+          } else if (e.key === 'Enter') {
+            if (udxArrowIdx >= 0 && rows[udxArrowIdx]) {
+              udxModalPick(rows[udxArrowIdx].getAttribute('data-path'));
+            } else if (udxPending) {
+              udxModalConfirm();
+            }
+          }
+        }
+
+        function udxArrowFocus(rows) {
+          rows.forEach(function(r, i) {
+            var isFocus = i === udxArrowIdx;
+            var isSel   = r.getAttribute('data-path') === udxPending;
+            r.style.background = isFocus ? '#f0f4ff' : (isSel ? '#e8f0fe' : '');
+            r.style.outline    = isFocus ? '2px solid #1a73e8' : 'none';
+          });
+          if (rows[udxArrowIdx]) rows[udxArrowIdx].scrollIntoView({ block: 'nearest' });
+        }
+
+        function udxModalPick(path) {
+          udxPending  = path;
+          udxArrowIdx = -1;
+          udxModalFooter();
+          document.querySelectorAll('.udx-mrow').forEach(function(r) {
+            var sel = r.getAttribute('data-path') === path;
+            r.style.background = sel ? '#e8f0fe' : '';
+            r.style.fontWeight = sel ? '600'     : '';
+            r.style.color      = sel ? '#1a56b0' : '';
+            r.style.outline    = 'none';
+            r.style.borderLeftColor = sel ? '#1a73e8' : 'transparent';
+          });
+        }
+
+        function udxModalFooter() {
+          var lbl = document.getElementById('udxModalLbl');
+          var btn = document.getElementById('udxModalOk');
+          if (udxPending) {
+            lbl.textContent = udxPending;
+            lbl.style.color = '#1a1a1a';
+            btn.removeAttribute('disabled');
+          } else {
+            lbl.textContent = 'Nothing selected';
+            lbl.style.color = '#aaa';
+            btn.setAttribute('disabled', 'disabled');
+          }
+        }
+
+        function udxModalFilter(q) {
+          var body = document.getElementById('udxModalBody');
+          body.innerHTML = '';
+          udxArrowIdx = -1;
+          if (!q) {
+            udxModalRenderTree(udxScopeTree, body, 0);
+            return;
+          }
+          var lq   = q.toLowerCase();
+          var hits = udxScopeItems.filter(function(i){ return i.path.toLowerCase().indexOf(lq) >= 0; });
+
+          // Result count
+          var countBar = document.createElement('div');
+          countBar.style.cssText = 'padding:8px 24px 4px;font-size:0.75em;color:#bbb;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;';
+          countBar.textContent = hits.length + (hits.length === 1 ? ' result' : ' results');
+          body.appendChild(countBar);
+
+          if (!hits.length) {
+            body.innerHTML = '<div style="padding:48px;text-align:center;color:#ccc;font-size:0.9em;">No matching jobs or folders</div>';
+            return;
+          }
+
+          hits.forEach(function(item) {
+            var path   = item.path;
+            var isFolder = item.type === 'folder';
+            var parts  = path.split('/');
+            var name   = parts[parts.length - 1];
+            var parent = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
+            var sel    = path === udxPending;
+
+            var row = document.createElement('div');
+            row.className = 'udx-mrow';
+            row.setAttribute('data-path', path);
+            row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 24px;cursor:pointer;'
+              + 'border-left:4px solid transparent;transition:background 0.12s;'
+              + (sel ? 'background:#e8f0fe;border-left-color:#1a73e8;' : '');
+            row.onmouseenter = function(){ if(this.getAttribute('data-path')!==udxPending) this.style.background='#f5f7fa'; };
+            row.onmouseleave = function(){ if(this.getAttribute('data-path')!==udxPending) this.style.background=''; };
+
+            // Icon
+            var iconEl = document.createElement('span');
+            iconEl.style.cssText = 'flex-shrink:0;display:inline-flex;';
+            iconEl.innerHTML = isFolder
+              ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f0a500" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>'
+              : '<svg width="18" height="18" viewBox="0 0 24 24" fill="#4a9eed" stroke="none"><polygon points="6,3 20,12 6,21"/></svg>';
+
+            // Text block
+            var textEl = document.createElement('div');
+            textEl.style.cssText = 'display:flex;flex-direction:column;gap:2px;min-width:0;';
+
+            // Name with match highlight
+            var lo = name.toLowerCase().indexOf(lq);
+            var nameEl = document.createElement('div');
+            nameEl.style.cssText = 'font-size:0.93em;font-weight:' + (sel ? '700' : '500') + ';color:' + (sel ? '#1a56b0' : '#1a1a1a') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+            if (lo >= 0) {
+              nameEl.innerHTML = name.substring(0,lo)
+                + '<mark style="background:rgba(26,115,232,0.15);color:#1a56b0;border-radius:2px;padding:0 2px;">'
+                + name.substring(lo, lo+q.length) + '</mark>'
+                + name.substring(lo+q.length);
+            } else {
+              nameEl.textContent = name;
+            }
+
+            // Parent path
+            if (parent) {
+              var parentEl = document.createElement('div');
+              parentEl.style.cssText = 'font-size:0.78em;color:#bbb;font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+              parentEl.textContent = parent;
+              textEl.appendChild(nameEl);
+              textEl.appendChild(parentEl);
+            } else {
+              textEl.appendChild(nameEl);
+            }
+
+            row.appendChild(iconEl);
+            row.appendChild(textEl);
+            row.onclick = function(){ udxModalPick(path); };
+            body.appendChild(row);
+          });
+        }
+
+        function udxModalRenderTree(nodeMap, container, depth) {
+          Object.keys(nodeMap).sort(function(a,b){ return a.toLowerCase().localeCompare(b.toLowerCase()); })
+            .forEach(function(key) {
+              var n       = nodeMap[key];
+              var hasKids = Object.keys(n._children).length > 0;
+              var sel     = n._path === udxPending;
+              var pad     = 20 + depth * 20;
+
+              var row = document.createElement('div');
+              row.className = 'udx-mrow';
+              row.setAttribute('data-path', n._path);
+              row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:10px 20px 10px ' + pad + 'px;'
+                + 'cursor:pointer;font-size:0.93em;border-left:4px solid transparent;transition:background 0.12s;'
+                + (sel ? 'background:#e8f0fe;font-weight:600;color:#1a56b0;border-left-color:#1a73e8;' : '');
+              row.onmouseenter = function(){ if(this.getAttribute('data-path')!==udxPending) this.style.background='#f5f7fa'; };
+              row.onmouseleave = function(){ if(this.getAttribute('data-path')!==udxPending) this.style.background = sel ? '#e8f0fe' : ''; };
+
+              if (hasKids) {
+                var arr = document.createElement('span');
+                arr.style.cssText = 'width:18px;height:18px;flex-shrink:0;display:inline-flex;align-items:center;'
+                  + 'justify-content:center;cursor:pointer;transition:transform 0.15s;color:#bbb;';
+                arr.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 2l4 3-4 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+                var kids = document.createElement('div');
+                var shouldExpand = udxPending && (udxPending === n._path || udxPending.indexOf(n._path + '/') === 0);
+                kids.style.display = shouldExpand ? '' : 'none';
+                if (shouldExpand) arr.style.transform = 'rotate(90deg)';
+                arr.onclick = function(e) {
+                  e.stopPropagation();
+                  var open = kids.style.display !== 'none';
+                  kids.style.display = open ? 'none' : '';
+                  arr.style.transform = open ? '' : 'rotate(90deg)';
+                };
+                var icon = document.createElement('span');
+                icon.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f0a500" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>';
+                icon.style.cssText = 'flex-shrink:0;display:inline-flex;';
+                var lbl = document.createElement('span'); lbl.textContent = key;
+                lbl.style.cssText = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+                row.appendChild(arr); row.appendChild(icon); row.appendChild(lbl);
+                row.onclick = function(){ udxModalPick(n._path); };
+                container.appendChild(row);
+                udxModalRenderTree(n._children, kids, depth + 1);
+                container.appendChild(kids);
+              } else {
+                var spacer = document.createElement('span'); spacer.style.cssText = 'width:18px;flex-shrink:0;';
+                var icon = document.createElement('span');
+                icon.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="#4a9eed" stroke="none"><polygon points="6,3 20,12 6,21"/></svg>';
+                icon.style.cssText = 'flex-shrink:0;display:inline-flex;';
+                var lbl = document.createElement('span'); lbl.textContent = key;
+                lbl.style.cssText = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+                row.appendChild(spacer); row.appendChild(icon); row.appendChild(lbl);
+                row.onclick = function(){ udxModalPick(n._path); };
+                container.appendChild(row);
+              }
+            });
+        }
+      //]]></script>
+
+    <!-- Scope picker modal -->
+    <div id="udxScopeModal" onclick="if(event.target===this)udxModalClose()"
+         style="display:flex;opacity:0;pointer-events:none;position:fixed;inset:0;z-index:9999;
+                background:rgba(15,20,30,0.5);backdrop-filter:blur(3px);
+                align-items:center;justify-content:center;transition:opacity 0.32s;">
+      <div data-modal-box="1" style="background:#fff;border-radius:14px;width:660px;max-width:94vw;
+                  box-shadow:0 32px 80px rgba(0,0,0,0.24);animation:udxModalIn 0.45s cubic-bezier(0.34,1.56,0.64,1);
+                  transform-origin:50% 50%;will-change:transform,opacity;
+                  display:flex;flex-direction:column;max-height:84vh;overflow:hidden;">
+
+        <!-- Header -->
+        <div style="display:flex;align-items:center;justify-content:space-between;
+                    padding:22px 24px 16px;border-bottom:1px solid #f0f0f0;">
+          <div>
+            <div style="font-size:1.05em;font-weight:700;color:#0f0f0f;letter-spacing:-0.02em;">Select Job or Folder</div>
+            <div style="font-size:0.8em;color:#aaa;margin-top:3px;font-weight:400;">Choose where to apply this access grant</div>
+          </div>
+          <button type="button" onclick="udxModalClose()"
+                  style="background:none;border:none;cursor:pointer;width:34px;height:34px;
+                         border-radius:8px;font-size:1.1em;color:#bbb;display:flex;
+                         align-items:center;justify-content:center;flex-shrink:0;transition:background 0.12s,color 0.12s;"
+                  onmouseenter="this.style.background='#f3f3f3';this.style.color='#333'"
+                  onmouseleave="this.style.background='none';this.style.color='#bbb'">&#x2715;</button>
+        </div>
+
+        <!-- Search -->
+        <div style="padding:14px 20px;border-bottom:1px solid #f5f5f5;">
+          <div style="position:relative;display:flex;align-items:center;">
+            <svg style="position:absolute;left:13px;color:#bbb;pointer-events:none;flex-shrink:0;" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
+            <input id="udxModalSearch" type="text" placeholder="Search jobs and folders…"
+                   style="width:100%;box-sizing:border-box;padding:11px 14px 11px 38px;
+                          border:1.5px solid #e8e8e8;border-radius:9px;font-size:0.93em;
+                          outline:none;transition:border-color 0.15s,box-shadow 0.15s;color:#222;background:#fafafa;"
+                   oninput="udxModalFilter(this.value)"
+                   onfocus="this.style.borderColor='#1a73e8';this.style.boxShadow='0 0 0 3px rgba(26,115,232,0.12)';this.style.background='#fff'"
+                   onblur="this.style.borderColor='#e8e8e8';this.style.boxShadow='none';this.style.background='#fafafa'"/>
+          </div>
+        </div>
+
+        <!-- Tree body -->
+        <div id="udxModalBody" style="flex:1;overflow-y:auto;padding:8px 0;min-height:260px;"/>
+
+        <!-- Footer -->
+        <div style="padding:16px 24px;border-top:1px solid #f0f0f0;
+                    display:flex;align-items:center;justify-content:space-between;gap:16px;
+                    background:#fafafa;border-radius:0 0 14px 14px;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:0.7em;font-weight:700;text-transform:uppercase;
+                        letter-spacing:0.07em;color:#ccc;margin-bottom:4px;">Selected</div>
+            <div id="udxModalLbl" style="font-size:0.86em;color:#aaa;font-family:monospace;
+                 white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Nothing selected</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-shrink:0;">
+            <button type="button" onclick="udxModalClose()"
+                    class="jenkins-button" style="font-size:0.88em;padding:8px 18px;">Cancel</button>
+            <button type="button" id="udxModalOk" onclick="udxModalConfirm()"
+                    class="jenkins-button jenkins-button--primary"
+                    style="font-size:0.88em;padding:8px 18px;" disabled="disabled">Select &#8594;</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    </l:main-panel>
+  </l:layout>
+</j:jelly>

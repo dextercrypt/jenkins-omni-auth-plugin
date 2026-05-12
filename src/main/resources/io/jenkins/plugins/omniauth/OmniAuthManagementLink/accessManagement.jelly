@@ -1,0 +1,631 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:l="/lib/layout">
+  <l:layout title="OmniAuth — Access Management" norefresh="true">
+    <l:main-panel>
+
+      <div class="jenkins-app-bar">
+        <div class="jenkins-app-bar__content">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <a href="${rootURL}/manage/omniauth-management/"
+               style="color:var(--text-color-secondary,#6c757d);font-size:0.82em;text-decoration:none;">
+              &#8592; OmniAuth Management
+            </a>
+            <span style="color:var(--text-color-secondary,#ccc);">/</span>
+            <h1 class="jenkins-app-bar__heading">Access Management</h1>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding:0 16px 60px;">
+
+        <!-- Flash -->
+        <j:if test="${request2.getParameter('saved') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom:12px;">Access updated successfully.</div>
+        </j:if>
+        <j:if test="${request2.getParameter('roleSaved') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom:12px;">Role saved.</div>
+        </j:if>
+        <j:if test="${request2.getParameter('roleDeleted') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom:12px;">Role deleted.</div>
+        </j:if>
+        <j:if test="${request2.getParameter('error') == 'lastAdmin'}">
+          <div class="jenkins-alert jenkins-alert-danger" style="margin-bottom:12px;">Cannot save — this would remove the last administrator.</div>
+        </j:if>
+        <j:if test="${request2.getParameter('error') == 'notOmniAuth'}">
+          <div class="jenkins-alert jenkins-alert-danger" style="margin-bottom:12px;">OmniAuth Authorization Strategy must be active to manage permissions here.</div>
+        </j:if>
+        <j:if test="${request2.getParameter('error') == 'invalidRole'}">
+          <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom:12px;">Role not found — check the Roles tab.</div>
+        </j:if>
+        <j:if test="${request2.getParameter('error') == 'missingSid'}">
+          <div class="jenkins-alert jenkins-alert-danger" style="margin-bottom:12px;">User ID / Group OID is required.</div>
+        </j:if>
+        <j:if test="${request2.getParameter('error') == 'groupAlreadyExists'}">
+          <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom:12px;">This group has already been added.</div>
+        </j:if>
+        <j:if test="${request2.getParameter('error') == 'configError'}">
+          <div class="jenkins-alert jenkins-alert-danger" style="margin-bottom:12px;">Assignment configuration is not available.</div>
+        </j:if>
+        <j:if test="${request2.getParameter('error') == 'missingRoleName'}">
+          <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom:12px;">Role name is required.</div>
+        </j:if>
+
+        <j:if test="${!it.omniAuthActive}">
+          <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom:16px;">
+            Active strategy is not OmniAuth — permission writes are disabled.
+            Switch to <strong>OmniAuth Authorization Strategy</strong> in
+            <a href="${rootURL}/manage/configureSecurity/">Configure Global Security</a>.
+          </div>
+        </j:if>
+
+        <!-- Tabs -->
+        <div style="display:flex;align-items:flex-end;border-bottom:2px solid var(--panel-border-color,#e0e0e0);margin-bottom:20px;">
+          <button class="oam-tab oam-tab-active" type="button" id="tabBtnUsers" onclick="switchTab('users')">
+            Users <span id="userCountBadge" class="oam-count">0</span>
+          </button>
+          <button class="oam-tab" type="button" id="tabBtnRoles" onclick="switchTab('roles')">
+            Roles <span class="oam-count">${it.roles.size()}</span>
+          </button>
+        </div>
+
+        <!-- ===== TAB: USERS ===== -->
+        <div id="tabPanelUsers">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:12px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:8px;background:var(--background-color,#fff);border:1px solid var(--panel-border-color,#dee2e6);border-radius:6px;padding:6px 12px;min-width:220px;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:#888;flex-shrink:0;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input id="oamSearch" type="text" placeholder="Search users and groups…" oninput="filterUsers(this.value)"
+                     style="border:none;outline:none;background:transparent;font-size:0.88em;color:var(--text-color,#333);width:180px;"/>
+            </div>
+            <j:if test="${it.omniAuthActive}">
+              <button type="button" onclick="openAddUserDrawer()"
+                      class="jenkins-button jenkins-button--primary" style="font-size:0.88em;">
+                + Add User
+              </button>
+            </j:if>
+          </div>
+
+          <div style="border:1px solid var(--panel-border-color,#e0e0e0);border-radius:8px;overflow:hidden;">
+            <j:choose>
+              <j:when test="${it.accessManagementUserList.isEmpty()}">
+                <div style="padding:56px;text-align:center;color:var(--text-color-secondary,#888);">
+                  <div style="font-size:2.5em;margin-bottom:10px;opacity:0.4;">&#128100;</div>
+                  <div style="font-size:0.92em;">No permissions configured yet.</div>
+                  <j:if test="${it.omniAuthActive}">
+                    <button type="button" onclick="openAddUserDrawer()"
+                            class="jenkins-button jenkins-button--primary" style="margin-top:12px;font-size:0.88em;">
+                      + Add User
+                    </button>
+                  </j:if>
+                </div>
+              </j:when>
+              <j:otherwise>
+                <table style="width:100%;border-collapse:collapse;">
+                  <thead>
+                    <tr style="background:var(--background-color,#fafafa);border-bottom:2px solid var(--panel-border-color,#e0e0e0);">
+                      <th class="oam-th">User / Group</th>
+                      <th class="oam-th">Type</th>
+                      <th class="oam-th">Role</th>
+                      <th class="oam-th">Last Login</th>
+                      <th class="oam-th" style="width:80px;"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <j:forEach var="u" items="${it.accessManagementUserList}">
+                      <tr class="user-row"
+                          data-sid="${u.sid}" data-type="${u.type.name()}" data-display="${u.displayName}"
+                          onclick="gotoDetail(this)"
+                          style="cursor:pointer;border-bottom:1px solid var(--panel-border-color,#f0f0f0);transition:background 0.1s;">
+                        <td style="padding:12px 16px;">
+                          <div style="display:flex;align-items:center;gap:11px;">
+                            <div style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.9em;font-weight:700;flex-shrink:0;color:#fff;background:#1a56b0;">${u.avatarLetter}</div>
+                            <div>
+                              <j:choose>
+                                <j:when test="${u.type.name() == 'GROUP'}">
+                                  <div style="font-weight:600;font-size:0.9em;">${u.displayName != null and u.displayName != u.sid ? u.displayName : u.sid}</div>
+                                  <j:if test="${u.displayName != null and u.displayName != u.sid}">
+                                    <div style="font-size:0.76em;color:var(--text-color-secondary,#888);font-family:monospace;">${u.sid}</div>
+                                  </j:if>
+                                </j:when>
+                                <j:otherwise>
+                                  <div style="font-weight:600;font-size:0.9em;">${u.sid}</div>
+                                  <j:if test="${u.displayName != null and u.displayName != u.sid}">
+                                    <div style="font-size:0.76em;color:var(--text-color-secondary,#888);">${u.displayName}</div>
+                                  </j:if>
+                                </j:otherwise>
+                              </j:choose>
+                            </div>
+                          </div>
+                        </td>
+                        <td style="padding:12px 16px;">
+                          <span class="oam-type-badge"><j:choose><j:when test="${u.userEntry}">User</j:when><j:otherwise>Group</j:otherwise></j:choose></span>
+                        </td>
+                        <td style="padding:12px 16px;">
+                          <span class="oam-role-badge">${u.roleName}</span>
+                        </td>
+                        <td style="padding:12px 16px;font-size:0.86em;color:var(--text-color-secondary,#888);">
+                          <j:choose>
+                            <j:when test="${u.relativeLastLogin != null}">${u.relativeLastLogin}</j:when>
+                            <j:otherwise><span style="color:#ccc;">—</span></j:otherwise>
+                          </j:choose>
+                        </td>
+                        <td style="padding:12px 16px;text-align:right;">
+                          <button type="button" onclick="event.stopPropagation();gotoDetail(this.closest('tr'))"
+                                  class="jenkins-button" style="font-size:0.78em;padding:3px 10px;">Manage</button>
+                        </td>
+                      </tr>
+                    </j:forEach>
+                  </tbody>
+                </table>
+              </j:otherwise>
+            </j:choose>
+          </div>
+        </div>
+
+        <!-- ===== TAB: ROLES ===== -->
+        <div id="tabPanelRoles" style="display:none;">
+
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+            <div style="font-size:0.85em;color:var(--text-color-secondary,#777);">
+              Define custom roles with specific permissions, then assign them to users.
+            </div>
+            <j:if test="${it.omniAuthActive}">
+              <button type="button" onclick="showRoleForm(null,null,null)"
+                      class="jenkins-button jenkins-button--primary" style="font-size:0.85em;margin-left:12px;">
+                + Create Role
+              </button>
+            </j:if>
+          </div>
+
+          <!-- Inline Create/Edit form (hidden by default) -->
+          <div id="roleFormPanel" style="display:none;border:1px solid #bee3f8;border-radius:8px;padding:20px 22px;background:#f5faff;margin-bottom:16px;">
+            <div id="roleFormTitle" style="font-size:0.95em;font-weight:700;margin-bottom:16px;">Create Role</div>
+            <form method="post" action="saveRole">
+              <input type="hidden" name="${app.crumbRequestField}" value="${app.crumb}"/>
+              <div style="display:grid;grid-template-columns:1fr 2fr;gap:16px;margin-bottom:16px;">
+                <div>
+                  <div class="oam-label">Role Name *</div>
+                  <input id="roleNameInput" type="text" name="roleName" required="required"
+                         class="jenkins-input" placeholder="e.g. QA Engineer"
+                         style="width:100%;box-sizing:border-box;"/>
+                </div>
+                <div>
+                  <div class="oam-label">Description</div>
+                  <input id="roleDescInput" type="text" name="roleDescription"
+                         class="jenkins-input" placeholder="What this role allows"
+                         style="width:100%;box-sizing:border-box;"/>
+                </div>
+              </div>
+              <div style="margin-bottom:16px;">
+                <div class="oam-label">Permissions</div>
+                <div style="border:1px solid var(--panel-border-color,#dee2e6);border-radius:6px;overflow:hidden;max-height:360px;overflow-y:auto;">
+                  <j:forEach var="group" items="${it.availablePermissions}">
+                    <details style="border-bottom:1px solid var(--panel-border-color,#f0f0f0);">
+                      <summary style="padding:8px 14px;cursor:pointer;background:var(--background-color,#fafafa);user-select:none;list-style:none;display:flex;align-items:center;gap:6px;">
+                        <span class="arr">&#9656;</span>
+                        <span style="display:flex;flex-direction:column;gap:1px;">
+                          <span style="font-size:0.83em;font-weight:600;line-height:1.2;">${group.groupName}</span>
+                          <j:if test="${group.subtitle != null and group.subtitle != ''}">
+                            <span style="font-size:0.72em;font-weight:400;color:#999;line-height:1.2;">${group.subtitle}</span>
+                          </j:if>
+                        </span>
+                      </summary>
+                      <div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:6px;">
+                        <j:forEach var="perm" items="${group.permissions}">
+                          <label class="perm-label" style="display:inline-flex;align-items:center;gap:6px;background:#f8f9fa;border:1px solid #e9ecef;border-radius:4px;padding:5px 10px;cursor:pointer;transition:background 0.1s,border-color 0.1s;">
+                            <input type="checkbox" class="perm-cb" name="rolePermissions" value="${perm.id}"/>
+                            <span style="display:flex;flex-direction:column;gap:1px;">
+                              <span style="font-size:0.82em;font-weight:500;line-height:1.2;">${perm.name}</span>
+                              <span style="font-size:0.68em;color:#999;font-family:monospace;line-height:1.2;">${perm.shortId}</span>
+                            </span>
+                          </label>
+                        </j:forEach>
+                      </div>
+                    </details>
+                  </j:forEach>
+                </div>
+              </div>
+              <div style="display:flex;gap:10px;">
+                <button type="submit" class="jenkins-button jenkins-button--primary" style="font-size:0.85em;">Save Role</button>
+                <button type="button" onclick="hideRoleForm()" class="jenkins-button" style="font-size:0.85em;">Cancel</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Roles list -->
+          <div style="border:1px solid var(--panel-border-color,#e0e0e0);border-radius:8px;overflow:hidden;">
+            <j:choose>
+              <j:when test="${it.roles.isEmpty()}">
+                <div style="padding:56px;text-align:center;color:#888;">
+                  <div style="font-size:2em;margin-bottom:8px;opacity:0.3;">&#127919;</div>
+                  <div style="font-size:0.9em;">No roles defined yet.</div>
+                  <j:if test="${it.omniAuthActive}">
+                    <button type="button" onclick="showRoleForm(null,null,null)"
+                            class="jenkins-button jenkins-button--primary" style="margin-top:12px;font-size:0.85em;">
+                      + Create Role
+                    </button>
+                  </j:if>
+                </div>
+              </j:when>
+              <j:otherwise>
+                <table style="width:100%;border-collapse:collapse;">
+                  <thead>
+                    <tr style="background:var(--background-color,#fafafa);border-bottom:2px solid var(--panel-border-color,#e0e0e0);">
+                      <th class="oam-th">Role Name</th>
+                      <th class="oam-th">Description</th>
+                      <th class="oam-th" style="text-align:center;">Permissions</th>
+                      <th class="oam-th" style="width:140px;"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <j:forEach var="r" items="${it.roles}" varStatus="rs">
+                      <tr style="border-bottom:${rs.last ? '0' : '1px'} solid var(--panel-border-color,#f0f0f0);">
+                        <td style="padding:12px 16px;font-weight:600;font-size:0.9em;">${r.name}</td>
+                        <td style="padding:12px 16px;font-size:0.85em;color:var(--text-color-secondary,#777);">${r.description}</td>
+                        <td style="padding:12px 16px;text-align:center;">
+                          <span style="font-size:0.8em;background:#e8f0fe;color:#1a56b0;padding:2px 9px;border-radius:10px;font-weight:700;">${r.permissionCount}</span>
+                        </td>
+                        <td style="padding:12px 16px;text-align:right;white-space:nowrap;">
+                          <j:if test="${it.omniAuthActive}">
+                            <button type="button"
+                                    data-rname="${r.name}"
+                                    data-rdesc="${r.description}"
+                                    data-rperms="${r.permissionsJson}"
+                                    onclick="editRoleFromBtn(this)"
+                                    class="jenkins-button" style="font-size:0.78em;padding:3px 10px;margin-right:4px;">
+                              Edit
+                            </button>
+                            <form method="post" action="deleteRole" style="display:inline;">
+                              <input type="hidden" name="${app.crumbRequestField}" value="${app.crumb}"/>
+                              <input type="hidden" name="roleName" value="${r.name}"/>
+                              <button type="submit"
+                                      onclick="return confirm('Delete role: ${r.name}?')"
+                                      class="jenkins-button"
+                                      style="font-size:0.78em;padding:3px 10px;color:#dc3545;border-color:#dc3545;">
+                                Delete
+                              </button>
+                            </form>
+                          </j:if>
+                        </td>
+                      </tr>
+                    </j:forEach>
+                  </tbody>
+                </table>
+              </j:otherwise>
+            </j:choose>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Add User Drawer -->
+      <div id="drawerBackdrop" onclick="closeAddUserDrawer()"
+           style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.3);z-index:9998;"></div>
+
+      <div id="addUserDrawer"
+           style="position:fixed;top:0;right:-500px;bottom:0;width:460px;background:var(--background-color,#fff);
+                  z-index:9999;box-shadow:-6px 0 28px rgba(0,0,0,0.13);overflow-y:auto;
+                  transition:right 0.26s cubic-bezier(0.4,0,0.2,1);display:none;flex-direction:column;">
+
+        <div style="position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between;
+                    padding:18px 20px;border-bottom:1px solid var(--panel-border-color,#eee);background:var(--background-color,#fff);">
+          <div style="font-weight:700;font-size:1em;" id="auDrawerTitle">Add User</div>
+          <button type="button" onclick="closeAddUserDrawer()"
+                  style="background:none;border:none;cursor:pointer;color:#999;font-size:1.2em;padding:6px;line-height:1;">&#10005;</button>
+        </div>
+
+        <div style="padding:22px 20px 32px;">
+          <form id="addUserForm" method="post" action="addUser">
+            <input type="hidden" name="${app.crumbRequestField}" value="${app.crumb}"/>
+            <input type="hidden" id="auAction" name="action" value="existing"/>
+
+            <!-- User Type -->
+            <div style="margin-bottom:18px;">
+              <div class="oam-label">User Type</div>
+              <div style="display:flex;gap:0;border:1px solid var(--panel-border-color,#dee2e6);border-radius:6px;overflow:hidden;">
+                <label id="auTypeNativeLabel"
+                       style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px;cursor:pointer;font-size:0.88em;background:#1a56b0;color:#fff;font-weight:600;transition:background 0.15s;">
+                  <input type="radio" name="userType" id="auTypeNative" value="NATIVE" checked="checked"
+                         onchange="auTypeChange('NATIVE')" style="display:none;"/> &#128274; Native / Local
+                </label>
+                <label id="auTypeEntraLabel"
+                       style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px;cursor:pointer;font-size:0.88em;background:var(--background-color,#fff);color:var(--text-color,#333);transition:background 0.15s;">
+                  <input type="radio" name="userType" id="auTypeEntra" value="ENTRA"
+                         onchange="auTypeChange('ENTRA')" style="display:none;"/> &#9729; Entra / Microsoft
+                </label>
+                <label id="auTypeGroupLabel"
+                       style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px;cursor:pointer;font-size:0.88em;background:var(--background-color,#fff);color:var(--text-color,#333);transition:background 0.15s;">
+                  <input type="radio" name="userType" id="auTypeGroup" value="GROUP"
+                         onchange="auTypeChange('GROUP')" style="display:none;"/> &#128101; Entra Group
+                </label>
+              </div>
+            </div>
+
+            <!-- Username / Email -->
+            <div style="margin-bottom:10px;">
+              <div class="oam-label" id="auSidLabel">Username *</div>
+              <input id="auSid" type="text" name="sid"
+                     class="jenkins-input" placeholder="e.g. mark"
+                     style="width:100%;box-sizing:border-box;"
+                     oninput="auOnInput(this.value)" onblur="auCheckUser(this.value)"/>
+            </div>
+
+            <!-- Status area -->
+            <div id="auStatus" style="display:none;margin-bottom:14px;padding:10px 12px;border-radius:6px;font-size:0.85em;"></div>
+
+            <!-- Native: create form (shown when not found) -->
+            <div id="auCreateForm" style="display:none;margin-bottom:16px;padding:14px 16px;background:#f5faff;border:1px solid #bee3f8;border-radius:6px;">
+              <div style="font-size:0.82em;font-weight:700;color:#1a56b0;margin-bottom:12px;">Create New Account</div>
+              <div style="margin-bottom:10px;">
+                <div class="oam-label">Full Name</div>
+                <input id="auFullName" type="text" name="fullName"
+                       class="jenkins-input" placeholder="e.g. Mark Johnson"
+                       style="width:100%;box-sizing:border-box;"/>
+              </div>
+              <div style="margin-bottom:10px;">
+                <div class="oam-label">Email Address</div>
+                <input id="auEmail" type="email" name="email"
+                       class="jenkins-input" placeholder="e.g. mark@company.com"
+                       style="width:100%;box-sizing:border-box;"/>
+              </div>
+              <div style="margin-bottom:10px;">
+                <label style="display:flex;align-items:center;gap:8px;font-size:0.86em;cursor:pointer;padding:8px 10px;background:#f8f9fa;border:1px solid #e9ecef;border-radius:5px;">
+                  <input type="checkbox" name="forcePasswordChange" value="true" checked="checked" id="auForcePasswordCb"/>
+                  <span>User must set a new password on first login</span>
+                </label>
+              </div>
+              <div style="font-size:0.78em;color:#666;padding:8px 10px;background:#fff8e1;border:1px solid #ffe08a;border-radius:4px;">
+                &#128273; A secure temporary password will be auto-generated and shown once after account creation.
+              </div>
+            </div>
+
+            <!-- Entra: info banner -->
+            <div id="auEntraInfo" style="display:none;margin-bottom:16px;padding:10px 12px;background:#f0fff4;border:1px solid #9ae6b4;border-radius:6px;font-size:0.83em;color:#276749;">
+              &#9989; Access will be pre-provisioned. When this user logs in via Microsoft for the first time, their account will be created automatically and access will already be in place.
+            </div>
+
+            <!-- Group: OID + label fields -->
+            <div id="auGroupFields" style="display:none;">
+              <div style="margin-bottom:10px;">
+                <div class="oam-label">Group Object ID (OID) *</div>
+                <input id="auGroupOid" type="text" name="groupOid"
+                       class="jenkins-input" placeholder="e.g. xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                       style="width:100%;box-sizing:border-box;font-family:monospace;font-size:0.9em;"/>
+                <div style="font-size:0.76em;color:#888;margin-top:4px;">
+                  Find in Azure portal: Azure AD &#8250; Groups &#8250; [Your Group] &#8250; Object ID
+                </div>
+              </div>
+              <div style="margin-bottom:16px;">
+                <div class="oam-label">Label (optional)</div>
+                <input id="auGroupLabel" type="text" name="groupLabel"
+                       class="jenkins-input" placeholder="e.g. Payments Team Developers"
+                       style="width:100%;box-sizing:border-box;"/>
+                <div style="font-size:0.76em;color:#888;margin-top:4px;">Your own note — shown until display name resolves on first login.</div>
+              </div>
+              <div style="margin-bottom:16px;padding:10px 12px;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;font-size:0.82em;color:#92400e;">
+                &#128101; All members of this Azure AD group will be able to log in via Microsoft SSO. Jenkins accounts are created automatically on first login. Access is re-validated on every login — removing this group immediately revokes access.
+              </div>
+              <div style="padding:10px 12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;font-size:0.82em;color:#0c4a6e;">
+                &#8505; Display name will be resolved automatically when the first group member signs in with Microsoft.
+              </div>
+            </div>
+
+            <div style="display:flex;gap:10px;margin-top:16px;">
+              <button type="submit" id="auSubmitBtn" class="jenkins-button jenkins-button--primary"
+                      style="font-size:0.88em;">Continue</button>
+              <button type="button" onclick="closeAddUserDrawer()" class="jenkins-button" style="font-size:0.88em;">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <style>
+        .oam-tab { background:none;border:none;border-bottom:3px solid transparent;padding:10px 18px;cursor:pointer;font-size:0.9em;font-weight:600;color:var(--text-color-secondary,#666);margin-bottom:-2px;transition:color .15s,border-color .15s;display:inline-flex;align-items:center;gap:7px; }
+        .oam-tab:hover { color:var(--text-color,#333); }
+        .oam-tab-active { color:#0078d4 !important;border-bottom-color:#0078d4 !important; }
+        .oam-count { background:var(--panel-border-color,#e0e0e0);color:#666;border-radius:10px;font-size:.78em;font-weight:700;padding:1px 7px;min-width:18px;text-align:center; }
+        .oam-th { padding:10px 16px;text-align:left;font-size:.78em;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-color-secondary,#888);white-space:nowrap; }
+        .user-row:hover { background:var(--item-background--hover,#f5f8ff) !important; }
+        .oam-type-badge { font-size:.75em;font-weight:600;padding:2px 8px;border-radius:10px;background:var(--panel-border-color,#e9ecef);color:var(--text-color-secondary,#555);display:inline-block; }
+        .oam-role-badge { font-size:.78em;font-weight:700;padding:3px 10px;border-radius:10px;display:inline-block;background:#f0f0f0;color:#444; }
+        .oam-label { font-size:.75em;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#888;margin-bottom:6px; }
+        details[open] .arr { display:inline-block;transform:rotate(90deg); }
+        details > summary::-webkit-details-marker { display:none; }
+        .perm-label:hover { background:#e8f0fe !important; border-color:#c2d4f8 !important; }
+        .perm-label:has(input:checked) { background:#dbeafe !important; border-color:#93c5fd !important; font-weight:600; }
+      </style>
+
+      <script>//<![CDATA[
+        // ── Tabs ──────────────────────────────────────────────────────────────
+        function switchTab(tab) {
+          document.getElementById('tabPanelUsers').style.display = tab === 'users' ? '' : 'none';
+          document.getElementById('tabPanelRoles').style.display = tab === 'roles' ? '' : 'none';
+          document.getElementById('tabBtnUsers').classList.toggle('oam-tab-active', tab === 'users');
+          document.getElementById('tabBtnRoles').classList.toggle('oam-tab-active', tab === 'roles');
+        }
+
+        function gotoDetail(rowEl) {
+          if (rowEl.dataset.type === 'GROUP') {
+            window.location.href = 'groupDetail?oid=' + encodeURIComponent(rowEl.dataset.sid);
+          } else {
+            window.location.href = 'userDetail?sid=' + encodeURIComponent(rowEl.dataset.sid) +
+                                    '&type=' + encodeURIComponent(rowEl.dataset.type);
+          }
+        }
+
+        function filterUsers(q) {
+          q = (q || '').toLowerCase();
+          document.querySelectorAll('.user-row').forEach(function(r) {
+            var sid = (r.dataset.sid || '').toLowerCase();
+            var dn  = (r.dataset.display || '').toLowerCase();
+            r.style.display = (!q || sid.includes(q) || dn.includes(q)) ? '' : 'none';
+          });
+        }
+
+        // ── Add User Drawer ───────────────────────────────────────────────────
+        var auCheckTimer = null;
+        var auCurrentType = 'NATIVE';
+        var auUserFound = false;
+
+        function openAddUserDrawer() {
+          var d = document.getElementById('addUserDrawer');
+          d.style.display = 'flex';
+          setTimeout(function() { d.style.right = '0'; }, 10);
+          document.getElementById('drawerBackdrop').style.display = '';
+          document.body.style.overflow = 'hidden';
+          auReset();
+          setTimeout(function() { document.getElementById('auSid').focus(); }, 120);
+        }
+
+        function closeAddUserDrawer() {
+          var d = document.getElementById('addUserDrawer');
+          d.style.right = '-500px';
+          setTimeout(function() {
+            d.style.display = 'none';
+            document.getElementById('drawerBackdrop').style.display = 'none';
+          }, 270);
+          document.body.style.overflow = '';
+        }
+
+        function auReset() {
+          if (auCurrentType !== 'GROUP') {
+            document.getElementById('auSid').value = '';
+          }
+          document.getElementById('auStatus').style.display = 'none';
+          document.getElementById('auCreateForm').style.display = 'none';
+          document.getElementById('auEntraInfo').style.display = auCurrentType === 'ENTRA' ? '' : 'none';
+          document.getElementById('auGroupFields').style.display = auCurrentType === 'GROUP' ? '' : 'none';
+          document.getElementById('auSidLabel').parentElement.style.display = auCurrentType === 'GROUP' ? 'none' : '';
+          document.getElementById('auAction').value = 'existing';
+          document.getElementById('auSubmitBtn').textContent = auCurrentType === 'GROUP' ? 'Add Group' : 'Continue';
+          document.getElementById('auDrawerTitle').textContent = auCurrentType === 'GROUP' ? 'Add Entra Group' : 'Add User';
+          auUserFound = false;
+        }
+
+        function auTypeChange(type) {
+          auCurrentType = type;
+          var nativeLabel = document.getElementById('auTypeNativeLabel');
+          var entraLabel  = document.getElementById('auTypeEntraLabel');
+          var groupLabel  = document.getElementById('auTypeGroupLabel');
+          var inactive    = 'var(--background-color,#fff)';
+          var inactiveClr = 'var(--text-color,#333)';
+          var active      = '#1a56b0';
+          var activeClr   = '#fff';
+
+          nativeLabel.style.background = type === 'NATIVE' ? active : inactive;
+          nativeLabel.style.color      = type === 'NATIVE' ? activeClr : inactiveClr;
+          entraLabel.style.background  = type === 'ENTRA'  ? active : inactive;
+          entraLabel.style.color       = type === 'ENTRA'  ? activeClr : inactiveClr;
+          groupLabel.style.background  = type === 'GROUP'  ? active : inactive;
+          groupLabel.style.color       = type === 'GROUP'  ? activeClr : inactiveClr;
+
+          var sidLabel = document.getElementById('auSidLabel');
+          var sid      = document.getElementById('auSid');
+          if (type === 'NATIVE') {
+            sidLabel.textContent = 'Username *';
+            sid.placeholder = 'e.g. mark';
+          } else if (type === 'ENTRA') {
+            sidLabel.textContent = 'Email / UPN *';
+            sid.placeholder = 'e.g. mark@company.com';
+          }
+
+          auReset();
+        }
+
+        function auOnInput(val) {
+          if (auCurrentType !== 'NATIVE') return;
+          clearTimeout(auCheckTimer);
+          if (!val.trim()) {
+            document.getElementById('auStatus').style.display = 'none';
+            document.getElementById('auCreateForm').style.display = 'none';
+            return;
+          }
+          auCheckTimer = setTimeout(function() { auCheckUser(val); }, 400);
+        }
+
+        function auCheckUser(val) {
+          if (auCurrentType !== 'NATIVE' || !val.trim()) return;
+          fetch('checkNativeUser?username=' + encodeURIComponent(val.trim()))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+              var status     = document.getElementById('auStatus');
+              var createForm = document.getElementById('auCreateForm');
+              var submitBtn  = document.getElementById('auSubmitBtn');
+              var actionEl   = document.getElementById('auAction');
+
+              status.style.display = '';
+              if (data.exists) {
+                auUserFound = true;
+                status.style.background = '#f0fff4';
+                status.style.border = '1px solid #9ae6b4';
+                status.style.color = '#276749';
+                status.innerHTML = '&#10003; Native user found' +
+                  (data.displayName ? ' — <strong>' + data.displayName + '</strong>' : '') +
+                  '. Will be added to access management.';
+                createForm.style.display = 'none';
+                actionEl.value = 'existing';
+                submitBtn.textContent = 'Continue';
+              } else {
+                auUserFound = false;
+                status.style.background = '#fff5f5';
+                status.style.border = '1px solid #fed7d7';
+                status.style.color = '#c53030';
+                status.innerHTML = '&#10007; No Jenkins account found for <strong>' + val.trim() + '</strong>.';
+                createForm.style.display = '';
+                actionEl.value = 'create';
+                submitBtn.textContent = 'Create Account & Continue';
+              }
+            })
+            .catch(function() {});
+        }
+
+        // ── Role form ─────────────────────────────────────────────────────────
+        function showRoleForm(name, desc, permsJson) {
+          var panel  = document.getElementById('roleFormPanel');
+          var title  = document.getElementById('roleFormTitle');
+          var nameEl = document.getElementById('roleNameInput');
+          var descEl = document.getElementById('roleDescInput');
+
+          document.querySelectorAll('.perm-cb').forEach(function(cb) { cb.checked = false; });
+
+          if (name) {
+            title.textContent = 'Edit Role: ' + name;
+            nameEl.value = name;
+            descEl.value = desc || '';
+            var perms = [];
+            try { perms = JSON.parse(permsJson || '[]'); } catch(e) {}
+            var permSet = {};
+            perms.forEach(function(p) { permSet[p] = true; });
+            document.querySelectorAll('.perm-cb').forEach(function(cb) { cb.checked = !!permSet[cb.value]; });
+          } else {
+            title.textContent = 'Create Role';
+            nameEl.value = '';
+            descEl.value = '';
+          }
+
+          panel.style.display = '';
+          panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          setTimeout(function() { nameEl.focus(); }, 50);
+        }
+
+        function hideRoleForm() {
+          document.getElementById('roleFormPanel').style.display = 'none';
+        }
+
+        function editRoleFromBtn(btn) {
+          showRoleForm(btn.dataset.rname, btn.dataset.rdesc, btn.dataset.rperms);
+        }
+
+        // ── Init ──────────────────────────────────────────────────────────────
+        (function() {
+          var badge = document.getElementById('userCountBadge');
+          if (badge) badge.textContent = document.querySelectorAll('.user-row').length;
+          var params = new URLSearchParams(window.location.search);
+          if (params.get('roleSaved') || params.get('roleDeleted') || params.get('error') === 'missingRoleName') {
+            switchTab('roles');
+          }
+        })();
+      //]]></script>
+
+    </l:main-panel>
+  </l:layout>
+</j:jelly>

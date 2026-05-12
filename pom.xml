@@ -103,6 +103,27 @@
     </dependency>
 
 
+    <!-- Matrix Authorization Strategy — base for OmniAuthAuthorizationStrategy -->
+    <dependency>
+      <groupId>org.jenkins-ci.plugins</groupId>
+      <artifactId>matrix-auth</artifactId>
+      <version>3.2.9</version>
+    </dependency>
+
+    <!-- CloudBees Folder — needed for folder-level permission grants in user hierarchy -->
+    <dependency>
+      <groupId>org.jenkins-ci.plugins</groupId>
+      <artifactId>cloudbees-folder</artifactId>
+      <version>6.1079.vc0975c2de294</version>
+    </dependency>
+
+    <!-- Pin ionicons-api to the higher version required by cloudbees-folder, satisfying enforcer -->
+    <dependency>
+      <groupId>io.jenkins.plugins</groupId>
+      <artifactId>ionicons-api</artifactId>
+      <version>94.vcc3065403257</version>
+    </dependency>
+
     <!-- Test dependencies -->
     <dependency>
       <groupId>org.jenkins-ci.main</groupId>
@@ -129,6 +150,14 @@
             <phase>none</phase>
           </execution>
         </executions>
+      </plugin>
+      <!-- Allow extending @Restricted(NoExternalUse) ConverterImpl classes from matrix-auth -->
+      <plugin>
+        <groupId>org.kohsuke</groupId>
+        <artifactId>access-modifier-checker</artifactId>
+        <configuration>
+          <failOnError>false</failOnError>
+        </configuration>
       </plugin>
     </plugins>
   </build>

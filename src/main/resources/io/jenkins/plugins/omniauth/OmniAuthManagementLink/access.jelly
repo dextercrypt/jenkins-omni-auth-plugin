@@ -35,8 +35,11 @@
                   <tr><td style="color:#6c757d;padding:4px 0;">Type</td>
                     <td>
                       <j:choose>
+                        <j:when test="${info.viaGroup}">
+                          <span style="background:#f5f3ff;color:#6d28d9;padding:2px 8px;border-radius:4px;font-size:0.85em;">Entra · Group</span>
+                        </j:when>
                         <j:when test="${info.entraUser}">
-                          <span style="background:#e8f0fe;color:#0078d4;padding:2px 8px;border-radius:4px;font-size:0.85em;">${info.userType}</span>
+                          <span style="background:#e8f0fe;color:#0078d4;padding:2px 8px;border-radius:4px;font-size:0.85em;">Entra · Individual</span>
                         </j:when>
                         <j:otherwise>
                           <span style="background:#f0f0f0;color:#6c757d;padding:2px 8px;border-radius:4px;font-size:0.85em;">Native</span>
@@ -52,7 +55,26 @@
                   </tr>
                   <j:if test="${info.entraUser}">
                     <tr><td style="color:#6c757d;padding:4px 0;">Entra UPN</td><td>${info.entraUpn}</td></tr>
-                    <tr><td style="color:#6c757d;padding:4px 0;">Object ID</td><td style="font-size:0.8em;word-break:break-all;">${info.entraOid}</td></tr>
+                    <tr><td style="color:#6c757d;padding:4px 0;">Object ID</td><td style="font-size:0.8em;font-family:monospace;word-break:break-all;">${info.entraOid}</td></tr>
+                    <j:if test="${info.viaGroup}">
+                      <tr>
+                        <td style="color:#6c757d;padding:4px 0;vertical-align:top;">Group</td>
+                        <td>
+                          <j:choose>
+                            <j:when test="${info.groupName != null}">
+                              <span style="font-weight:600;">${info.groupName}</span><br/>
+                              <span style="font-size:0.8em;font-family:monospace;color:#6b7280;word-break:break-all;">${info.groupOid}</span>
+                            </j:when>
+                            <j:when test="${info.groupOid != null}">
+                              <span style="font-size:0.8em;font-family:monospace;color:#6b7280;word-break:break-all;">${info.groupOid}</span>
+                            </j:when>
+                            <j:otherwise>
+                              <span style="color:#9ca3af;font-style:italic;font-size:0.85em;">Unknown — account orphaned before group tracking was enabled</span>
+                            </j:otherwise>
+                          </j:choose>
+                        </td>
+                      </tr>
+                    </j:if>
                   </j:if>
                 </table>
               </div>

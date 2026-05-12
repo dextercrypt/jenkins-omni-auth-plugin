@@ -31,71 +31,195 @@
         </div>
       </div>
 
-      <!-- Hidden cleanup form — submitted by modal -->
+      <!-- Hidden cleanup form -->
       <form id="oauCleanupForm" method="post" action="runCleanupNow" style="display:none;">
         <input type="hidden" name="${app.crumbRequestField}" value="${app.crumb}"/>
       </form>
 
-      <div style="padding: 16px; max-width: 1100px;">
+      <div class="oau-su-page">
 
-        <!-- Banners -->
-        <j:if test="${request2.getParameter('error') == 'protected'}">
-          <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom: 16px;">
-            Deletion blocked — that user is protected. Remove protection first on the
-            <a href="protectedUsers">Protected Users</a> page.
-          </div>
-        </j:if>
-        <j:if test="${request2.getParameter('ran') == 'true'}">
-          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom: 16px;">
-            Cleanup run complete. Results recorded in the history below.
-          </div>
-        </j:if>
-        <j:if test="${request2.getParameter('deleted') == 'true'}">
-          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom: 16px;">
-            User deleted successfully.
-          </div>
-        </j:if>
+        <j:set var="cfg"          value="${it.omniAuthGlobalConfig}"/>
+        <j:set var="threshold"    value="${cfg.staleThresholdDays}"/>
+        <j:set var="pendingUsers" value="${it.pendingDeletionUsers}"/>
+        <j:set var="staleUsers"   value="${it.getStaleUsers(threshold)}"/>
 
-        <j:set var="cfg" value="${it.omniAuthGlobalConfig}"/>
-        <j:set var="threshold" value="${cfg.staleThresholdDays}"/>
-
-        <!-- Info bar -->
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
-          <p style="color:#6c757d;margin:0;font-size:0.9em;">
-            Users inactive for more than <strong>${threshold} days</strong>.
-            Deleting removes their Jenkins account; SSO users re-provision on next login.
-          </p>
-          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+        <!-- ── Stats Bar ─────────────────────────────────────────────────── -->
+        <div class="oau-su-stats">
+          <div class="oau-su-stat oau-su-stat--danger">
+            <span class="oau-su-stat-n">${pendingUsers.size()}</span>
+            <span class="oau-su-stat-l">Pending Deletion</span>
+          </div>
+          <div class="oau-su-stat oau-su-stat--warn">
+            <span class="oau-su-stat-n">${staleUsers.size()}</span>
+            <span class="oau-su-stat-l">Stale (&gt;${threshold}d inactive)</span>
+          </div>
+          <div class="oau-su-stat oau-su-stat--neutral">
             <j:choose>
               <j:when test="${cfg.cleanupEnabled}">
-                <span style="background:#d4edda;color:#155724;padding:3px 10px;border-radius:10px;font-size:0.8em;font-weight:600;">Auto-cleanup ON</span>
-                <j:choose>
-                  <j:when test="${cfg.cleanupDryRun}">
-                    <span style="background:#fff3cd;color:#856404;padding:3px 10px;border-radius:10px;font-size:0.8em;">Dry-run</span>
-                  </j:when>
-                  <j:otherwise>
-                    <span style="background:#f8d7da;color:#721c24;padding:3px 10px;border-radius:10px;font-size:0.8em;">Live</span>
-                  </j:otherwise>
-                </j:choose>
-                <span style="color:#6c757d;font-size:0.8em;">${cfg.cleanupCron}</span>
+                <span class="oau-su-stat-n" style="font-size:1em;letter-spacing:0.02em;">
+                  <j:choose>
+                    <j:when test="${cfg.cleanupDryRun}">
+                      <span style="color:#b45309;">DRY-RUN</span>
+                    </j:when>
+                    <j:otherwise>
+                      <span style="color:#166534;">LIVE</span>
+                    </j:otherwise>
+                  </j:choose>
+                </span>
+                <span class="oau-su-stat-l">Auto-cleanup · <code style="font-size:0.9em;">${cfg.cleanupCron}</code></span>
               </j:when>
               <j:otherwise>
-                <span style="background:#e9ecef;color:#6c757d;padding:3px 10px;border-radius:10px;font-size:0.8em;">Auto-cleanup OFF</span>
+                <span class="oau-su-stat-n" style="font-size:1em;color:#6b7280;">OFF</span>
+                <span class="oau-su-stat-l">Auto-cleanup disabled</span>
               </j:otherwise>
             </j:choose>
           </div>
         </div>
 
-        <!-- Stale users table -->
-        <j:set var="staleUsers" value="${it.getStaleUsers(threshold)}"/>
+        <!-- ── Warning Banners (state-of-system) ─────────────────────────── -->
+        <j:if test="${!cfg.cleanupEnabled}">
+          <div class="oau-su-notice oau-su-notice--info">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <span><strong>Auto-cleanup is disabled.</strong> Users listed below will not be removed automatically. Use <em>Run Cleanup Now</em> for manual removal, or enable auto-cleanup in <a href="settings">Settings</a>.</span>
+          </div>
+        </j:if>
+        <j:if test="${cfg.cleanupEnabled and cfg.cleanupDryRun}">
+          <div class="oau-su-notice oau-su-notice--warn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <span><strong>Dry-run mode is active.</strong> Scheduled cleanup runs will log which users would be deleted but no accounts will be removed. Disable dry-run in <a href="settings">Settings</a> to perform live deletions.</span>
+          </div>
+        </j:if>
+
+        <!-- ── Flash Banners (action result) ─────────────────────────────── -->
+        <j:if test="${request2.getParameter('error') == 'activeGroup'}">
+          <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom:12px;">
+            Deletion blocked — this account is managed via an active Azure Entra group. Remove the user from the group in Azure to revoke access.
+          </div>
+        </j:if>
+        <j:if test="${request2.getParameter('error') == 'protected'}">
+          <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom:12px;">
+            Deletion blocked — that user is protected. Remove protection first on the
+            <a href="protectedUsers">Protected Users</a> page.
+          </div>
+        </j:if>
+        <j:if test="${request2.getParameter('ran') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom:12px;">
+            Cleanup run complete. Results recorded in the history below.
+          </div>
+        </j:if>
+        <j:if test="${request2.getParameter('deleted') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom:12px;">
+            User deleted successfully.
+          </div>
+        </j:if>
+
+        <!-- ═══════════════════════════════════════════════════════════════
+             SECTION 1 — PENDING DELETION
+             ═══════════════════════════════════════════════════════════════ -->
+        <div class="oau-su-section-hdr oau-su-section-hdr--danger">
+          <span class="oau-su-sh-dot"></span>
+          <span class="oau-su-sh-title">Pending Deletion</span>
+          <span class="oau-su-sh-count">(${pendingUsers.size()})</span>
+          <span class="oau-su-sh-rule"></span>
+          <span class="oau-su-sh-sub">removed on next cleanup run</span>
+        </div>
+
         <j:choose>
-          <j:when test="${staleUsers.isEmpty()}">
-            <div class="jenkins-alert jenkins-alert-success" style="margin-bottom: 24px;">
-              No stale users found. All users have logged in within the last ${threshold} days.
+          <j:when test="${pendingUsers.isEmpty()}">
+            <div class="oau-su-empty oau-su-empty--danger">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+              </svg>
+              No accounts pending deletion.
             </div>
           </j:when>
           <j:otherwise>
-            <div class="jenkins-card" style="padding:0;margin-bottom:24px;overflow:hidden;">
+            <div class="jenkins-card oau-su-card oau-su-card--danger">
+              <table class="jenkins-table" style="margin:0;">
+                <thead>
+                  <tr>
+                    <th>Username</th>
+                    <th>Full Name</th>
+                    <th>Type</th>
+                    <th>Last Login</th>
+                    <th>Reason</th>
+                    <th style="width:110px;">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <j:forEach var="u" items="${pendingUsers}">
+                    <tr class="oau-su-row-danger">
+                      <td>
+                        <a href="userDetail?sid=${u.userId}&amp;type=USER" class="oau-su-ulink">${u.userId}</a>
+                      </td>
+                      <td>${u.fullName}</td>
+                      <td>
+                        <j:choose>
+                          <j:when test="${u.userType == 'Entra' or u.userType == 'INDIVIDUAL'}">
+                            <span class="oau-su-badge oau-su-badge--blue">Entra</span>
+                          </j:when>
+                          <j:when test="${u.userType == 'VIA_ENTRA_GROUP'}">
+                            <span class="oau-su-badge oau-su-badge--purple">Group</span>
+                          </j:when>
+                          <j:otherwise>
+                            <span class="oau-su-badge oau-su-badge--gray">Native</span>
+                          </j:otherwise>
+                        </j:choose>
+                      </td>
+                      <td>
+                        <j:choose>
+                          <j:when test="${u.neverLoggedIn}"><em class="oau-su-never">Never</em></j:when>
+                          <j:otherwise><span class="oau-reltime" data-iso="${u.lastLoginAt}" title="${u.lastLoginAt}">${u.lastLoginAt}</span></j:otherwise>
+                        </j:choose>
+                      </td>
+                      <td>
+                        <span class="oau-su-badge oau-su-badge--red">${u.pendingReason}</span>
+                      </td>
+                      <td>
+                        <button type="button"
+                                class="jenkins-button jenkins-button--danger jenkins-button--small"
+                                onclick="oauShowDeleteModal(this)"
+                                data-userid="${u.userId}"
+                                data-crumb-field="${app.crumbRequestField}"
+                                data-crumb-value="${app.crumb}">
+                          Delete Now
+                        </button>
+                      </td>
+                    </tr>
+                  </j:forEach>
+                </tbody>
+              </table>
+            </div>
+          </j:otherwise>
+        </j:choose>
+
+        <!-- ═══════════════════════════════════════════════════════════════
+             SECTION 2 — STALE USERS
+             ═══════════════════════════════════════════════════════════════ -->
+        <div class="oau-su-section-hdr oau-su-section-hdr--warn">
+          <span class="oau-su-sh-dot"></span>
+          <span class="oau-su-sh-title">Stale Users</span>
+          <span class="oau-su-sh-count">(${staleUsers.size()})</span>
+          <span class="oau-su-sh-rule"></span>
+          <span class="oau-su-sh-sub">inactive for more than ${threshold} days</span>
+        </div>
+
+        <j:choose>
+          <j:when test="${staleUsers.isEmpty()}">
+            <div class="oau-su-empty oau-su-empty--success">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+              </svg>
+              All users are active. No accounts have been inactive for more than ${threshold} days.
+            </div>
+          </j:when>
+          <j:otherwise>
+            <div class="jenkins-card oau-su-card oau-su-card--warn">
               <table class="jenkins-table sortable" style="margin:0;">
                 <thead>
                   <tr>
@@ -103,8 +227,7 @@
                     <th>Full Name</th>
                     <th>Type</th>
                     <th>Last Login</th>
-                    <th>Access</th>
-                    <th>Action</th>
+                    <th style="width:110px;">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -113,13 +236,10 @@
                     <tr>
                       <td>
                         <div style="display:flex;align-items:center;gap:8px;">
-                          ${u.userId}
+                          <a href="userDetail?sid=${u.userId}&amp;type=USER" class="oau-su-ulink">${u.userId}</a>
                           <j:if test="${isProtected}">
-                            <span title="Protected — cannot be deleted"
-                                  style="display:inline-flex;align-items:center;gap:4px;background:#e8f0fe;color:#0078d4;padding:1px 7px;border-radius:10px;font-size:0.73em;font-weight:600;white-space:nowrap;">
-                              <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                              </svg>
+                            <span class="oau-su-badge oau-su-badge--shield" title="Protected — cannot be deleted">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                               Protected
                             </span>
                           </j:if>
@@ -128,31 +248,30 @@
                       <td>${u.fullName}</td>
                       <td>
                         <j:choose>
-                          <j:when test="${u.userType != 'Native'}">
-                            <span style="background:#e8f0fe;color:#0078d4;padding:2px 8px;border-radius:4px;font-size:0.85em;">${u.userType}</span>
+                          <j:when test="${u.userType == 'Entra' or u.userType == 'INDIVIDUAL'}">
+                            <span class="oau-su-badge oau-su-badge--blue">Entra</span>
+                          </j:when>
+                          <j:when test="${u.userType == 'VIA_ENTRA_GROUP'}">
+                            <span class="oau-su-badge oau-su-badge--purple">Group</span>
                           </j:when>
                           <j:otherwise>
-                            <span style="background:#f0f0f0;color:#6c757d;padding:2px 8px;border-radius:4px;font-size:0.85em;">Native</span>
+                            <span class="oau-su-badge oau-su-badge--gray">Native</span>
                           </j:otherwise>
                         </j:choose>
                       </td>
                       <td>
                         <j:choose>
-                          <j:when test="${u.neverLoggedIn}"><em style="color:#6c757d;">Never</em></j:when>
+                          <j:when test="${u.neverLoggedIn}"><em class="oau-su-never">Never</em></j:when>
                           <j:otherwise>
                             <span class="oau-reltime" data-iso="${u.lastLoginAt}" title="${u.lastLoginAt}">${u.lastLoginAt}</span>
                           </j:otherwise>
                         </j:choose>
                       </td>
                       <td>
-                        <a href="access?userId=${u.userId}" class="jenkins-button jenkins-button--small">Check Access</a>
-                      </td>
-                      <td>
                         <j:choose>
                           <j:when test="${isProtected}">
-                            <span title="Remove protection first"
-                                  style="display:inline-flex;align-items:center;gap:5px;color:var(--text-color-secondary,#999);font-size:0.82em;padding:4px 2px;">
-                              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <span class="oau-su-protected-lbl" title="Remove protection first">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                               </svg>
                               Protected
@@ -178,84 +297,99 @@
           </j:otherwise>
         </j:choose>
 
-        <!-- Cleanup history -->
-        <h3 style="font-size:0.95em;font-weight:600;margin:0 0 12px 0;">Cleanup History <span style="font-weight:400;color:#6c757d;font-size:0.85em;">(last 10 runs)</span></h3>
+        <!-- ═══════════════════════════════════════════════════════════════
+             SECTION 3 — CLEANUP HISTORY (collapsible)
+             ═══════════════════════════════════════════════════════════════ -->
         <j:set var="history" value="${cfg.cleanupHistory}"/>
-        <j:choose>
-          <j:when test="${history.isEmpty()}">
-            <div class="jenkins-card" style="padding:20px;color:var(--text-color-secondary,#6c757d);font-size:0.9em;text-align:center;">
-              No cleanup runs yet. Use "Run Cleanup Now" above or enable auto-cleanup in
-              <a href="settings">Settings</a>.
-            </div>
-          </j:when>
-          <j:otherwise>
-            <div class="jenkins-card" style="padding:0;overflow:hidden;">
-              <table class="jenkins-table" style="margin:0;">
-                <thead>
-                  <tr>
-                    <th>Run At</th>
-                    <th>Mode</th>
-                    <th>Scanned</th>
-                    <th>Affected</th>
-                    <th>Protected Skipped</th>
-                    <th>Users</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <j:forEach var="r" items="${history}">
+        <div id="oauHistoryToggle" class="oau-su-section-hdr oau-su-section-hdr--neutral oau-su-drawer-toggle"
+             role="button" tabindex="0">
+          <span class="oau-su-sh-dot"></span>
+          <span class="oau-su-sh-title">Cleanup History</span>
+          <span class="oau-su-sh-count">(${history.size()})</span>
+          <span class="oau-su-sh-rule"></span>
+          <span class="oau-su-sh-sub">last 10 runs</span>
+          <svg id="oauHistoryChevron" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:#9ca3af;transition:transform 0.2s ease;">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </div>
+        <div id="oauHistoryBody" style="display:none;">
+          <j:choose>
+            <j:when test="${history.isEmpty()}">
+              <div class="oau-su-empty oau-su-empty--neutral" style="margin-top:8px;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+                No cleanup runs yet. Use <em>Run Cleanup Now</em> above or enable auto-cleanup in <a href="settings">Settings</a>.
+              </div>
+            </j:when>
+            <j:otherwise>
+              <div class="jenkins-card oau-su-card oau-su-card--neutral" style="margin-top:8px;">
+                <table class="jenkins-table" style="margin:0;">
+                  <thead>
                     <tr>
-                      <td><span class="oau-reltime" data-iso="${r.timestamp}" title="${r.timestamp}">${r.timestamp}</span></td>
-                      <td>
-                        <j:choose>
-                          <j:when test="${r.dryRun}">
-                            <span style="background:#fff3cd;color:#856404;padding:1px 8px;border-radius:10px;font-size:0.78em;font-weight:600;">Dry-run</span>
-                          </j:when>
-                          <j:otherwise>
-                            <span style="background:#f8d7da;color:#721c24;padding:1px 8px;border-radius:10px;font-size:0.78em;font-weight:600;">Live</span>
-                          </j:otherwise>
-                        </j:choose>
-                      </td>
-                      <td>${r.usersScanned}</td>
-                      <td>
-                        <j:choose>
-                          <j:when test="${r.usersAffected == 0}"><span style="color:#6c757d;">0</span></j:when>
-                          <j:otherwise><strong style="color:${r.dryRun ? '#856404' : '#721c24'};">${r.usersAffected}</strong></j:otherwise>
-                        </j:choose>
-                      </td>
-                      <td>${r.skippedProtected}</td>
-                      <td>
-                        <j:choose>
-                          <j:when test="${r.affectedUserIds.isEmpty()}">
-                            <span style="color:#6c757d;font-size:0.85em;">—</span>
-                          </j:when>
-                          <j:otherwise>
-                            <details>
-                              <summary style="cursor:pointer;font-size:0.85em;color:var(--blue,#0078d4);">${r.usersAffected} user(s)</summary>
-                              <ul style="margin:4px 0 0 16px;padding:0;font-size:0.82em;">
-                                <j:forEach var="uid" items="${r.affectedUserIds}">
-                                  <li>${uid}</li>
-                                </j:forEach>
-                              </ul>
-                            </details>
-                          </j:otherwise>
-                        </j:choose>
-                      </td>
+                      <th>Run At</th>
+                      <th>Mode</th>
+                      <th>Scanned</th>
+                      <th>Affected</th>
+                      <th>Skipped</th>
+                      <th>Users</th>
                     </tr>
-                  </j:forEach>
-                </tbody>
-              </table>
-            </div>
-          </j:otherwise>
-        </j:choose>
+                  </thead>
+                  <tbody>
+                    <j:forEach var="r" items="${history}">
+                      <tr>
+                        <td><span class="oau-reltime" data-iso="${r.timestamp}" title="${r.timestamp}">${r.timestamp}</span></td>
+                        <td>
+                          <j:choose>
+                            <j:when test="${r.dryRun}">
+                              <span class="oau-su-badge oau-su-badge--amber">Dry-run</span>
+                            </j:when>
+                            <j:otherwise>
+                              <span class="oau-su-badge oau-su-badge--red">Live</span>
+                            </j:otherwise>
+                          </j:choose>
+                        </td>
+                        <td>${r.usersScanned}</td>
+                        <td>
+                          <j:choose>
+                            <j:when test="${r.usersAffected == 0}"><span style="color:#6c757d;">0</span></j:when>
+                            <j:otherwise><strong style="color:${r.dryRun ? '#856404' : '#991b1b'};">${r.usersAffected}</strong></j:otherwise>
+                          </j:choose>
+                        </td>
+                        <td>${r.skippedProtected}</td>
+                        <td>
+                          <j:choose>
+                            <j:when test="${r.affectedUserIds.isEmpty()}">
+                              <span style="color:#9ca3af;font-size:0.85em;">—</span>
+                            </j:when>
+                            <j:otherwise>
+                              <details>
+                                <summary style="cursor:pointer;font-size:0.85em;color:var(--blue,#0078d4);">${r.usersAffected} user(s)</summary>
+                                <ul style="margin:4px 0 0 16px;padding:0;font-size:0.82em;">
+                                  <j:forEach var="uid" items="${r.affectedUserIds}">
+                                    <li>${uid}</li>
+                                  </j:forEach>
+                                </ul>
+                              </details>
+                            </j:otherwise>
+                          </j:choose>
+                        </td>
+                      </tr>
+                    </j:forEach>
+                  </tbody>
+                </table>
+              </div>
+            </j:otherwise>
+          </j:choose>
+        </div>
 
-      </div>
+      </div><!-- end .oau-su-page -->
 
       <!-- ================================================================
            CLEANUP MODAL
            ================================================================ -->
       <div id="oauCleanupModal" class="oau-modal-backdrop" style="display:none;" onclick="if(event.target===this)oauCloseCleanupModal()">
         <div class="oau-modal">
-          <!-- Dry-run variant -->
           <div id="oauModalDryRun">
             <div class="oau-modal-header oau-modal-header--warn">
               <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -276,7 +410,6 @@
               <button type="button" class="jenkins-button jenkins-button--primary" onclick="oauSubmitCleanup()">Run Dry-run</button>
             </div>
           </div>
-          <!-- Live variant -->
           <div id="oauModalLive">
             <div class="oau-modal-header oau-modal-header--danger">
               <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -287,7 +420,7 @@
               Run Cleanup — Live Mode
             </div>
             <div class="oau-modal-body">
-              <p style="margin:0 0 12px 0;">This will <strong>permanently delete</strong> all stale users that have not logged in within the configured threshold.</p>
+              <p style="margin:0 0 12px 0;">This will <strong>permanently delete</strong> all stale users inactive beyond the configured threshold, plus any accounts marked for pending deletion.</p>
               <div style="background:#f8d7da;border:1px solid #f5c6cb;border-radius:6px;padding:10px 14px;font-size:0.85em;color:#721c24;">
                 <strong>This action cannot be undone.</strong> Protected users will be skipped.
                 SSO users will be re-provisioned on their next login.
@@ -347,6 +480,163 @@
       </form>
 
       <style>
+        /* ── Page layout ─────────────────────────────────────────── */
+        .oau-su-page {
+          padding: 20px;
+          max-width: 1100px;
+        }
+
+        /* ── Stats bar ───────────────────────────────────────────── */
+        .oau-su-stats {
+          display: flex;
+          gap: 12px;
+          margin-bottom: 20px;
+          flex-wrap: wrap;
+        }
+        .oau-su-stat {
+          flex: 1;
+          min-width: 160px;
+          background: var(--background, #fff);
+          border: 1px solid var(--panel-border-color, #e0e0e0);
+          border-radius: 8px;
+          padding: 14px 18px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .oau-su-stat--danger { border-left: 4px solid #dc2626; }
+        .oau-su-stat--warn   { border-left: 4px solid #d97706; }
+        .oau-su-stat--neutral { border-left: 4px solid #9ca3af; }
+        .oau-su-stat-n {
+          font-size: 1.75em;
+          font-weight: 700;
+          line-height: 1;
+          color: var(--text-color, #111);
+        }
+        .oau-su-stat-l {
+          font-size: 0.77em;
+          color: #6b7280;
+          font-weight: 500;
+        }
+
+        /* ── Notice banners ──────────────────────────────────────── */
+        .oau-su-notice {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          border-radius: 6px;
+          padding: 12px 16px;
+          margin-bottom: 16px;
+          font-size: 0.875em;
+          line-height: 1.6;
+        }
+        .oau-su-notice svg { flex-shrink: 0; margin-top: 2px; }
+        .oau-su-notice--info {
+          background: #eff6ff;
+          border: 1px solid #bfdbfe;
+          color: #1e40af;
+        }
+        .oau-su-notice--warn {
+          background: #fffbeb;
+          border: 1px solid #fde68a;
+          color: #92400e;
+        }
+        .oau-su-notice a { color: inherit; font-weight: 600; }
+
+        /* ── Section headers ─────────────────────────────────────── */
+        .oau-su-section-hdr {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin: 24px 0 10px 0;
+          font-size: 0.9em;
+        }
+        .oau-su-sh-dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          flex-shrink: 0;
+        }
+        .oau-su-section-hdr--danger .oau-su-sh-dot { background: #dc2626; }
+        .oau-su-section-hdr--warn   .oau-su-sh-dot { background: #d97706; }
+        .oau-su-section-hdr--neutral .oau-su-sh-dot { background: #9ca3af; }
+        .oau-su-sh-title { font-weight: 700; color: var(--text-color, #111); }
+        .oau-su-sh-count { color: #6b7280; font-weight: 500; }
+        .oau-su-sh-rule {
+          flex: 1;
+          height: 1px;
+          background: var(--panel-border-color, #e0e0e0);
+        }
+        .oau-su-sh-sub { color: #9ca3af; font-size: 0.85em; white-space: nowrap; }
+
+        /* ── Cards ───────────────────────────────────────────────── */
+        .oau-su-card {
+          padding: 0;
+          margin-bottom: 4px;
+          overflow: hidden;
+        }
+        .oau-su-card--danger { border-color: #fca5a5; }
+        .oau-su-card--warn   { border-color: #fcd34d; }
+        .oau-su-card--neutral { /* default border */ }
+
+        /* ── Table rows ──────────────────────────────────────────── */
+        .oau-su-row-danger { background: #fff7f7; }
+
+        /* ── Empty states ────────────────────────────────────────── */
+        .oau-su-empty {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          border-radius: 6px;
+          padding: 14px 18px;
+          margin-bottom: 4px;
+          font-size: 0.875em;
+          color: #6b7280;
+        }
+        .oau-su-empty--danger  { background: #fff7f7; border: 1px solid #fca5a5; color: #991b1b; }
+        .oau-su-empty--success { background: #f0fdf4; border: 1px solid #86efac; color: #166534; }
+        .oau-su-empty--neutral { background: var(--background, #fafafa); border: 1px solid var(--panel-border-color, #e0e0e0); }
+        .oau-su-empty a { color: inherit; font-weight: 600; }
+
+        /* ── Badges ──────────────────────────────────────────────── */
+        .oau-su-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 2px 8px;
+          border-radius: 4px;
+          font-size: 0.8em;
+          font-weight: 600;
+          white-space: nowrap;
+        }
+        .oau-su-badge--blue   { background: #eff6ff; color: #1d4ed8; }
+        .oau-su-badge--purple { background: #f5f3ff; color: #6d28d9; }
+        .oau-su-badge--gray   { background: #f3f4f6; color: #6b7280; }
+        .oau-su-badge--red    { background: #fee2e2; color: #991b1b; }
+        .oau-su-badge--amber  { background: #fef3c7; color: #92400e; }
+        .oau-su-badge--shield { background: #e8f0fe; color: #0078d4; border-radius: 10px; }
+
+        /* ── Collapsible history drawer ─────────────────────────── */
+        .oau-su-drawer-toggle {
+          cursor: pointer;
+          user-select: none;
+        }
+        .oau-su-drawer-toggle:hover .oau-su-sh-title { text-decoration: underline; }
+
+        /* ── Misc ────────────────────────────────────────────────── */
+        .oau-su-ulink { color: var(--text-color, inherit); text-decoration: none; font-weight: 600; }
+        .oau-su-ulink:hover { text-decoration: underline; }
+        .oau-su-never { color: #9ca3af; font-style: italic; }
+        .oau-su-protected-lbl {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          color: var(--text-color-secondary, #999);
+          font-size: 0.82em;
+          padding: 4px 2px;
+        }
+
+        /* ── Modals ──────────────────────────────────────────────── */
         .oau-modal-backdrop {
           position: fixed; inset: 0; z-index: 9999;
           background: rgba(0,0,0,0.45);
@@ -379,6 +669,22 @@
       </style>
 
       <script>//<![CDATA[
+        // ── History drawer toggle ──────────────────────────────────────────
+        (function() {
+          var toggle  = document.getElementById('oauHistoryToggle');
+          var body    = document.getElementById('oauHistoryBody');
+          var chevron = document.getElementById('oauHistoryChevron');
+          function doToggle() {
+            var open = body.style.display !== 'none';
+            body.style.display = open ? 'none' : '';
+            chevron.style.transform = open ? '' : 'rotate(180deg)';
+          }
+          toggle.addEventListener('click', doToggle);
+          toggle.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doToggle(); }
+          });
+        })();
+
         // ── Cleanup modal ──────────────────────────────────────────────────
         function oauShowCleanupModal(isDryRun) {
           document.getElementById('oauModalDryRun').style.display = isDryRun ? '' : 'none';

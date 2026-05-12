@@ -1,10 +1,7 @@
 <?jelly escape-by-default='true'?>
 <j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:l="/lib/layout">
-
   <l:layout title="OmniAuth — User Status" norefresh="true">
-    <l:side-panel>
-      <st:include page="sidepanel.jelly"/>
-    </l:side-panel>
+    <l:side-panel><st:include page="sidepanel.jelly"/></l:side-panel>
     <l:main-panel>
 
       <div class="jenkins-app-bar">
@@ -13,289 +10,578 @@
         </div>
       </div>
 
-      <div style="padding: 16px 24px;">
+      <div class="us-page">
+        <j:set var="cfg"   value="${it.omniAuthGlobalConfig}"/>
+        <j:set var="users" value="${it.userStatusList}"/>
 
-        <j:set var="cfg" value="${it.omniAuthGlobalConfig}"/>
-
+        <!-- Flash banners -->
+        <j:if test="${request2.getParameter('error') == 'activeGroup'}">
+          <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom:14px;">
+            Deletion blocked — this account is managed via an active Azure Entra group. Remove the user from the group in Azure to revoke access.
+          </div>
+        </j:if>
         <j:if test="${request2.getParameter('error') == 'protected'}">
-          <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom: 16px;">
-            Deletion blocked — that user is protected. Remove protection first on the
-            <a href="protectedUsers">Protected Users</a> page.
+          <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom:14px;">
+            Deletion blocked — this user is protected. Remove protection first on the <a href="protectedUsers">Protected Users</a> page.
           </div>
         </j:if>
         <j:if test="${request2.getParameter('deleted') == 'true'}">
-          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom: 16px;">
-            User deleted successfully.
-          </div>
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom:14px;">User deleted successfully.</div>
+        </j:if>
+        <j:if test="${request2.getParameter('marked') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom:14px;">User marked for deletion — will be removed on the next cleanup run.</div>
+        </j:if>
+        <j:if test="${request2.getParameter('unmarked') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom:14px;">Pending deletion mark removed — account is safe.</div>
         </j:if>
 
-        <p style="color: #6c757d; margin-bottom: 16px;">
-          All Jenkins users. Active = logged in within <strong>${cfg.activeThresholdDays} days</strong>.
-          Stale threshold is <strong>${cfg.staleThresholdDays} days</strong>.
-          Configure in <a href="settings">Settings</a>.
-        </p>
+        <!-- Stats bar -->
+        <div class="us-stats">
+          <div class="us-stat"><span class="us-stat-n" id="sTotal">—</span><span class="us-stat-l">Total Users</span></div>
+          <div class="us-stat"><span class="us-stat-n" style="color:#166534" id="sActive">—</span><span class="us-stat-l">Active</span></div>
+          <div class="us-stat"><span class="us-stat-n" style="color:#6b7280" id="sInactive">—</span><span class="us-stat-l">Inactive / Never</span></div>
+          <div class="us-stat"><span class="us-stat-n" style="color:#1d4ed8" id="sEntra">—</span><span class="us-stat-l">Entra SSO</span></div>
+          <div class="us-stat"><span class="us-stat-n" style="color:#b45309" id="sStale">—</span><span class="us-stat-l">Stale (&gt;${cfg.staleThresholdDays}d)</span></div>
+        </div>
 
-        <j:set var="users" value="${it.userStatusList}"/>
+        <!-- Toolbar: search + filter pills -->
+        <div class="us-toolbar">
+          <div class="us-search-box">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:#9ca3af;flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input id="usQ" type="text" placeholder="Search username, name or email…" oninput="usFilter()"/>
+          </div>
+          <div class="us-filter-group">
+            <span class="us-filter-lbl">Type</span>
+            <button class="us-pill us-pill-on" data-fg="type" data-fv="all"            onclick="usSetFilter('type','all',this)">All</button>
+            <button class="us-pill"            data-fg="type" data-fv="NATIVE"          onclick="usSetFilter('type','NATIVE',this)">Native</button>
+            <button class="us-pill"            data-fg="type" data-fv="INDIVIDUAL"      onclick="usSetFilter('type','INDIVIDUAL',this)">Individual</button>
+            <button class="us-pill"            data-fg="type" data-fv="VIA_ENTRA_GROUP" onclick="usSetFilter('type','VIA_ENTRA_GROUP',this)">Group</button>
+          </div>
+          <div class="us-filter-group">
+            <span class="us-filter-lbl">Status</span>
+            <button class="us-pill us-pill-on" data-fg="status" data-fv="all"      onclick="usSetFilter('status','all',this)">All</button>
+            <button class="us-pill"            data-fg="status" data-fv="active"   onclick="usSetFilter('status','active',this)">Active</button>
+            <button class="us-pill"            data-fg="status" data-fv="inactive" onclick="usSetFilter('status','inactive',this)">Inactive</button>
+            <button class="us-pill"            data-fg="status" data-fv="never"    onclick="usSetFilter('status','never',this)">Never</button>
+            <button class="us-pill"            data-fg="status" data-fv="stale"    onclick="usSetFilter('status','stale',this)">Stale</button>
+            <button class="us-pill"            data-fg="status" data-fv="pending"  onclick="usSetFilter('status','pending',this)">Pending Deletion</button>
+          </div>
+        </div>
 
-        <table class="jenkins-table sortable">
-          <thead>
-            <tr>
-              <th>Username</th>
-              <th>Full Name</th>
-              <th>Type</th>
-              <th>Last Login</th>
-              <th>Last Job Triggered</th>
-              <th>Status</th>
-              <th>Access</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            <j:forEach var="u" items="${users}">
+        <!-- Table -->
+        <div class="us-card">
+          <table class="us-table">
+            <colgroup>
+              <col style="width:34%"/>
+              <col style="width:16%"/>
+              <col style="width:18%"/>
+              <col style="width:16%"/>
+              <col style="width:16%"/>
+            </colgroup>
+            <thead>
               <tr>
-                <td>${u.userId}</td>
-                <td>${u.fullName}</td>
-
-                <td>
-                  <j:choose>
-                    <j:when test="${u.userType != 'Native'}">
-                      <span style="background:#e8f0fe;color:#0078d4;padding:2px 8px;border-radius:4px;font-size:0.85em;">${u.userType}</span>
-                    </j:when>
-                    <j:otherwise>
-                      <span style="background:#f0f0f0;color:#6c757d;padding:2px 8px;border-radius:4px;font-size:0.85em;">Native</span>
-                    </j:otherwise>
-                  </j:choose>
-                </td>
-
-                <td>
-                  <j:choose>
-                    <j:when test="${u.neverLoggedIn}"><em style="color:#6c757d;">Never</em></j:when>
-                    <j:otherwise>
-                      <span style="display:inline-flex;align-items:center;gap:4px;">
-                        <span>${u.relativeLastLoginAt}</span>
-                        <span class="oau-info-wrap">
-                          <span class="oau-info-btn">i</span>
-                          <span class="oau-info-tip">
-                            <strong>${u.formattedLastLoginAt}</strong>
-                            <j:if test="${u.latestEvent != null}">
-                              <br/>${u.latestEvent.browser} · ${u.latestEvent.os}
-                              <br/>${u.latestEvent.ipAddress}
-                              <br/>via ${u.latestEvent.method}
-                            </j:if>
-                          </span>
-                        </span>
-                      </span>
-                    </j:otherwise>
-                  </j:choose>
-                </td>
-
-                <td>
-                  <j:choose>
-                    <j:when test="${u.neverTriggered}"><em style="color:#6c757d;">—</em></j:when>
-                    <j:otherwise>
-                      ${u.lastJobName}<br/>
-                      <small style="color:#6c757d;display:inline-flex;align-items:center;gap:4px;">
-                        <span>${u.relativeLastJobTriggeredAt}</span>
-                        <span class="oau-info-wrap">
-                          <span class="oau-info-btn">i</span>
-                          <span class="oau-info-tip">${u.formattedLastJobTriggeredAt}</span>
-                        </span>
-                      </small>
-                    </j:otherwise>
-                  </j:choose>
-                </td>
-
-                <td>
-                  <j:choose>
-                    <j:when test="${u.status == 'Active'}">
-                      <span style="background:#d4edda;color:#155724;padding:2px 8px;border-radius:4px;font-size:0.85em;white-space:nowrap;">Active</span>
-                    </j:when>
-                    <j:when test="${u.status == 'Active via Jobs'}">
-                      <span style="background:#fff3cd;color:#856404;padding:2px 8px;border-radius:4px;font-size:0.85em;white-space:nowrap;">Active via Jobs</span>
-                    </j:when>
-                    <j:when test="${u.status == 'Inactive'}">
-                      <span style="background:#f8d7da;color:#721c24;padding:2px 8px;border-radius:4px;font-size:0.85em;white-space:nowrap;">Inactive</span>
-                    </j:when>
-                    <j:otherwise>
-                      <span style="background:#6c757d;color:#ffffff;padding:2px 8px;border-radius:4px;font-size:0.85em;white-space:nowrap;">Never Active</span>
-                    </j:otherwise>
-                  </j:choose>
-                </td>
-
-                <td>
-                  <a href="access?userId=${u.userId}" class="jenkins-button jenkins-button--small">
-                    Check Access
-                  </a>
-                </td>
-                <td>
-                  <j:choose>
-                    <j:when test="${cfg.isProtected(u.userId)}">
-                      <span title="Remove protection first"
-                            style="color:var(--text-color-secondary,#999);font-size:0.82em;">
-                        Protected
-                      </span>
-                    </j:when>
-                    <j:otherwise>
-                      <button type="button"
-                              class="jenkins-button jenkins-button--danger jenkins-button--small"
-                              onclick="oauShowDeleteModal(this)"
-                              data-userid="${u.userId}"
-                              data-crumb-field="${app.crumbRequestField}"
-                              data-crumb-value="${app.crumb}">
-                        Delete
-                      </button>
-                    </j:otherwise>
-                  </j:choose>
-                </td>
+                <th class="us-th">User</th>
+                <th class="us-th">Type</th>
+                <th class="us-th">Last Login</th>
+                <th class="us-th">Status</th>
+                <th class="us-th" style="text-align:right;padding-right:18px;">Actions</th>
               </tr>
-            </j:forEach>
-          </tbody>
-        </table>
+            </thead>
+            <tbody id="usTbody">
+              <j:forEach var="u" items="${users}">
+                <j:set var="isGroupManaged" value="${u.activeGroupUser}"/>
+                <j:set var="isProtected"    value="${cfg.isProtected(u.userId)}"/>
+                <j:set var="canDelete"      value="${!isGroupManaged and !isProtected}"/>
+                <!-- ds = pure login state; stale tracked separately so Inactive/Never filters still work -->
+                <j:set var="ds" value="${u.status == 'Active' ? 'active' : u.status == 'Active via Jobs' ? 'active' : u.status == 'Inactive' ? 'inactive' : 'never'}"/>
+                <tr class="us-row"
+                    data-q="${u.userId} ${u.fullName} ${u.entraUpn != null ? u.entraUpn : ''}"
+                    data-prov="${u.provisioningSource}"
+                    data-ds="${ds}"
+                    data-stale="${u.staleWarning}"
+                    data-pending="${u.pendingDeletion}"
+                    onclick="usOpen(event,'${u.userId}')">
+
+                  <!-- User identity -->
+                  <td class="us-td">
+                    <div class="us-ident">
+                      <div class="us-av" style="background:${u.provisioningSource == 'NATIVE' ? '#f3f4f6' : '#eff6ff'};color:${u.provisioningSource == 'NATIVE' ? '#6b7280' : '#1d4ed8'};">
+                        ${u.userId.substring(0,1).toUpperCase()}
+                      </div>
+                      <div class="us-names">
+                        <div class="us-primary">${u.userId}</div>
+                        <j:if test="${u.fullName != null and u.fullName != u.userId and u.fullName != ''}">
+                          <div class="us-secondary">${u.fullName}</div>
+                        </j:if>
+                      </div>
+                    </div>
+                  </td>
+
+                  <!-- Type -->
+                  <td class="us-td">
+                    <j:choose>
+                      <j:when test="${u.provisioningSource == 'NATIVE'}">
+                        <span class="us-badge us-gray">Native</span>
+                      </j:when>
+                      <j:when test="${u.provisioningSource == 'VIA_ENTRA_GROUP'}">
+                        <span class="us-badge us-purple">Entra · Group</span>
+                      </j:when>
+                      <j:otherwise>
+                        <span class="us-badge us-blue">Entra · Indiv.</span>
+                      </j:otherwise>
+                    </j:choose>
+                  </td>
+
+                  <!-- Last Login -->
+                  <td class="us-td">
+                    <j:choose>
+                      <j:when test="${u.neverLoggedIn}">
+                        <span class="us-muted">Never</span>
+                      </j:when>
+                      <j:otherwise>
+                        <div class="us-login">
+                          <span class="us-login-time">${u.relativeLastLoginAt}</span>
+                          <span class="us-tipwrap">
+                            <span class="us-tipicon">i</span>
+                            <span class="us-tipbox">
+                              <strong>${u.formattedLastLoginAt}</strong>
+                              <j:if test="${u.entraUpn != null and u.entraUpn != ''}"><br/>${u.entraUpn}</j:if>
+                              <j:if test="${u.latestEvent != null}">
+                                <br/>${u.latestEvent.browser} · ${u.latestEvent.os}
+                                <br/>${u.latestEvent.ipAddress}
+                                <br/>via ${u.latestEvent.method}
+                              </j:if>
+                            </span>
+                          </span>
+                        </div>
+                        <j:if test="${!u.neverTriggered}">
+                          <div class="us-muted us-small">&#9654; ${u.relativeLastJobTriggeredAt}</div>
+                        </j:if>
+                      </j:otherwise>
+                    </j:choose>
+                  </td>
+
+                  <!-- Status — pending > stale > login state -->
+                  <td class="us-td">
+                    <j:choose>
+                      <j:when test="${u.pendingDeletion}"><span class="us-badge us-crimson" title="Queued for deletion on next cleanup run">Pending Deletion</span></j:when>
+                      <j:when test="${u.staleWarning}">   <span class="us-badge us-amber" title="No login for more than ${cfg.staleThresholdDays} days">Stale</span></j:when>
+                      <j:when test="${ds == 'active'}">   <span class="us-badge us-green">Active</span></j:when>
+                      <j:when test="${ds == 'inactive'}"> <span class="us-badge us-red">Inactive</span></j:when>
+                      <j:otherwise>                       <span class="us-badge us-gray">Never</span></j:otherwise>
+                    </j:choose>
+                  </td>
+
+                  <!-- Actions: kebab ··· menu -->
+                  <td class="us-td" style="text-align:right;padding-right:12px;" onclick="event.stopPropagation()">
+                    <div class="us-kebab-wrap">
+                      <button class="us-kebab-btn" onclick="usToggleMenu(event,this)" title="Actions">&#8942;</button>
+                      <div class="us-menu">
+                        <a class="us-menu-item" href="userDetail?sid=${u.userId}&amp;type=USER">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                          Manage
+                        </a>
+                        <a class="us-menu-item" href="access?userId=${u.userId}">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                          Check Access
+                        </a>
+                        <div class="us-menu-divider"></div>
+                        <j:choose>
+                          <j:when test="${isGroupManaged}">
+                            <span class="us-menu-item us-menu-disabled" title="Managed via Azure Entra group — remove from group in Azure to revoke access">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                              Group managed
+                            </span>
+                          </j:when>
+                          <j:when test="${isProtected}">
+                            <span class="us-menu-item us-menu-disabled" title="Protected — remove protection first on the Protected Users page">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                              Protected
+                            </span>
+                          </j:when>
+                          <j:otherwise>
+                            <!-- orphanedGroup = auto-marked because removed from Azure group -->
+                            <j:set var="orphanedGroup" value="${u.pendingDeletion and u.provisioningSource == 'VIA_ENTRA_GROUP' and !u.activeGroupUser}"/>
+                            <j:choose>
+                              <j:when test="${u.pendingDeletion and !orphanedGroup}">
+                                <!-- Manually marked INDIVIDUAL — allow unmark -->
+                                <button class="us-menu-item us-menu-warn"
+                                        onclick="usUnmark(this)"
+                                        data-userid="${u.userId}"
+                                        data-crumb-field="${app.crumbRequestField}"
+                                        data-crumb-value="${app.crumb}">
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+                                  Remove Deletion Mark
+                                </button>
+                              </j:when>
+                              <j:when test="${orphanedGroup}">
+                                <!-- Orphaned group account — grayed + instant CSS tooltip -->
+                                <span class="us-menu-item us-menu-disabled us-menu-tipped">
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+                                  Remove Deletion Mark
+                                  <span class="us-menu-tipbox">Re-provision as Individual user to restore access</span>
+                                </span>
+                              </j:when>
+                              <j:otherwise>
+                                <!-- Not marked yet — allow manual mark -->
+                                <button class="us-menu-item us-menu-warn"
+                                        onclick="usMark(this)"
+                                        data-userid="${u.userId}"
+                                        data-crumb-field="${app.crumbRequestField}"
+                                        data-crumb-value="${app.crumb}">
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                  Mark for Deletion
+                                </button>
+                              </j:otherwise>
+                            </j:choose>
+                            <button class="us-menu-item us-menu-danger"
+                                    onclick="usDelete(this)"
+                                    data-userid="${u.userId}"
+                                    data-crumb-field="${app.crumbRequestField}"
+                                    data-crumb-value="${app.crumb}">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+                              Delete Now
+                            </button>
+                          </j:otherwise>
+                        </j:choose>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </j:forEach>
+            </tbody>
+          </table>
+          <div id="usEmpty" style="display:none;padding:48px;text-align:center;color:#9ca3af;font-size:.88em;">No users match your filters.</div>
+        </div>
+
+        <div class="us-footer">
+          Active = logged in within <strong>${cfg.activeThresholdDays}d</strong> ·
+          Stale = no login for <strong>${cfg.staleThresholdDays}d</strong> ·
+          <a href="settings">Configure in Settings</a>
+        </div>
       </div>
 
-      <!-- ================================================================
-           DELETE USER MODAL
-           ================================================================ -->
-      <div id="oauDeleteModal" class="oau-modal-backdrop" style="display:none;" onclick="if(event.target===this)oauCloseDeleteModal()">
-        <div class="oau-modal">
-          <div class="oau-modal-header oau-modal-header--danger">
-            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-              <path d="M10 11v6"/><path d="M14 11v6"/>
-              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-            </svg>
+      <!-- Delete confirmation modal -->
+      <div id="usDModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.4);align-items:center;justify-content:center;" onclick="if(event.target===this)usCloseD()">
+        <div class="us-modal">
+          <div class="us-modal-hdr">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
             Delete User
           </div>
-          <div class="oau-modal-body">
-            <p style="margin:0 0 8px 0;">
-              You are about to permanently delete <strong id="oauDeleteUserId"></strong>.
-            </p>
-            <div style="background:#f8d7da;border:1px solid #f5c6cb;border-radius:6px;padding:10px 14px;font-size:0.85em;color:#721c24;margin-bottom:16px;">
-              <strong>This cannot be undone.</strong> The user's Jenkins account and all permissions will be permanently removed.
-            </div>
-            <label style="display:block;font-size:0.85em;font-weight:600;margin-bottom:6px;">
-              Type <code id="oauDeleteUserIdHint" style="background:#f0f0f0;padding:1px 5px;border-radius:3px;font-size:0.95em;"></code> to confirm:
-            </label>
-            <input type="text" id="oauDeleteConfirmInput"
-                   class="jenkins-input"
-                   placeholder="Type username to confirm"
-                   autocomplete="off"
-                   oninput="oauCheckDeleteConfirm()"
-                   style="width:100%;box-sizing:border-box;"/>
+          <div class="us-modal-body">
+            <p style="margin:0 0 10px;">Permanently delete <strong id="usDName"></strong>?</p>
+            <div class="us-modal-warn"><strong>This cannot be undone.</strong> The account and all permissions will be removed.</div>
+            <label class="us-modal-lbl">Type <code id="usDHint"></code> to confirm:</label>
+            <input id="usDInput" type="text" class="jenkins-input" placeholder="Type username to confirm" autocomplete="off" oninput="usDCheck()" style="width:100%;box-sizing:border-box;"/>
           </div>
-          <div class="oau-modal-footer">
-            <button type="button" class="jenkins-button" onclick="oauCloseDeleteModal()">Cancel</button>
-            <button type="button" class="jenkins-button jenkins-button--danger" id="oauDeleteConfirmBtn" disabled="true">Delete</button>
+          <div class="us-modal-ftr">
+            <button type="button" class="jenkins-button" onclick="usCloseD()">Cancel</button>
+            <button type="button" class="jenkins-button jenkins-button--danger" id="usDBtn" disabled="true">Delete</button>
+          </div>
+        </div>
+      </div>
+      <!-- Pending deletion info modal -->
+      <div id="usPDModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.4);align-items:center;justify-content:center;" onclick="if(event.target===this)usPDClose()">
+        <div class="us-modal">
+          <div class="us-modal-hdr" style="background:#fffbeb;border-bottom-color:#fcd34d;color:#92400e;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            Access Detail Unavailable
+          </div>
+          <div class="us-modal-body">
+            <p style="margin:0 0 10px;">This account is <strong>pending deletion</strong>.</p>
+            <div class="us-modal-warn" style="background:#fffbeb;border-color:#fcd34d;color:#92400e;">
+              Its permissions were granted via group membership, which has been revoked.
+              The access detail page is not available for accounts in this state.
+            </div>
+            <p style="margin:8px 0 0;font-size:.86em;color:#6b7280;">
+              To restore access, re-add the user to the Azure AD group. The account will be automatically recovered on their next login.
+            </p>
+          </div>
+          <div class="us-modal-ftr">
+            <button type="button" class="jenkins-button jenkins-button--primary" onclick="usPDClose()">OK</button>
           </div>
         </div>
       </div>
 
-      <!-- Hidden delete form -->
-      <form id="oauDeleteForm" method="post" action="deleteUser" style="display:none;">
-        <input type="hidden" name="userId" id="oauDeleteUserIdInput"/>
-        <input type="hidden" name="from" value="userStatus"/>
-        <input type="hidden" id="oauDeleteCrumbField"/>
-        <input type="hidden" id="oauDeleteCrumbValue"/>
+      <form id="usDForm" method="post" action="deleteUser" style="display:none;">
+        <input type="hidden" name="userId" id="usDUser"/>
+        <input type="hidden" name="from"   value="userStatus"/>
+        <input type="hidden" id="usDCF"/>
+        <input type="hidden" id="usDCV"/>
       </form>
 
+      <style>
+        .us-page  { padding:16px 24px 60px;max-width:1100px; }
+
+        /* Stats */
+        .us-stats { display:flex;gap:10px;margin-bottom:16px; }
+        .us-stat  { flex:1;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e5e7eb;border-radius:7px;padding:10px 14px; }
+        .us-stat-n{ font-size:1.4em;font-weight:700;line-height:1; }
+        .us-stat-l{ font-size:.7em;color:#9ca3af;text-transform:uppercase;letter-spacing:.04em; }
+
+        /* Toolbar */
+        .us-toolbar     { display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap; }
+        .us-search-box  { display:flex;align-items:center;gap:7px;background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:6px 12px;flex:1;min-width:200px;max-width:280px; }
+        .us-search-box input { border:none;outline:none;background:transparent;font-size:.86em;width:100%; }
+        .us-filter-group{ display:flex;align-items:center;gap:4px; }
+        .us-filter-lbl  { font-size:.7em;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#9ca3af;margin-right:2px; }
+        .us-pill        { font-size:.78em;padding:3px 11px;border:1px solid #e5e7eb;border-radius:20px;background:#fff;color:#6b7280;cursor:pointer;transition:all .12s;line-height:1.5; }
+        .us-pill:hover  { background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe; }
+        .us-pill-on     { background:#1d4ed8 !important;color:#fff !important;border-color:#1d4ed8 !important;font-weight:600; }
+
+        /* Table */
+        .us-card  { border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;background:#fff; }
+        .us-table { width:100%;border-collapse:collapse;table-layout:fixed; }
+        .us-th    { padding:9px 14px;font-size:.7em;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#9ca3af;text-align:left;background:#f9fafb;border-bottom:2px solid #e5e7eb;white-space:nowrap; }
+        .us-td    { padding:12px 14px;vertical-align:middle;border-bottom:1px solid #f3f4f6;overflow:hidden; }
+        .us-row   { cursor:pointer;transition:background .1s; }
+        .us-row:hover { background:#f8faff; }
+        .us-row:last-child td { border-bottom:none; }
+
+        /* User identity */
+        .us-ident   { display:flex;align-items:center;gap:10px;min-width:0; }
+        .us-av      { width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.86em;flex-shrink:0; }
+        .us-names   { min-width:0; }
+        .us-primary { font-weight:600;font-size:.88em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+        .us-secondary{ font-size:.76em;color:#9ca3af;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+
+        /* Badges */
+        .us-badge  { display:inline-block;font-size:.72em;font-weight:600;padding:2px 9px;border-radius:20px;white-space:nowrap;line-height:1.6; }
+        .us-gray   { background:#f3f4f6;color:#6b7280; }
+        .us-blue   { background:#eff6ff;color:#1d4ed8; }
+        .us-purple { background:#faf5ff;color:#7c3aed; }
+        .us-green  { background:#dcfce7;color:#166534; }
+        .us-red    { background:#fee2e2;color:#991b1b; }
+        .us-amber   { background:#fef3c7;color:#92400e; }
+        .us-crimson { background:#fee2e2;color:#7f1d1d;border:1px solid #fca5a5; }
+
+        /* Login cell */
+        .us-login      { display:inline-flex;align-items:center;gap:5px; }
+        .us-login-time { font-size:.86em; }
+        .us-muted      { color:#9ca3af; }
+        .us-small      { font-size:.74em;margin-top:2px;display:block; }
+
+        /* Tooltip — appears below the i icon */
+        .us-tipwrap { position:relative;display:inline-flex;align-items:center; }
+        .us-tipicon { display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:50%;background:#d1d5db;color:#fff;font-size:8px;font-weight:700;cursor:default;font-family:serif;flex-shrink:0; }
+        .us-tipbox  { display:none;position:fixed;background:#1f2937;color:#f9fafb;font-size:.76em;padding:6px 10px;border-radius:5px;white-space:nowrap;z-index:8000;pointer-events:none;line-height:1.6;box-shadow:0 4px 14px rgba(0,0,0,.2); }
+        .us-tipbox::before { content:'';position:absolute;bottom:100%;left:14px;border:4px solid transparent;border-bottom-color:#1f2937; }
+        /* position set by JS on mouseenter */
+
+/* Kebab button */
+        .us-kebab-wrap { position:relative;display:inline-block; }
+        .us-kebab-btn  { display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:6px;border:1px solid transparent;background:transparent;cursor:pointer;font-size:1.1em;color:#9ca3af;transition:all .12s;line-height:1; }
+        .us-kebab-btn:hover, .us-kebab-btn.us-open { background:#f3f4f6;border-color:#e5e7eb;color:#374151; }
+
+        /* Dropdown menu — fixed so it escapes overflow:hidden parents */
+        .us-menu { display:none;position:fixed;background:#fff;border:1px solid #e5e7eb;border-radius:7px;box-shadow:0 4px 16px rgba(0,0,0,.12);min-width:168px;z-index:9000;padding:4px 0;animation:usMenuIn .1s ease; }
+        .us-menu.us-open { display:block; }
+        @keyframes usMenuIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
+
+        .us-menu-item  { display:flex;align-items:center;gap:8px;padding:7px 13px;font-size:.82em;color:#374151;cursor:pointer;text-decoration:none;background:none;border:none;width:100%;text-align:left;font-family:inherit;white-space:nowrap;transition:background .1s; }
+        .us-menu-item:hover { background:#f3f4f6; }
+        .us-menu-item svg { flex-shrink:0;color:#9ca3af; }
+        .us-menu-divider   { height:1px;background:#f3f4f6;margin:3px 0; }
+        .us-menu-danger    { color:#dc2626 !important; }
+        .us-menu-danger svg{ color:#dc2626 !important; }
+        .us-menu-danger:hover { background:#fef2f2 !important; }
+        .us-menu-warn      { color:#b45309 !important; }
+        .us-menu-warn svg  { color:#b45309 !important; }
+        .us-menu-warn:hover{ background:#fffbeb !important; }
+        .us-menu-disabled  { color:#d1d5db !important;cursor:default !important; }
+        .us-menu-disabled svg { color:#d1d5db !important; }
+        .us-menu-disabled:hover { background:transparent !important; }
+        .us-menu-tipped { position:relative; }
+        .us-menu-tipbox { position:absolute;bottom:calc(100% + 5px);right:0;left:auto;background:#1f2937;color:#f9fafb;font-size:.74em;padding:5px 9px;border-radius:5px;white-space:nowrap;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.18);opacity:0;transition:opacity .08s ease;z-index:9999; }
+        .us-menu-tipbox::after { content:'';position:absolute;top:100%;right:14px;left:auto;border:4px solid transparent;border-top-color:#1f2937; }
+        .us-menu-tipped:hover .us-menu-tipbox { opacity:1; }
+
+        /* Modal */
+        .us-modal      { background:#fff;border-radius:8px;width:420px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.18);animation:usMIn .14s ease; }
+        @keyframes usMIn { from{transform:scale(.96);opacity:0} to{transform:scale(1);opacity:1} }
+        .us-modal-hdr  { display:flex;align-items:center;gap:10px;padding:14px 20px;background:#fef2f2;border-bottom:1px solid #fecaca;font-weight:600;font-size:.92em;color:#991b1b; }
+        .us-modal-body { padding:18px 20px;font-size:.87em;line-height:1.6; }
+        .us-modal-warn { background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:9px 13px;color:#991b1b;margin-bottom:13px;font-size:.9em; }
+        .us-modal-lbl  { display:block;font-size:.84em;font-weight:600;margin-bottom:5px; }
+        .us-modal-lbl code { background:#f3f4f6;padding:1px 5px;border-radius:3px; }
+        .us-modal-ftr  { display:flex;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid #f3f4f6;background:#fafafa; }
+
+        /* Footer */
+        .us-footer { margin-top:8px;font-size:.78em;color:#9ca3af; }
+        .us-footer a { color:#9ca3af; }
+        .us-footer a:hover { color:#374151; }
+      </style>
+
       <script>//<![CDATA[
-        function oauShowDeleteModal(btn) {
-          var userId     = btn.dataset.userid;
-          var crumbField = btn.dataset.crumbField;
-          var crumbValue = btn.dataset.crumbValue;
+        var _ft = 'all', _fs = 'all';
+        var _openMenu = null;
 
-          document.getElementById('oauDeleteUserId').textContent     = userId;
-          document.getElementById('oauDeleteUserIdHint').textContent  = userId;
-          document.getElementById('oauDeleteUserIdInput').value       = userId;
-          document.getElementById('oauDeleteCrumbField').name         = crumbField;
-          document.getElementById('oauDeleteCrumbField').value        = crumbField;
-          document.getElementById('oauDeleteCrumbValue').name         = crumbField;
-          document.getElementById('oauDeleteCrumbValue').value        = crumbValue;
-          document.getElementById('oauDeleteConfirmInput').value      = '';
-          document.getElementById('oauDeleteConfirmBtn').disabled     = true;
-          document.getElementById('oauDeleteModal').style.display     = 'flex';
-          setTimeout(function(){ document.getElementById('oauDeleteConfirmInput').focus(); }, 100);
+        // ── Filter ──────────────────────────────────────────────────────────
+        function usFilter() {
+          var q = (document.getElementById('usQ').value || '').toLowerCase();
+          var rows = document.querySelectorAll('#usTbody .us-row');
+          var n = 0;
+          rows.forEach(function(r) {
+            var dsMatch = _fs === 'all'
+                       || (_fs === 'pending'  && r.dataset.pending === 'true')
+                       || (_fs === 'stale'    && r.dataset.stale === 'true')
+                       || (_fs !== 'stale' && _fs !== 'pending' && r.dataset.ds === _fs);
+            var show = (!q || (r.dataset.q || '').toLowerCase().includes(q))
+                    && (_ft === 'all' || r.dataset.prov === _ft)
+                    && dsMatch;
+            r.style.display = show ? '' : 'none';
+            if (show) n++;
+          });
+          document.getElementById('usEmpty').style.display = n === 0 ? '' : 'none';
+        }
 
-          document.getElementById('oauDeleteConfirmBtn').onclick = function() {
-            oauCloseDeleteModal();
-            document.getElementById('oauDeleteForm').submit();
-          };
+        function usSetFilter(fg, fv, btn) {
+          if (fg === 'type')   _ft = fv;
+          if (fg === 'status') _fs = fv;
+          document.querySelectorAll('[data-fg="' + fg + '"]').forEach(function(b) {
+            b.classList.toggle('us-pill-on', b === btn);
+          });
+          usFilter();
         }
-        function oauCloseDeleteModal() {
-          document.getElementById('oauDeleteModal').style.display = 'none';
-          document.getElementById('oauDeleteConfirmInput').value  = '';
-          document.getElementById('oauDeleteConfirmBtn').disabled = true;
+
+        // ── Row click → detail ───────────────────────────────────────────────
+        function usOpen(e, uid) {
+          if (e.target.closest('.us-kebab-wrap')) return;
+          window.location.href = 'userDetail?sid=' + encodeURIComponent(uid) + '&type=USER';
         }
-        function oauCheckDeleteConfirm() {
-          var input    = document.getElementById('oauDeleteConfirmInput').value;
-          var expected = document.getElementById('oauDeleteUserIdInput').value;
-          document.getElementById('oauDeleteConfirmBtn').disabled = (input !== expected);
+
+        // ── Kebab menu ───────────────────────────────────────────────────────
+        function usToggleMenu(e, btn) {
+          e.stopPropagation();
+          var menu = btn.nextElementSibling;
+          var isOpen = menu.classList.contains('us-open');
+          usCloseMenus();
+          if (!isOpen) {
+            var rect = btn.getBoundingClientRect();
+            menu.style.top  = (rect.bottom + 4) + 'px';
+            menu.style.left = '0px'; // temp show to measure
+            menu.classList.add('us-open');
+            btn.classList.add('us-open');
+            var mw = menu.offsetWidth;
+            var left = rect.right - mw;
+            if (left < 4) left = 4;
+            menu.style.left = left + 'px';
+            _openMenu = menu;
+          }
         }
+
+        function usCloseMenus() {
+          document.querySelectorAll('.us-menu.us-open').forEach(function(m) { m.classList.remove('us-open'); });
+          document.querySelectorAll('.us-kebab-btn.us-open').forEach(function(b) { b.classList.remove('us-open'); });
+          _openMenu = null;
+        }
+
+        document.addEventListener('click', usCloseMenus);
         document.addEventListener('keydown', function(e) {
-          if (e.key === 'Escape') oauCloseDeleteModal();
+          if (e.key === 'Escape') { usCloseMenus(); usCloseD(); usPDClose(); }
         });
+
+        // ── Pending-deletion info modal ──────────────────────────────────────
+        function usPDClose() {
+          document.getElementById('usPDModal').style.display = 'none';
+        }
+
+        (function() {
+          var params = new URLSearchParams(window.location.search);
+          if (params.get('info') === 'pendingDeletion') {
+            document.getElementById('usPDModal').style.display = 'flex';
+          }
+        })();
+
+        // ── Delete modal ─────────────────────────────────────────────────────
+        // ── Mark / Unmark for deletion ───────────────────────────────────────
+        function usMark(btn) {
+          usCloseMenus();
+          var f = document.createElement('form');
+          f.method = 'post'; f.action = 'markForDeletion'; f.style.display = 'none';
+          f.innerHTML = '<input name="userId" value="' + btn.dataset.userid + '">' +
+                        '<input name="from" value="userStatus">' +
+                        '<input name="' + btn.dataset.crumbField + '" value="' + btn.dataset.crumbValue + '">';
+          document.body.appendChild(f); f.submit();
+        }
+
+        function usUnmark(btn) {
+          usCloseMenus();
+          var f = document.createElement('form');
+          f.method = 'post'; f.action = 'unmarkForDeletion'; f.style.display = 'none';
+          f.innerHTML = '<input name="userId" value="' + btn.dataset.userid + '">' +
+                        '<input name="from" value="userStatus">' +
+                        '<input name="' + btn.dataset.crumbField + '" value="' + btn.dataset.crumbValue + '">';
+          document.body.appendChild(f); f.submit();
+        }
+
+        function usDelete(btn) {
+          usCloseMenus();
+          var uid = btn.dataset.userid;
+          document.getElementById('usDName').textContent  = uid;
+          document.getElementById('usDHint').textContent  = uid;
+          document.getElementById('usDUser').value        = uid;
+          document.getElementById('usDCF').name           = btn.dataset.crumbField;
+          document.getElementById('usDCF').value          = btn.dataset.crumbField;
+          document.getElementById('usDCV').name           = btn.dataset.crumbField;
+          document.getElementById('usDCV').value          = btn.dataset.crumbValue;
+          document.getElementById('usDInput').value       = '';
+          document.getElementById('usDBtn').disabled      = true;
+          var modal = document.getElementById('usDModal');
+          modal.style.display = 'flex';
+          document.getElementById('usDBtn').onclick = function() {
+            usCloseD();
+            document.getElementById('usDForm').submit();
+          };
+          setTimeout(function() { document.getElementById('usDInput').focus(); }, 80);
+        }
+
+        function usCloseD() {
+          document.getElementById('usDModal').style.display = 'none';
+          document.getElementById('usDInput').value  = '';
+          document.getElementById('usDBtn').disabled = true;
+        }
+
+        function usDCheck() {
+          document.getElementById('usDBtn').disabled =
+            document.getElementById('usDInput').value !== document.getElementById('usDUser').value;
+        }
+
+        // ── Tooltip positioning ──────────────────────────────────────────────
+        document.querySelectorAll('.us-tipwrap').forEach(function(wrap) {
+          var icon = wrap.querySelector('.us-tipicon');
+          var box  = wrap.querySelector('.us-tipbox');
+          wrap.addEventListener('mouseenter', function() {
+            box.style.display = 'block';
+            var r  = icon.getBoundingClientRect();
+            var bw = box.offsetWidth;
+            var left = r.left - 10;
+            if (left + bw > window.innerWidth - 8) left = window.innerWidth - bw - 8;
+            if (left < 4) left = 4;
+            box.style.top  = (r.bottom + 6) + 'px';
+            box.style.left = left + 'px';
+          });
+          wrap.addEventListener('mouseleave', function() { box.style.display = 'none'; });
+        });
+
+        // ── Summary counts ───────────────────────────────────────────────────
+        (function() {
+          var rows = document.querySelectorAll('#usTbody .us-row');
+          var tot = rows.length, act = 0, ina = 0, entra = 0, stale = 0;
+          rows.forEach(function(r) {
+            var ds = r.dataset.ds || '', p = r.dataset.prov || '';
+            if (ds === 'active') act++; else ina++;
+            if (p !== 'NATIVE') entra++;
+            if (r.dataset.stale === 'true') stale++;
+          });
+          document.getElementById('sTotal').textContent    = tot;
+          document.getElementById('sActive').textContent   = act;
+          document.getElementById('sInactive').textContent = ina;
+          document.getElementById('sEntra').textContent    = entra;
+          document.getElementById('sStale').textContent    = stale;
+        })();
       //]]></script>
-
-      <style>
-        .oau-modal-backdrop {
-          position: fixed; inset: 0; z-index: 9999;
-          background: rgba(0,0,0,0.45);
-          display: flex; align-items: center; justify-content: center;
-        }
-        .oau-modal {
-          background: var(--background, #fff);
-          border-radius: 8px;
-          box-shadow: 0 8px 32px rgba(0,0,0,0.22);
-          width: 100%; max-width: 440px;
-          overflow: hidden;
-          animation: oauModalIn 0.15s ease;
-        }
-        @keyframes oauModalIn {
-          from { transform: scale(0.95); opacity: 0; }
-          to   { transform: scale(1);    opacity: 1; }
-        }
-        .oau-modal-header {
-          display: flex; align-items: center; gap: 10px;
-          padding: 16px 20px; font-weight: 600; font-size: 0.95em;
-        }
-        .oau-modal-header--danger { background: #fdecea; color: #7f1f1f; border-bottom: 1px solid #f5c6cb; }
-        .oau-modal-body   { padding: 20px; font-size: 0.88em; line-height: 1.6; }
-        .oau-modal-footer {
-          display: flex; justify-content: flex-end; gap: 8px;
-          padding: 12px 20px; border-top: 1px solid var(--panel-border-color, #e0e0e0);
-          background: var(--background-color, #fafafa);
-        }
-      </style>
-
-      <style>
-        .oau-info-wrap {
-          position: relative; display: inline-flex; align-items: center;
-        }
-        .oau-info-btn {
-          display: inline-flex; align-items: center; justify-content: center;
-          width: 14px; height: 14px; border-radius: 50%;
-          background: var(--text-color-secondary, #6c757d); color: #fff;
-          font-size: 9px; font-weight: 700; font-style: normal;
-          cursor: default; user-select: none; flex-shrink: 0;
-          font-family: serif; line-height: 1;
-        }
-        .oau-info-tip {
-          display: none; position: absolute; bottom: calc(100% + 6px); left: 50%;
-          transform: translateX(-50%);
-          background: #333; color: #fff; font-size: 0.78em;
-          padding: 6px 10px; border-radius: 4px; white-space: nowrap;
-          z-index: 100; pointer-events: none; line-height: 1.6;
-          box-shadow: 0 2px 6px rgba(0,0,0,0.25);
-        }
-        .oau-info-tip::after {
-          content: ''; position: absolute; top: 100%; left: 50%;
-          transform: translateX(-50%);
-          border: 4px solid transparent; border-top-color: #333;
-        }
-        .oau-info-wrap:hover .oau-info-tip { display: block; }
-      </style>
 
     </l:main-panel>
   </l:layout>
-
 </j:jelly>

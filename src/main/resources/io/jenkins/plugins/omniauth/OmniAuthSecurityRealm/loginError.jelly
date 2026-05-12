@@ -40,6 +40,9 @@
                 <j:when test="${request2.getParameter('error') == 'entra'}">
                   Microsoft sign-in failed. Please try again or use username/password below.
                 </j:when>
+                <j:when test="${request2.getParameter('error') == 'notProvisioned'}">
+                  You don't have access to this Jenkins instance. Contact your administrator.
+                </j:when>
                 <j:otherwise>
                   ${%Invalid username or password}
                 </j:otherwise>
