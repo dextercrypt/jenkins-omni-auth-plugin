@@ -45,13 +45,14 @@ public class TeamsHelper {
     // -------------------------------------------------------------------------
 
     private static void post(String webhookUrl, String title, String body, String subject) {
+        String payload = buildPayload(title, body);
         try {
-            postJson(webhookUrl, buildPayload(title, body));
+            NotifyRetry.run(() -> postJson(webhookUrl, payload), LOGGER, "Teams", subject);
             NotificationLog.get().addEntry("[Teams] " + subject, webhookUrl, true, null);
             LOGGER.info("OmniAuth Teams sent: " + subject);
         } catch (Exception e) {
             NotificationLog.get().addEntry("[Teams] " + subject, webhookUrl, false, e.getMessage());
-            LOGGER.log(Level.WARNING, "OmniAuth Teams failed: " + subject, e);
+            LOGGER.log(Level.WARNING, "OmniAuth Teams failed after 3 attempts: " + subject, e);
         }
     }
 
