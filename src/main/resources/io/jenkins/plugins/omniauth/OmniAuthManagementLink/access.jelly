@@ -23,53 +23,74 @@
           </j:when>
           <j:otherwise>
 
-            <a href="userStatus" style="color:#0078d4;text-decoration:none;">&#8592; Back to User Status</a>
+            <a href="userStatus" style="color:var(--blue,#0078d4);text-decoration:none;font-size:0.9em;">&#8592; Back to User Status</a>
 
+            <!-- ─── Row 1: Identity + Jenkins Permissions ─── -->
             <div style="margin-top:16px;display:flex;gap:16px;flex-wrap:wrap;">
 
+              <!-- Identity -->
               <div class="jenkins-card" style="flex:1;min-width:280px;padding:16px;">
-                <h3 style="margin-top:0;">Identity</h3>
+                <h3 style="margin-top:0;display:flex;align-items:center;gap:8px;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>
+                  Identity
+                </h3>
                 <table style="width:100%;border-collapse:collapse;">
-                  <tr><td style="color:#6c757d;padding:4px 0;width:120px;">Username</td><td><strong>${info.userId}</strong></td></tr>
-                  <tr><td style="color:#6c757d;padding:4px 0;">Full Name</td><td>${info.fullName}</td></tr>
-                  <tr><td style="color:#6c757d;padding:4px 0;">Type</td>
+                  <tr>
+                    <td style="color:#6c757d;padding:5px 0;width:110px;font-size:0.88em;">Username</td>
+                    <td><strong>${info.userId}</strong></td>
+                  </tr>
+                  <tr>
+                    <td style="color:#6c757d;padding:5px 0;font-size:0.88em;">Full Name</td>
+                    <td>${info.fullName}</td>
+                  </tr>
+                  <tr>
+                    <td style="color:#6c757d;padding:5px 0;font-size:0.88em;">Account Type</td>
                     <td>
                       <j:choose>
                         <j:when test="${info.viaGroup}">
-                          <span style="background:#f5f3ff;color:#6d28d9;padding:2px 8px;border-radius:4px;font-size:0.85em;">Entra · Group</span>
+                          <span class="oau-badge oau-badge-purple">Entra · Group</span>
                         </j:when>
                         <j:when test="${info.entraUser}">
-                          <span style="background:#e8f0fe;color:#0078d4;padding:2px 8px;border-radius:4px;font-size:0.85em;">Entra · Individual</span>
+                          <span class="oau-badge oau-badge-blue">Entra · Individual</span>
                         </j:when>
                         <j:otherwise>
-                          <span style="background:#f0f0f0;color:#6c757d;padding:2px 8px;border-radius:4px;font-size:0.85em;">Native</span>
+                          <span class="oau-badge oau-badge-grey">Native</span>
                         </j:otherwise>
                       </j:choose>
                     </td>
                   </tr>
-                  <tr><td style="color:#6c757d;padding:4px 0;">Last Login</td>
-                    <td><j:choose>
-                      <j:when test="${info.lastLoginAt == null}"><em>Never</em></j:when>
-                      <j:otherwise>${info.lastLoginAt}</j:otherwise>
-                    </j:choose></td>
+                  <tr>
+                    <td style="color:#6c757d;padding:5px 0;font-size:0.88em;">Last Login</td>
+                    <td>
+                      <j:choose>
+                        <j:when test="${info.lastLoginAt == null}"><em style="color:#9ca3af;">Never</em></j:when>
+                        <j:otherwise>${info.lastLoginAt}</j:otherwise>
+                      </j:choose>
+                    </td>
                   </tr>
                   <j:if test="${info.entraUser}">
-                    <tr><td style="color:#6c757d;padding:4px 0;">Entra UPN</td><td>${info.entraUpn}</td></tr>
-                    <tr><td style="color:#6c757d;padding:4px 0;">Object ID</td><td style="font-size:0.8em;font-family:monospace;word-break:break-all;">${info.entraOid}</td></tr>
+                    <tr>
+                      <td style="color:#6c757d;padding:5px 0;font-size:0.88em;">Entra UPN</td>
+                      <td style="font-size:0.9em;">${info.entraUpn}</td>
+                    </tr>
+                    <tr>
+                      <td style="color:#6c757d;padding:5px 0;font-size:0.88em;">Object ID</td>
+                      <td style="font-size:0.78em;font-family:monospace;color:#6b7280;word-break:break-all;">${info.entraOid}</td>
+                    </tr>
                     <j:if test="${info.viaGroup}">
                       <tr>
-                        <td style="color:#6c757d;padding:4px 0;vertical-align:top;">Group</td>
+                        <td style="color:#6c757d;padding:5px 0;font-size:0.88em;vertical-align:top;">Entra Group</td>
                         <td>
                           <j:choose>
                             <j:when test="${info.groupName != null}">
                               <span style="font-weight:600;">${info.groupName}</span><br/>
-                              <span style="font-size:0.8em;font-family:monospace;color:#6b7280;word-break:break-all;">${info.groupOid}</span>
+                              <span style="font-size:0.78em;font-family:monospace;color:#6b7280;">${info.groupOid}</span>
                             </j:when>
                             <j:when test="${info.groupOid != null}">
-                              <span style="font-size:0.8em;font-family:monospace;color:#6b7280;word-break:break-all;">${info.groupOid}</span>
+                              <span style="font-size:0.78em;font-family:monospace;color:#6b7280;">${info.groupOid}</span>
                             </j:when>
                             <j:otherwise>
-                              <span style="color:#9ca3af;font-style:italic;font-size:0.85em;">Unknown — account orphaned before group tracking was enabled</span>
+                              <span style="color:#9ca3af;font-style:italic;font-size:0.85em;">Unknown</span>
                             </j:otherwise>
                           </j:choose>
                         </td>
@@ -79,136 +100,138 @@
                 </table>
               </div>
 
+              <!-- Jenkins Permissions -->
               <div class="jenkins-card" style="flex:1;min-width:280px;padding:16px;">
-                <h3 style="margin-top:0;">Jenkins Permissions</h3>
+                <h3 style="margin-top:0;display:flex;align-items:center;gap:8px;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  Global Permissions
+                </h3>
                 <table style="width:100%;border-collapse:collapse;">
-                  <tr><td style="padding:6px 0;">Overall / Administer</td><td><j:if test="${info.admin}">&#9989; Yes</j:if><j:if test="${!info.admin}">&#10060; No</j:if></td></tr>
-                  <tr><td style="padding:6px 0;">Overall / Read</td><td><j:if test="${info.canRead}">&#9989; Yes</j:if><j:if test="${!info.canRead}">&#10060; No</j:if></td></tr>
-                  <tr><td style="padding:6px 0;">Job / Build</td><td><j:if test="${info.canBuild}">&#9989; Yes</j:if><j:if test="${!info.canBuild}">&#10060; No</j:if></td></tr>
-                  <tr><td style="padding:6px 0;">Job / Create</td><td><j:if test="${info.canCreate}">&#9989; Yes</j:if><j:if test="${!info.canCreate}">&#10060; No</j:if></td></tr>
-                  <tr><td style="padding:6px 0;">Job / Configure</td><td><j:if test="${info.canConfigure}">&#9989; Yes</j:if><j:if test="${!info.canConfigure}">&#10060; No</j:if></td></tr>
+                  <tr>
+                    <td style="padding:5px 0;font-size:0.9em;">Overall / Administer</td>
+                    <td style="width:60px;">
+                      <j:if test="${info.admin}"><span class="oau-perm-yes">Yes</span></j:if>
+                      <j:if test="${!info.admin}"><span class="oau-perm-no">No</span></j:if>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:5px 0;font-size:0.9em;">Overall / Read</td>
+                    <td>
+                      <j:if test="${info.canRead}"><span class="oau-perm-yes">Yes</span></j:if>
+                      <j:if test="${!info.canRead}"><span class="oau-perm-no">No</span></j:if>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:5px 0;font-size:0.9em;">Job / Build</td>
+                    <td>
+                      <j:if test="${info.canBuild}"><span class="oau-perm-yes">Yes</span></j:if>
+                      <j:if test="${!info.canBuild}"><span class="oau-perm-no">No</span></j:if>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:5px 0;font-size:0.9em;">Job / Create</td>
+                    <td>
+                      <j:if test="${info.canCreate}"><span class="oau-perm-yes">Yes</span></j:if>
+                      <j:if test="${!info.canCreate}"><span class="oau-perm-no">No</span></j:if>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:5px 0;font-size:0.9em;">Job / Configure</td>
+                    <td>
+                      <j:if test="${info.canConfigure}"><span class="oau-perm-yes">Yes</span></j:if>
+                      <j:if test="${!info.canConfigure}"><span class="oau-perm-no">No</span></j:if>
+                    </td>
+                  </tr>
                 </table>
-                <p style="font-size:0.8em;color:#6c757d;margin-top:8px;">
-                  Permissions checked against the Jenkins root ACL using the active authorization strategy.
+                <p style="font-size:0.78em;color:#9ca3af;margin-top:10px;margin-bottom:0;">
+                  Evaluated against root ACL using the active authorization strategy.
                 </p>
               </div>
 
             </div>
 
-            <div class="jenkins-card" style="margin-top:16px;padding:16px;">
-              <h3 style="margin-top:0;">Job / Pipeline Access</h3>
-
-              <j:if test="${!info.perJobSupported}">
-                <div style="background:#fff3cd;color:#856404;padding:10px 14px;border-radius:4px;margin-bottom:12px;font-size:0.9em;">
-                  Authorization strategy: <strong>${info.authStrategy}</strong> —
-                  per-job permissions are only enforced with <strong>Project-based Matrix Authorization Strategy</strong>.
-                  All jobs inherit the global permission set, so every job will reflect the same access.
-                </div>
-              </j:if>
-
-              <j:choose>
-                <j:when test="${info.jobAccess.isEmpty()}">
-                  <em style="color:#6c757d;">No jobs or pipelines found — user may have no item-level permissions, or Jenkins has no jobs yet.</em>
-                </j:when>
-                <j:otherwise>
-                  <table class="jenkins-table sortable" style="width:100%;">
-                    <thead>
-                      <tr>
-                        <th>Job / Pipeline</th>
-                        <th style="width:80px;text-align:center;">Read</th>
-                        <th style="width:80px;text-align:center;">Build</th>
-                        <th style="width:100px;text-align:center;">Configure</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <j:forEach var="ja" items="${info.jobAccess}">
-                        <tr>
-                          <td>${ja.jobName}</td>
-                          <td style="text-align:center;"><j:if test="${ja.canRead}">&#10003;</j:if></td>
-                          <td style="text-align:center;"><j:if test="${ja.canBuild}">&#10003;</j:if></td>
-                          <td style="text-align:center;"><j:if test="${ja.canConfigure}">&#10003;</j:if></td>
-                        </tr>
-                      </j:forEach>
-                    </tbody>
-                  </table>
-                  <p style="font-size:0.8em;color:#6c757d;margin-top:8px;">
-                    Showing up to 200 jobs.
-                  </p>
-                </j:otherwise>
-              </j:choose>
-            </div>
-
-            <!-- Login History -->
+            <!-- ─── OmniAuth Grants ─── -->
             <div class="jenkins-card" style="margin-top:16px;padding:16px;">
               <h3 style="margin-top:0;display:flex;align-items:center;gap:8px;">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--blue,#0078d4);">
-                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                </svg>
-                Login History
-                <span style="font-size:0.75em;color:#6c757d;font-weight:400;">(last 10)</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                OmniAuth Grants
               </h3>
 
               <j:choose>
-                <j:when test="${info.loginHistory.isEmpty()}">
-                  <em style="color:#6c757d;">No login history recorded yet. History is captured from the next login onwards.</em>
+                <j:when test="${info.omniAuthGrants.isEmpty()}">
+                  <p style="color:#6c757d;font-size:0.9em;margin:0;">
+                    No OmniAuth assignments found for this user or their groups.
+                    Access (if any) comes from Jenkins-native configuration.
+                  </p>
                 </j:when>
                 <j:otherwise>
                   <table class="jenkins-table" style="width:100%;">
                     <thead>
                       <tr>
-                        <th>When</th>
-                        <th>IP Address</th>
-                        <th>Browser</th>
-                        <th>OS</th>
-                        <th>Method</th>
-                        <th style="text-align:center;">Result</th>
+                        <th style="width:90px;">Via</th>
+                        <th>Principal</th>
+                        <th>Role</th>
+                        <th>Scope</th>
+                        <th style="width:80px;">Type</th>
+                        <th>Expires</th>
+                        <th style="width:70px;text-align:center;">Status</th>
                       </tr>
                     </thead>
                     <tbody>
-                      <j:forEach var="ev" items="${info.loginHistory}">
+                      <j:forEach var="g" items="${info.omniAuthGrants}">
                         <tr>
                           <td>
-                            <span style="display:inline-flex;align-items:center;gap:4px;">
-                              <span>${ev.relativeTimestamp}</span>
-                              <span class="oau-info-wrap">
-                                <span class="oau-info-btn">i</span>
-                                <span class="oau-info-tip">${ev.formattedTimestamp}</span>
-                              </span>
-                            </span>
-                          </td>
-                          <td style="font-family:monospace;font-size:0.88em;">${ev.ipAddress}</td>
-                          <td>
-                            <span style="display:inline-flex;align-items:center;gap:4px;">
-                              <span>${ev.browser}</span>
-                              <j:if test="${ev.userAgent != null}">
-                                <span class="oau-info-wrap">
-                                  <span class="oau-info-btn">i</span>
-                                  <span class="oau-info-tip" style="left:0;transform:none;white-space:normal;width:300px;word-break:break-word;line-height:1.5;">
-                                    <span style="display:block;font-weight:700;margin-bottom:3px;opacity:0.7;font-size:0.75em;text-transform:uppercase;letter-spacing:0.5px;">User Agent</span>
-                                    ${ev.userAgent}
-                                  </span>
-                                </span>
-                              </j:if>
-                            </span>
-                          </td>
-                          <td>${ev.os}</td>
-                          <td>
                             <j:choose>
-                              <j:when test="${ev.method != 'Native'}">
-                                <span style="background:#e8f0fe;color:#0078d4;padding:2px 8px;border-radius:4px;font-size:0.82em;">${ev.method}</span>
+                              <j:when test="${g.principalType == 'GROUP'}">
+                                <span class="oau-badge oau-badge-purple">Group</span>
                               </j:when>
                               <j:otherwise>
-                                <span style="background:#f0f0f0;color:#6c757d;padding:2px 8px;border-radius:4px;font-size:0.82em;">Native</span>
+                                <span class="oau-badge oau-badge-blue">User</span>
                               </j:otherwise>
+                            </j:choose>
+                          </td>
+                          <td style="font-size:0.88em;">
+                            <span style="font-weight:500;">${g.principalName}</span>
+                            <j:if test="${g.principalType == 'GROUP'}">
+                              <br/><span style="font-size:0.8em;font-family:monospace;color:#9ca3af;">${g.principalId}</span>
+                            </j:if>
+                          </td>
+                          <td>
+                            <j:choose>
+                              <j:when test="${g.roleId == 'CUSTOM'}">
+                                <span class="oau-badge oau-badge-grey">Custom</span>
+                              </j:when>
+                              <j:otherwise>
+                                <strong style="font-size:0.9em;">${g.roleName}</strong>
+                              </j:otherwise>
+                            </j:choose>
+                          </td>
+                          <td style="font-size:0.88em;font-family:monospace;">${g.scopeDisplay}</td>
+                          <td>
+                            <j:choose>
+                              <j:when test="${g.global}">
+                                <span class="oau-badge oau-badge-grey">Global</span>
+                              </j:when>
+                              <j:otherwise>
+                                <span class="oau-badge oau-badge-grey">${g.scopeTypeDisplay}</span>
+                              </j:otherwise>
+                            </j:choose>
+                          </td>
+                          <td style="font-size:0.85em;color:#6c757d;">
+                            <j:choose>
+                              <j:when test="${g.expiresAt == null}">
+                                <em>Never</em>
+                              </j:when>
+                              <j:otherwise>${g.expiresAt}</j:otherwise>
                             </j:choose>
                           </td>
                           <td style="text-align:center;">
                             <j:choose>
-                              <j:when test="${ev.success}">
-                                <span style="background:#d4edda;color:#155724;padding:2px 8px;border-radius:4px;font-size:0.82em;">Success</span>
+                              <j:when test="${g.expired}">
+                                <span class="oau-badge oau-badge-red">Expired</span>
                               </j:when>
                               <j:otherwise>
-                                <span style="background:#f8d7da;color:#721c24;padding:2px 8px;border-radius:4px;font-size:0.82em;">Failed</span>
+                                <span class="oau-badge oau-badge-green">Active</span>
                               </j:otherwise>
                             </j:choose>
                           </td>
@@ -216,6 +239,167 @@
                       </j:forEach>
                     </tbody>
                   </table>
+                </j:otherwise>
+              </j:choose>
+            </div>
+
+            <!-- ─── Job / Pipeline Access ─── -->
+            <div class="jenkins-card" style="margin-top:16px;padding:16px;">
+              <h3 style="margin-top:0;display:flex;align-items:center;gap:8px;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                Job / Pipeline Access
+              </h3>
+
+              <j:if test="${!info.perJobSupported}">
+                <div style="background:#fff3cd;color:#856404;padding:10px 14px;border-radius:4px;margin-bottom:12px;font-size:0.88em;border-left:3px solid #ffc107;">
+                  Strategy: <strong>${info.authStrategy}</strong> —
+                  per-job permissions only enforced with <strong>Project-based Matrix Authorization Strategy</strong>.
+                  All jobs reflect global permissions.
+                </div>
+              </j:if>
+
+              <j:choose>
+                <j:when test="${info.jobAccess.isEmpty()}">
+                  <p style="color:#6c757d;font-size:0.9em;">No accessible jobs found for this user.</p>
+                </j:when>
+                <j:otherwise>
+                  <div style="overflow-x:auto;">
+                    <table class="jenkins-table sortable" style="width:100%;min-width:600px;">
+                      <thead>
+                        <tr>
+                          <th>Job / Pipeline</th>
+                          <th style="width:90px;text-align:center;">Source</th>
+                          <th style="width:65px;text-align:center;">Read</th>
+                          <th style="width:65px;text-align:center;">Build</th>
+                          <th style="width:75px;text-align:center;">Configure</th>
+                          <th style="width:65px;text-align:center;">Delete</th>
+                          <th style="width:80px;text-align:center;">Workspace</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <j:forEach var="ja" items="${info.jobAccess}">
+                          <tr>
+                            <td style="font-family:monospace;font-size:0.88em;">${ja.jobName}</td>
+                            <td style="text-align:center;">
+                              <j:choose>
+                                <j:when test="${ja.source == 'OmniAuth'}">
+                                  <span class="oau-badge oau-badge-blue" title="Granted via OmniAuth Access Management">OmniAuth</span>
+                                </j:when>
+                                <j:when test="${ja.source == 'Direct'}">
+                                  <span class="oau-badge oau-badge-orange" title="Granted via Jenkins project-level matrix property">Direct</span>
+                                </j:when>
+                                <j:otherwise>
+                                  <span class="oau-badge oau-badge-grey" title="Granted via global Jenkins authorization strategy">Global</span>
+                                </j:otherwise>
+                              </j:choose>
+                            </td>
+                            <td style="text-align:center;">
+                              <j:if test="${ja.canRead}"><span class="oau-perm-tick">&#10003;</span></j:if>
+                            </td>
+                            <td style="text-align:center;">
+                              <j:if test="${ja.canBuild}"><span class="oau-perm-tick">&#10003;</span></j:if>
+                            </td>
+                            <td style="text-align:center;">
+                              <j:if test="${ja.canConfigure}"><span class="oau-perm-tick">&#10003;</span></j:if>
+                            </td>
+                            <td style="text-align:center;">
+                              <j:if test="${ja.canDelete}"><span class="oau-perm-tick">&#10003;</span></j:if>
+                            </td>
+                            <td style="text-align:center;">
+                              <j:if test="${ja.canWorkspace}"><span class="oau-perm-tick">&#10003;</span></j:if>
+                            </td>
+                          </tr>
+                        </j:forEach>
+                      </tbody>
+                    </table>
+                  </div>
+                  <p style="font-size:0.78em;color:#9ca3af;margin-top:8px;margin-bottom:0;">
+                    Showing up to 200 jobs. Source: <strong>OmniAuth</strong> = Access Management assignment ·
+                    <strong>Direct</strong> = Jenkins project-level matrix property ·
+                    <strong>Global</strong> = global authorization strategy.
+                  </p>
+                </j:otherwise>
+              </j:choose>
+            </div>
+
+            <!-- ─── Login History ─── -->
+            <div class="jenkins-card" style="margin-top:16px;padding:16px;">
+              <h3 style="margin-top:0;display:flex;align-items:center;gap:8px;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Login History
+                <span style="font-size:0.75em;color:#9ca3af;font-weight:400;">(last 10)</span>
+              </h3>
+
+              <j:choose>
+                <j:when test="${info.loginHistory.isEmpty()}">
+                  <p style="color:#6c757d;font-size:0.9em;margin:0;">No login history yet — captured from the next login onwards.</p>
+                </j:when>
+                <j:otherwise>
+                  <div style="overflow-x:auto;">
+                    <table class="jenkins-table" style="width:100%;">
+                      <thead>
+                        <tr>
+                          <th>When</th>
+                          <th>IP Address</th>
+                          <th>Browser</th>
+                          <th>OS</th>
+                          <th>Method</th>
+                          <th style="text-align:center;">Result</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <j:forEach var="ev" items="${info.loginHistory}">
+                          <tr>
+                            <td>
+                              <span style="display:inline-flex;align-items:center;gap:4px;">
+                                <span>${ev.relativeTimestamp}</span>
+                                <span class="oau-info-wrap">
+                                  <span class="oau-info-btn">i</span>
+                                  <span class="oau-info-tip">${ev.formattedTimestamp}</span>
+                                </span>
+                              </span>
+                            </td>
+                            <td style="font-family:monospace;font-size:0.88em;">${ev.ipAddress}</td>
+                            <td>
+                              <span style="display:inline-flex;align-items:center;gap:4px;">
+                                <span>${ev.browser}</span>
+                                <j:if test="${ev.userAgent != null}">
+                                  <span class="oau-info-wrap">
+                                    <span class="oau-info-btn">i</span>
+                                    <span class="oau-info-tip" style="left:0;transform:none;white-space:normal;width:280px;word-break:break-word;line-height:1.5;">
+                                      <span style="display:block;font-weight:700;margin-bottom:3px;opacity:0.7;font-size:0.75em;text-transform:uppercase;letter-spacing:0.5px;">User Agent</span>
+                                      ${ev.userAgent}
+                                    </span>
+                                  </span>
+                                </j:if>
+                              </span>
+                            </td>
+                            <td>${ev.os}</td>
+                            <td>
+                              <j:choose>
+                                <j:when test="${ev.method != 'Native'}">
+                                  <span class="oau-badge oau-badge-blue">${ev.method}</span>
+                                </j:when>
+                                <j:otherwise>
+                                  <span class="oau-badge oau-badge-grey">Native</span>
+                                </j:otherwise>
+                              </j:choose>
+                            </td>
+                            <td style="text-align:center;">
+                              <j:choose>
+                                <j:when test="${ev.success}">
+                                  <span class="oau-badge oau-badge-green">Success</span>
+                                </j:when>
+                                <j:otherwise>
+                                  <span class="oau-badge oau-badge-red">Failed</span>
+                                </j:otherwise>
+                              </j:choose>
+                            </td>
+                          </tr>
+                        </j:forEach>
+                      </tbody>
+                    </table>
+                  </div>
                 </j:otherwise>
               </j:choose>
             </div>
@@ -225,11 +409,29 @@
       </div>
 
       <style>
+        /* Badges */
+        .oau-badge {
+          display: inline-block; padding: 2px 8px; border-radius: 4px;
+          font-size: 0.8em; font-weight: 500; white-space: nowrap;
+        }
+        .oau-badge-blue   { background: #e8f0fe; color: #0078d4; }
+        .oau-badge-purple { background: #f5f3ff; color: #6d28d9; }
+        .oau-badge-grey   { background: #f3f4f6; color: #6b7280; }
+        .oau-badge-green  { background: #d1fae5; color: #065f46; }
+        .oau-badge-red    { background: #fee2e2; color: #991b1b; }
+        .oau-badge-orange { background: #fff7ed; color: #c2410c; }
+
+        /* Permission yes/no chips */
+        .oau-perm-yes { background: #d1fae5; color: #065f46; padding: 2px 8px; border-radius: 4px; font-size: 0.82em; font-weight: 500; }
+        .oau-perm-no  { background: #f3f4f6; color: #9ca3af; padding: 2px 8px; border-radius: 4px; font-size: 0.82em; }
+        .oau-perm-tick { color: #16a34a; font-weight: 700; font-size: 1.1em; }
+
+        /* Info tooltip */
         .oau-info-wrap { position: relative; display: inline-flex; align-items: center; }
         .oau-info-btn {
           display: inline-flex; align-items: center; justify-content: center;
           width: 14px; height: 14px; border-radius: 50%;
-          background: var(--text-color-secondary,#6c757d); color: #fff;
+          background: var(--text-color-secondary,#9ca3af); color: #fff;
           font-size: 9px; font-weight: 700; font-style: normal;
           cursor: default; user-select: none; flex-shrink: 0;
           font-family: serif; line-height: 1;
@@ -237,15 +439,15 @@
         .oau-info-tip {
           display: none; position: absolute; bottom: calc(100% + 6px); left: 50%;
           transform: translateX(-50%);
-          background: #333; color: #fff; font-size: 0.78em;
-          padding: 4px 8px; border-radius: 4px; white-space: nowrap;
+          background: #1f2937; color: #f9fafb; font-size: 0.78em;
+          padding: 5px 9px; border-radius: 5px; white-space: nowrap;
           z-index: 100; pointer-events: none;
-          box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+          box-shadow: 0 2px 8px rgba(0,0,0,0.2);
         }
         .oau-info-tip::after {
           content: ''; position: absolute; top: 100%; left: 50%;
           transform: translateX(-50%);
-          border: 4px solid transparent; border-top-color: #333;
+          border: 4px solid transparent; border-top-color: #1f2937;
         }
         .oau-info-wrap:hover .oau-info-tip { display: block; }
       </style>

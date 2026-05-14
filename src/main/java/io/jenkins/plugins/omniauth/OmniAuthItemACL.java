@@ -78,7 +78,6 @@ public class OmniAuthItemACL extends ACL {
         }
 
         // Fall through to global matrix-auth for users with global grants
-        // (doGrantAssignment with empty scope writes to matrix-auth, not OmniAuthAssignmentConfig)
         try {
             return j.getAuthorizationStrategy().getRootACL().hasPermission2(auth, permission);
         } catch (Exception e) {
