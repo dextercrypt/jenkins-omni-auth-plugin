@@ -1171,7 +1171,6 @@ public class OmniAuthManagementLink extends ManagementLink {
                     break;
                 }
             }
-            // Orphaned — fall back to last known
             if (gOid == null) {
                 gName = entraProp.getLastKnownGroupName();
                 gOid  = entraProp.getLastKnownGroupOid();
@@ -1180,7 +1179,43 @@ public class OmniAuthManagementLink extends ManagementLink {
             accessInfo.setGroupOid(gOid);
         }
 
+        // OmniAuth grants — all assignments for this user (direct + via groups)
+        OmniAuthAssignmentConfig config = OmniAuthAssignmentConfig.get();
+        OmniAuthRoleConfig roleConfig   = OmniAuthRoleConfig.get();
+        List<GrantDisplay> omniAuthGrants = new ArrayList<>();
+        if (config != null) {
+            for (OmniAuthAssignment a : config.getAssignmentsForUser(userId, "USER")) {
+                omniAuthGrants.add(toGrantDisplay(a, "USER", userId, user.getFullName(), roleConfig));
+            }
+            if (entraProp != null) {
+                for (String gOid : entraProp.getActiveGroupOids()) {
+                    String gName = gOid;
+                    OmniAuthGroupEntity ge = config.findGroup(gOid);
+                    if (ge != null) gName = ge.getEffectiveName();
+                    for (OmniAuthAssignment a : config.getAssignmentsForUser(gOid, "GROUP")) {
+                        omniAuthGrants.add(toGrantDisplay(a, "GROUP", gOid, gName, roleConfig));
+                    }
+                }
+            }
+        }
+        accessInfo.setOmniAuthGrants(omniAuthGrants);
+
         return accessInfo;
+    }
+
+    private static GrantDisplay toGrantDisplay(OmniAuthAssignment a, String principalType,
+                                                String principalId, String principalName,
+                                                OmniAuthRoleConfig roleConfig) {
+        String roleId   = a.getRoleId();
+        String roleName = roleId;
+        if (!"CUSTOM".equalsIgnoreCase(roleId) && roleConfig != null) {
+            OmniAuthRoleConfig.RoleDefinition role = roleConfig.findRole(roleId);
+            if (role != null) roleName = role.getName();
+        }
+        String expiresDisplay = a.getExpiresAt() != null ? formatDate(a.getExpiresAt()) : null;
+        return new GrantDisplay(principalType, principalId, principalName,
+                                roleId, roleName, a.getScope(), a.getScopeType(),
+                                expiresDisplay, a.isExpired());
     }
 
     // -------------------------------------------------------------------------
@@ -2593,8 +2628,11 @@ public class OmniAuthManagementLink extends ManagementLink {
             return result;
         }
 
-        // Fetch all jobs as admin (fast — no per-job permission overhead during iteration),
-        // then check each job's permissions under the impersonated auth context.
+        OmniAuthAssignmentConfig config = OmniAuthAssignmentConfig.get();
+        Set<String> userGroupOids = new HashSet<>();
+        OmniAuthUserProperty ep = user.getProperty(OmniAuthUserProperty.class);
+        if (ep != null) userGroupOids.addAll(ep.getActiveGroupOids());
+
         List<Job> allJobs = Jenkins.get().getAllItems(Job.class);
 
         try (ACLContext ignored = ACL.as2(auth)) {
@@ -2603,8 +2641,11 @@ public class OmniAuthManagementLink extends ManagementLink {
                 boolean read      = job.hasPermission(Item.READ);
                 boolean build     = job.hasPermission(Item.BUILD);
                 boolean configure = job.hasPermission(Item.CONFIGURE);
+                boolean delete    = job.hasPermission(Item.DELETE);
+                boolean workspace = job.hasPermission(Item.WORKSPACE);
                 if (read || build || configure) {
-                    result.add(new JobAccessInfo(job.getFullName(), read, build, configure));
+                    String source = detectSource(job, userId, userGroupOids, auth, config);
+                    result.add(new JobAccessInfo(job.getFullName(), read, build, configure, delete, workspace, source));
                 }
             }
         } catch (Exception e) {
@@ -2613,6 +2654,67 @@ public class OmniAuthManagementLink extends ManagementLink {
 
         result.sort((a, b) -> a.getJobName().compareToIgnoreCase(b.getJobName()));
         return result;
+    }
+
+    @SuppressWarnings("rawtypes")
+    private static String detectSource(Job job, String userId,
+                                        Set<String> userGroupOids,
+                                        Authentication auth,
+                                        OmniAuthAssignmentConfig config) {
+        String jobFullName = job.getFullName();
+        if (config != null) {
+            for (OmniAuthAssignment a : config.getAssignmentsForUser(userId, "USER")) {
+                if (!a.isExpired() && omniAuthCovers(a, jobFullName)) return "OmniAuth";
+            }
+            for (String gOid : userGroupOids) {
+                for (OmniAuthAssignment a : config.getAssignmentsForUser(gOid, "GROUP")) {
+                    if (!a.isExpired() && omniAuthCovers(a, jobFullName)) return "OmniAuth";
+                }
+            }
+        }
+        // Check job itself (already have the object — no lookup needed)
+        if (hasMatrixGrant(job, auth)) return "Direct";
+        // Check folder ancestors — use SYSTEM context to avoid recursive hasPermission2
+        try {
+            Jenkins j = Jenkins.getInstanceOrNull();
+            if (j != null) {
+                String path = jobFullName;
+                int sep = path.lastIndexOf('/');
+                while (sep > 0) {
+                    path = path.substring(0, sep);
+                    final String p = path;
+                    hudson.model.AbstractItem folder;
+                    try (ACLContext ignored = ACL.as2(ACL.SYSTEM2)) {
+                        folder = j.getItemByFullName(p, hudson.model.AbstractItem.class);
+                    }
+                    if (folder != null && hasMatrixGrant(folder, auth)) return "Direct";
+                    sep = path.lastIndexOf('/');
+                }
+            }
+        } catch (Exception ignored) {}
+        return "Global";
+    }
+
+    private static boolean omniAuthCovers(OmniAuthAssignment a, String jobFullName) {
+        String scope = a.getScope();
+        if (scope.isEmpty()) return true;
+        if ("FOLDER".equals(a.getScopeType())) {
+            return jobFullName.equals(scope) || jobFullName.startsWith(scope + "/");
+        }
+        return jobFullName.equals(scope);
+    }
+
+    private static boolean hasMatrixGrant(hudson.model.AbstractItem item, Authentication auth) {
+        if (!(item instanceof hudson.model.Job)) return false;
+        hudson.model.Job<?,?> job = (hudson.model.Job<?,?>) item;
+        for (hudson.model.JobProperty<?> prop : job.getAllProperties()) {
+            if (prop instanceof hudson.security.AuthorizationMatrixProperty) {
+                hudson.security.SidACL sidAcl =
+                        ((hudson.security.AuthorizationMatrixProperty) prop).getACL();
+                return sidAcl != null && sidAcl.hasPermission2(auth, Item.READ);
+            }
+        }
+        return false;
     }
 
     private static String deriveStatus(String lastLogin, LastJobInfo lastJob) {
@@ -2786,6 +2888,7 @@ public class OmniAuthManagementLink extends ManagementLink {
         private String groupName;
         private String groupOid;
         private String provisioningSource;
+        private List<GrantDisplay> omniAuthGrants;
 
         public AccessInfo(String userId, String fullName, String userType,
                           String entraOid, String entraUpn, String lastLoginAt,
@@ -2831,6 +2934,8 @@ public class OmniAuthManagementLink extends ManagementLink {
         public String getProvisioningSource()      { return provisioningSource != null ? provisioningSource : "NATIVE"; }
         public void setProvisioningSource(String s){ this.provisioningSource = s; }
         public boolean isViaGroup()                { return "VIA_ENTRA_GROUP".equals(provisioningSource); }
+        public List<GrantDisplay> getOmniAuthGrants() { return omniAuthGrants != null ? omniAuthGrants : Collections.emptyList(); }
+        public void setOmniAuthGrants(List<GrantDisplay> grants) { this.omniAuthGrants = grants; }
         public boolean isPerJobSupported() {
             return authStrategy != null &&
                    (authStrategy.toLowerCase().contains("projectmatrix") ||
@@ -2843,18 +2948,75 @@ public class OmniAuthManagementLink extends ManagementLink {
         private final boolean canRead;
         private final boolean canBuild;
         private final boolean canConfigure;
+        private final boolean canDelete;
+        private final boolean canWorkspace;
+        private final String source;
 
-        public JobAccessInfo(String jobName, boolean canRead, boolean canBuild, boolean canConfigure) {
+        public JobAccessInfo(String jobName, boolean canRead, boolean canBuild, boolean canConfigure,
+                             boolean canDelete, boolean canWorkspace, String source) {
             this.jobName      = jobName;
             this.canRead      = canRead;
             this.canBuild     = canBuild;
             this.canConfigure = canConfigure;
+            this.canDelete    = canDelete;
+            this.canWorkspace = canWorkspace;
+            this.source       = source != null ? source : "Global";
         }
 
-        public String getJobName()      { return jobName; }
-        public boolean isCanRead()      { return canRead; }
-        public boolean isCanBuild()     { return canBuild; }
-        public boolean isCanConfigure() { return canConfigure; }
+        public String getJobName()       { return jobName; }
+        public boolean isCanRead()       { return canRead; }
+        public boolean isCanBuild()      { return canBuild; }
+        public boolean isCanConfigure()  { return canConfigure; }
+        public boolean isCanDelete()     { return canDelete; }
+        public boolean isCanWorkspace()  { return canWorkspace; }
+        public String getSource()        { return source; }
+    }
+
+    public static final class GrantDisplay {
+        private final String principalType;
+        private final String principalId;
+        private final String principalName;
+        private final String roleId;
+        private final String roleName;
+        private final String scope;
+        private final String scopeType;
+        private final String expiresAt;
+        private final boolean expired;
+
+        public GrantDisplay(String principalType, String principalId, String principalName,
+                            String roleId, String roleName, String scope, String scopeType,
+                            String expiresAt, boolean expired) {
+            this.principalType = principalType;
+            this.principalId   = principalId;
+            this.principalName = principalName;
+            this.roleId        = roleId;
+            this.roleName      = roleName;
+            this.scope         = scope;
+            this.scopeType     = scopeType;
+            this.expiresAt     = expiresAt;
+            this.expired       = expired;
+        }
+
+        public String getPrincipalType() { return principalType; }
+        public String getPrincipalId()   { return principalId; }
+        public String getPrincipalName() { return principalName; }
+        public String getRoleId()        { return roleId; }
+        public String getRoleName()      { return roleName; }
+        public String getScope()         { return scope; }
+        public String getScopeType()     { return scopeType; }
+        public String getExpiresAt()     { return expiresAt; }
+        public boolean isExpired()       { return expired; }
+        public boolean isGlobal()        { return scope == null || scope.isEmpty(); }
+        public String getScopeDisplay()  {
+            if (scope == null || scope.isEmpty()) return "Global";
+            return scope;
+        }
+        public String getScopeTypeDisplay() {
+            if (scope == null || scope.isEmpty()) return "Global";
+            if ("FOLDER".equals(scopeType)) return "Folder";
+            if ("JOB".equals(scopeType)) return "Job";
+            return scopeType;
+        }
     }
 
     private static final class LastJobInfo {
