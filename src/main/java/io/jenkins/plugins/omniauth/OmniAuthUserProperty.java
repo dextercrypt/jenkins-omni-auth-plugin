@@ -60,12 +60,41 @@ public class OmniAuthUserProperty extends UserProperty {
     /** Last known Azure group OID — preserved when the account is orphaned. */
     private String lastKnownGroupOid;
 
+    /** Kept for migration only — replaced by breakGlassDevices list. */
+    @Deprecated
+    private String breakGlassTotpSecret;
+
+    /** Registered TOTP devices for Break Glass authentication. Max 3. */
+    private List<BreakGlassDevice> breakGlassDevices;
+
+    /** One registered TOTP authenticator device. */
+    public static class BreakGlassDevice {
+        private String id;
+        private String name;
+        private String secret;
+        private String enrolledAt;
+
+        public BreakGlassDevice() {}
+        public BreakGlassDevice(String name, String secret) {
+            this.id = java.util.UUID.randomUUID().toString();
+            this.name = name;
+            this.secret = secret;
+            this.enrolledAt = java.time.Instant.now().toString();
+        }
+        public String getId()         { return id; }
+        public String getName()       { return name; }
+        public String getSecret()     { return secret; }
+        public String getEnrolledAt() { return enrolledAt; }
+        public void setName(String n) { this.name = n; }
+    }
+
     @DataBoundConstructor
     public OmniAuthUserProperty(String entraObjectId, String entraUpn) {
         this.entraObjectId = entraObjectId;
         this.entraUpn = entraUpn;
         this.cachedGroups = new ArrayList<>();
         this.activeGroupOids = new ArrayList<>();
+        this.breakGlassDevices = new ArrayList<>();
     }
 
     public String getEntraObjectId() {
@@ -128,6 +157,40 @@ public class OmniAuthUserProperty extends UserProperty {
 
     public String getLastKnownGroupOid() { return lastKnownGroupOid; }
     public void setLastKnownGroupOid(String s) { this.lastKnownGroupOid = s; }
+
+    public List<BreakGlassDevice> getBreakGlassDevices() {
+        if (breakGlassDevices == null) breakGlassDevices = new ArrayList<>();
+        // Migrate old single-secret enrollment
+        if (breakGlassDevices.isEmpty() && breakGlassTotpSecret != null && !breakGlassTotpSecret.isEmpty()) {
+            breakGlassDevices.add(new BreakGlassDevice("Device 1", breakGlassTotpSecret));
+            breakGlassTotpSecret = null;
+        }
+        return Collections.unmodifiableList(breakGlassDevices);
+    }
+
+    public boolean isBreakGlassTotpEnrolled() { return !getBreakGlassDevices().isEmpty(); }
+
+    public boolean addBreakGlassDevice(String name, String secret) {
+        if (breakGlassDevices == null) breakGlassDevices = new ArrayList<>();
+        getBreakGlassDevices(); // trigger migration
+        if (breakGlassDevices.size() >= 3) return false;
+        breakGlassDevices.add(new BreakGlassDevice(name, secret));
+        return true;
+    }
+
+    public boolean removeBreakGlassDevice(String deviceId) {
+        if (breakGlassDevices == null) return false;
+        return breakGlassDevices.removeIf(d -> deviceId.equals(d.getId()));
+    }
+
+    public boolean verifyBreakGlassCode(String code) {
+        for (BreakGlassDevice d : getBreakGlassDevices()) {
+            try {
+                if (new org.jboss.aerogear.security.otp.Totp(d.getSecret()).verify(code)) return true;
+            } catch (Exception ignored) {}
+        }
+        return false;
+    }
 
     @Extension
     public static class DescriptorImpl extends UserPropertyDescriptor {

@@ -103,6 +103,36 @@ public class OmniAuthAuditLog {
         write(e);
     }
 
+    public void logBreakGlassActivate(String by, String reason) {
+        Map<String, String> e = event("break_glass_activate");
+        e.put("by", by); e.put("reason", reason);
+        write(e);
+    }
+
+    public void logBreakGlassFailed(String by, String reason) {
+        Map<String, String> e = event("break_glass_failed");
+        e.put("by", by); e.put("reason", reason);
+        write(e);
+    }
+
+    public void logBreakGlassDeactivate(String by) {
+        Map<String, String> e = event("break_glass_deactivate");
+        e.put("by", by);
+        write(e);
+    }
+
+    public void logBreakGlassEnrolled(String by) {
+        Map<String, String> e = event("break_glass_enrolled");
+        e.put("by", by);
+        write(e);
+    }
+
+    public void logBreakGlassUnenrolled(String by) {
+        Map<String, String> e = event("break_glass_unenrolled");
+        e.put("by", by);
+        write(e);
+    }
+
     // -------------------------------------------------------------------------
     // Read for UI — returns last maxLines events across current + previous month
     // -------------------------------------------------------------------------

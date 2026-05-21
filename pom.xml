@@ -124,6 +124,25 @@
       <version>94.vcc3065403257</version>
     </dependency>
 
+    <!-- TOTP for Break Glass authentication -->
+    <dependency>
+      <groupId>org.jboss.aerogear</groupId>
+      <artifactId>aerogear-otp-java</artifactId>
+      <version>1.0.0</version>
+    </dependency>
+
+    <!-- ZXing for QR code generation (Break Glass TOTP enrollment) -->
+    <dependency>
+      <groupId>com.google.zxing</groupId>
+      <artifactId>core</artifactId>
+      <version>3.5.3</version>
+    </dependency>
+    <dependency>
+      <groupId>com.google.zxing</groupId>
+      <artifactId>javase</artifactId>
+      <version>3.5.3</version>
+    </dependency>
+
     <!-- Test dependencies -->
     <dependency>
       <groupId>org.jenkins-ci.main</groupId>
