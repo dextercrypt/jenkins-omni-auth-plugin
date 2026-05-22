@@ -981,6 +981,155 @@ public class OmniAuthManagementLink extends ManagementLink {
 
     public int getActiveSessionCount()  { return ActiveSessionManager.getAll().size(); }
 
+    // Break Glass live state — reads from current HTTP session
+    public boolean isBreakGlassActive() {
+        try {
+            org.kohsuke.stapler.StaplerRequest2 req = org.kohsuke.stapler.Stapler.getCurrentRequest2();
+            if (req == null) return false;
+            jakarta.servlet.http.HttpSession sess = req.getSession(false);
+            if (sess == null) return false;
+            String expiry = (String) sess.getAttribute("omniauth.breakGlass.expiry");
+            return expiry != null && java.time.Instant.parse(expiry).isAfter(java.time.Instant.now());
+        } catch (Exception e) { return false; }
+    }
+
+    public String getBreakGlassActivatedBy() {
+        try {
+            org.kohsuke.stapler.StaplerRequest2 req = org.kohsuke.stapler.Stapler.getCurrentRequest2();
+            if (req == null) return null;
+            jakarta.servlet.http.HttpSession sess = req.getSession(false);
+            return sess != null ? (String) sess.getAttribute("omniauth.breakGlass.user") : null;
+        } catch (Exception e) { return null; }
+    }
+
+    public String getBreakGlassExpiresAt() {
+        try {
+            org.kohsuke.stapler.StaplerRequest2 req = org.kohsuke.stapler.Stapler.getCurrentRequest2();
+            if (req == null) return null;
+            jakarta.servlet.http.HttpSession sess = req.getSession(false);
+            return sess != null ? (String) sess.getAttribute("omniauth.breakGlass.expiry") : null;
+        } catch (Exception e) { return null; }
+    }
+
+    // 7-day login failure trend for chart
+    public String getLoginFailureTrendJson() {
+        OmniAuthAuditLog log = OmniAuthAuditLog.get();
+        int[] counts = (log != null) ? log.getFailureCountsByDay(7) : new int[7];
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < counts.length; i++) { if (i > 0) sb.append(","); sb.append(counts[i]); }
+        return sb.append("]").toString();
+    }
+
+    // Recent audit events for overview feed
+    public List<java.util.Map<String, String>> getRecentAuditEntries() {
+        OmniAuthAuditLog log = OmniAuthAuditLog.get();
+        return log != null ? log.readRecent(8) : java.util.Collections.emptyList();
+    }
+
+    // Count of admins who have at least one Break Glass TOTP device enrolled
+    public int getBreakGlassEnrolledAdminCount() {
+        int count = 0;
+        for (User user : User.getAll()) {
+            OmniAuthUserProperty prop = user.getProperty(OmniAuthUserProperty.class);
+            if (prop != null && prop.isBreakGlassTotpEnrolled()) count++;
+        }
+        return count;
+    }
+
+    // Users flagged for deletion
+    public int getPendingDeletionCount() {
+        int count = 0;
+        for (User user : User.getAll()) {
+            OmniAuthUserProperty prop = user.getProperty(OmniAuthUserProperty.class);
+            if (prop != null && prop.isPendingDeletion()) count++;
+        }
+        return count;
+    }
+
+    // VIA_ENTRA_GROUP users whose group is no longer in Access Management (not yet flagged for deletion)
+    public int getOrphanedGroupAccountCount() {
+        int count = 0;
+        for (User user : User.getAll()) {
+            OmniAuthUserProperty prop = user.getProperty(OmniAuthUserProperty.class);
+            if (prop == null || !prop.isViaGroup() || prop.isPendingDeletion()) continue;
+            if (prop.getActiveGroupOids().isEmpty()) count++;
+        }
+        return count;
+    }
+
+    // Names of notification channels that are enabled but whose last send failed
+    public List<String> getFailingNotificationChannels() {
+        NotificationLog log = NotificationLog.get();
+        if (log == null) return java.util.Collections.emptyList();
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        if (cfg == null) return java.util.Collections.emptyList();
+        List<String> failing = new ArrayList<>();
+        if (cfg.isSmtpEnabled())  { var e = log.lastSmtpEntry();  if (e != null && !e.isSuccess()) failing.add("Email"); }
+        if (cfg.isSlackEnabled()) { var e = log.lastSlackEntry(); if (e != null && !e.isSuccess()) failing.add("Slack"); }
+        if (cfg.isTeamsEnabled()) { var e = log.lastTeamsEntry(); if (e != null && !e.isSuccess()) failing.add("Teams"); }
+        return failing;
+    }
+
+    // Users with a global ADMIN role assignment but no TOTP enrolled
+    public int getUnenrolledAdminCount() {
+        OmniAuthAssignmentConfig ac = OmniAuthAssignmentConfig.get();
+        if (ac == null) return 0;
+        java.util.Set<String> adminUserIds = new java.util.HashSet<>();
+        for (OmniAuthAssignment a : ac.getAssignments()) {
+            if ("USER".equals(a.getAuthType())
+                    && (a.getScope() == null || a.getScope().isEmpty())
+                    && "ADMIN".equalsIgnoreCase(a.getRoleId())) {
+                adminUserIds.add(a.getUserId());
+            }
+        }
+        int count = 0;
+        for (String uid : adminUserIds) {
+            User user = User.getById(uid, false);
+            if (user == null) continue;
+            OmniAuthUserProperty prop = user.getProperty(OmniAuthUserProperty.class);
+            if (prop == null || !prop.isBreakGlassTotpEnrolled()) count++;
+        }
+        return count;
+    }
+
+    // Access grants expiring within the next N days
+    public static final class ExpiringGrant {
+        public final String userId;
+        public final String roleId;
+        public final String scope;
+        public final String expiresAt;
+        public final long daysLeft;
+        public ExpiringGrant(String userId, String roleId, String scope, String expiresAt, long daysLeft) {
+            this.userId = userId; this.roleId = roleId; this.scope = scope;
+            this.expiresAt = expiresAt; this.daysLeft = daysLeft;
+        }
+        public String getUserId()   { return userId; }
+        public String getRoleId()   { return roleId; }
+        public String getScope()    { return scope == null || scope.isEmpty() ? "Global" : scope; }
+        public String getExpiresAt(){ return expiresAt; }
+        public long getDaysLeft()   { return daysLeft; }
+    }
+
+    public List<ExpiringGrant> getExpiringGrants(int withinDays) {
+        OmniAuthAssignmentConfig ac = OmniAuthAssignmentConfig.get();
+        if (ac == null) return java.util.Collections.emptyList();
+        java.time.Instant now  = java.time.Instant.now();
+        java.time.Instant cutoff = now.plus(withinDays, ChronoUnit.DAYS);
+        List<ExpiringGrant> result = new ArrayList<>();
+        for (OmniAuthAssignment a : ac.getAssignments()) {
+            if (a.getExpiresAt() == null || a.getExpiresAt().isBlank()) continue;
+            try {
+                java.time.Instant exp = java.time.Instant.parse(a.getExpiresAt());
+                if (exp.isAfter(now) && exp.isBefore(cutoff)) {
+                    long days = ChronoUnit.DAYS.between(now, exp);
+                    result.add(new ExpiringGrant(a.getUserId(), a.getRoleId(), a.getScope(), a.getExpiresAt(), days));
+                }
+            } catch (Exception ignored) {}
+        }
+        result.sort((a, b) -> Long.compare(a.daysLeft, b.daysLeft));
+        return result;
+    }
+
     public int getFailedLoginsLast24h() {
         Instant cutoff = Instant.now().minus(1, ChronoUnit.DAYS);
         int count = 0;
