@@ -60,6 +60,9 @@ public class OmniAuthUserProperty extends UserProperty {
     /** Last known Azure group OID — preserved when the account is orphaned. */
     private String lastKnownGroupOid;
 
+    /** Number of times this admin skipped the Break Glass TOTP enrollment reminder. Resets to 0 when last device is removed. */
+    private int breakGlassEnrollSkips;
+
     /** Kept for migration only — replaced by breakGlassDevices list. */
     @Deprecated
     private String breakGlassTotpSecret;
@@ -158,6 +161,9 @@ public class OmniAuthUserProperty extends UserProperty {
     public String getLastKnownGroupOid() { return lastKnownGroupOid; }
     public void setLastKnownGroupOid(String s) { this.lastKnownGroupOid = s; }
 
+    public int getBreakGlassEnrollSkips() { return breakGlassEnrollSkips; }
+    public void setBreakGlassEnrollSkips(int n) { this.breakGlassEnrollSkips = n; }
+
     public List<BreakGlassDevice> getBreakGlassDevices() {
         if (breakGlassDevices == null) breakGlassDevices = new ArrayList<>();
         // Migrate old single-secret enrollment
@@ -180,7 +186,9 @@ public class OmniAuthUserProperty extends UserProperty {
 
     public boolean removeBreakGlassDevice(String deviceId) {
         if (breakGlassDevices == null) return false;
-        return breakGlassDevices.removeIf(d -> deviceId.equals(d.getId()));
+        boolean removed = breakGlassDevices.removeIf(d -> deviceId.equals(d.getId()));
+        if (removed && breakGlassDevices.isEmpty()) breakGlassEnrollSkips = 0;
+        return removed;
     }
 
     public boolean verifyBreakGlassCode(String code) {

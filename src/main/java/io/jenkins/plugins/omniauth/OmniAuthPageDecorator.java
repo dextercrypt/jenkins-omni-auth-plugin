@@ -217,6 +217,7 @@ public class OmniAuthPageDecorator {
     @Initializer(after = InitMilestone.EXTENSIONS_AUGMENTED)
     public static void registerFilter() throws Exception {
         PluginServletFilter.addFilter(new MatrixDisableFilter());
+        PluginServletFilter.addFilter(new TotpReminderFilter());
     }
 
     private static class MatrixDisableFilter implements Filter {
@@ -369,6 +370,89 @@ public class OmniAuthPageDecorator {
                 "if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',run);}else{run();}" +
                 "}catch(e){}" +
                 "})();</script>";
+        }
+    }
+
+    private static class TotpReminderFilter implements Filter {
+
+        private static final String SESSION_DONE   = "omniauth.totp.reminderDoneThisSession";
+        private static final String SESSION_RETURN = "omniauth.totp.returnTo";
+
+        @Override public void init(FilterConfig c) {}
+        @Override public void destroy() {}
+
+        @Override
+        public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain)
+                throws IOException, ServletException {
+
+            if (!(req instanceof HttpServletRequest)) { chain.doFilter(req, res); return; }
+            HttpServletRequest  httpReq = (HttpServletRequest)  req;
+            HttpServletResponse httpRes = (HttpServletResponse) res;
+
+            if (!"GET".equalsIgnoreCase(httpReq.getMethod()))                        { chain.doFilter(req, res); return; }
+            if ("XMLHttpRequest".equals(httpReq.getHeader("X-Requested-With")))      { chain.doFilter(req, res); return; }
+            if (isExcluded(httpReq.getRequestURI()))                                 { chain.doFilter(req, res); return; }
+
+            try {
+                Jenkins jenkins = Jenkins.getInstanceOrNull();
+                if (jenkins == null)                                                  { chain.doFilter(req, res); return; }
+                if (!(jenkins.getSecurityRealm() instanceof OmniAuthSecurityRealm))   { chain.doFilter(req, res); return; }
+                if (!(jenkins.getAuthorizationStrategy() instanceof OmniAuthAuthorizationStrategy)) { chain.doFilter(req, res); return; }
+                if (!jenkins.hasPermission(Jenkins.ADMINISTER))                      { chain.doFilter(req, res); return; }
+
+                hudson.model.User current = hudson.model.User.current();
+                if (current == null)                                                  { chain.doFilter(req, res); return; }
+
+                OmniAuthUserProperty prop = current.getProperty(OmniAuthUserProperty.class);
+                if (prop != null && prop.isBreakGlassTotpEnrolled())                 { chain.doFilter(req, res); return; }
+
+                int  skips  = prop != null ? prop.getBreakGlassEnrollSkips() : 0;
+                boolean forced = skips >= 3;
+
+                // Always allow through if SESSION_DONE is set — covers the "last reminder dismiss"
+                // case where doTotpReminderSkip sets SESSION_DONE just as skips reaches 3.
+                // Next login the session is fresh, forced mode will show the wall.
+                jakarta.servlet.http.HttpSession sess = httpReq.getSession(false);
+                if (sess != null && Boolean.TRUE.equals(sess.getAttribute(SESSION_DONE))) { chain.doFilter(req, res); return; }
+
+                if (!forced) {
+                    // Mark shown for this session immediately to prevent redirect loops on sub-requests
+                    httpReq.getSession(true).setAttribute(SESSION_DONE, Boolean.TRUE);
+                }
+
+                jakarta.servlet.http.HttpSession s = httpReq.getSession(true);
+                if (s.getAttribute(SESSION_RETURN) == null) {
+                    String uri = httpReq.getRequestURI();
+                    String qs  = httpReq.getQueryString();
+                    s.setAttribute(SESSION_RETURN, uri + (qs != null ? "?" + qs : ""));
+                }
+
+                httpRes.sendRedirect(httpReq.getContextPath() + "/manage/omniauth-management/totpReminder");
+
+            } catch (Exception ignored) {
+                chain.doFilter(req, res);
+            }
+        }
+
+        private static boolean isExcluded(String path) {
+            return path.contains("/totpReminder")   ||
+                   path.contains("/breakGlass")     ||
+                   path.contains("/crumbIssuer")    ||
+                   path.contains("/api/")           ||
+                   path.contains("/adjuncts/")      ||
+                   path.contains("/static/")        ||
+                   path.contains("/plugin/")        ||
+                   path.contains("/images/")        ||
+                   path.contains("/login")          ||
+                   path.contains("/logout")         ||
+                   path.contains("/securityRealm")  ||
+                   path.endsWith(".js")             ||
+                   path.endsWith(".css")            ||
+                   path.endsWith(".ico")            ||
+                   path.endsWith(".png")            ||
+                   path.endsWith(".gif")            ||
+                   path.endsWith(".woff2")          ||
+                   path.endsWith(".ttf");
         }
     }
 

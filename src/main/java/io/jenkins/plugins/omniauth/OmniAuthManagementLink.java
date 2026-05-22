@@ -179,9 +179,26 @@ public class OmniAuthManagementLink extends ManagementLink {
         new java.security.SecureRandom().nextBytes(secretBytes);
         String secret = org.jboss.aerogear.security.otp.api.Base32.encode(secretBytes);
 
-        String userId = User.current() != null ? User.current().getId() : "admin";
-        String uri = "otpauth://totp/OmniAuth%3A" + java.net.URLEncoder.encode(userId, "UTF-8")
-                   + "?secret=" + secret + "&issuer=Jenkins-OmniAuth";
+        User currentUser = User.current();
+        String userId = currentUser != null ? currentUser.getId() : "unknown";
+
+        // Account label: prefer Entra UPN (their corporate email), fallback to Jenkins username
+        OmniAuthUserProperty bgProp = currentUser != null ? currentUser.getProperty(OmniAuthUserProperty.class) : null;
+        String account = (bgProp != null && bgProp.getEntraUpn() != null && !bgProp.getEntraUpn().isEmpty())
+                ? bgProp.getEntraUpn() : userId;
+
+        // Issuer: "Jenkins (hostname) OA" — fits on mobile, identifies instance, hints OmniAuth
+        String rootUrl = Jenkins.get().getRootUrl();
+        String host = "jenkins";
+        if (rootUrl != null) {
+            try { host = new java.net.URL(rootUrl).getHost(); } catch (Exception ignored) {}
+        }
+        String issuer = "Jenkins (" + host + ") OA";
+
+        String issuerEnc  = java.net.URLEncoder.encode(issuer,  "UTF-8").replace("+", "%20");
+        String accountEnc = java.net.URLEncoder.encode(account, "UTF-8").replace("+", "%20");
+        String uri = "otpauth://totp/" + issuerEnc + "%3A" + accountEnc
+                   + "?secret=" + secret + "&issuer=" + issuerEnc;
 
         com.google.zxing.qrcode.QRCodeWriter writer = new com.google.zxing.qrcode.QRCodeWriter();
         com.google.zxing.common.BitMatrix matrix = writer.encode(uri, com.google.zxing.BarcodeFormat.QR_CODE, 220, 220);
@@ -311,6 +328,44 @@ public class OmniAuthManagementLink extends ManagementLink {
         OmniAuthAuditLog.get().logBreakGlassDeactivate(userId);
         rsp.getWriter().write("{\"success\":true}");
     }
+
+    public void doTotpReminder(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        req.getView(this, "totpReminder.jelly").forward(req, rsp);
+    }
+
+    @POST
+    public void doTotpReminderSkip(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        rsp.setContentType("application/json;charset=UTF-8");
+        User current = User.current();
+        if (current != null) {
+            OmniAuthUserProperty prop = current.getProperty(OmniAuthUserProperty.class);
+            if (prop == null) {
+                prop = new OmniAuthUserProperty(null, null);
+                current.addProperty(prop);
+            }
+            if (prop.getBreakGlassEnrollSkips() < 3) {
+                prop.setBreakGlassEnrollSkips(prop.getBreakGlassEnrollSkips() + 1);
+                current.save();
+            }
+        }
+        req.getSession().setAttribute("omniauth.totp.reminderDoneThisSession", Boolean.TRUE);
+        String returnTo = (String) req.getSession().getAttribute("omniauth.totp.returnTo");
+        req.getSession().removeAttribute("omniauth.totp.returnTo");
+        String redirect = (returnTo != null && !returnTo.isEmpty()) ? returnTo : req.getContextPath() + "/";
+        rsp.getWriter().write("{\"success\":true,\"redirect\":\"" + redirect.replace("\"", "\\\"") + "\"}");
+    }
+
+    public int getCurrentUserEnrollSkips() {
+        User current = User.current();
+        if (current == null) return 0;
+        OmniAuthUserProperty prop = current.getProperty(OmniAuthUserProperty.class);
+        return prop != null ? prop.getBreakGlassEnrollSkips() : 0;
+    }
+
+    public boolean isBreakGlassEnrollmentForced() { return getCurrentUserEnrollSkips() >= 3; }
+    public int getBreakGlassSkipsAfterThis() { return Math.max(0, 2 - getCurrentUserEnrollSkips()); }
 
     @POST
     public void doClearBruteForce(StaplerRequest req, StaplerResponse rsp) throws Exception {
