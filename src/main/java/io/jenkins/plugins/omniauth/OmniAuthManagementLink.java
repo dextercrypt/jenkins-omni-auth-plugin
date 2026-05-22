@@ -159,6 +159,214 @@ public class OmniAuthManagementLink extends ManagementLink {
         return ActiveSessionManager.getAll();
     }
 
+    public OmniAuthUserProperty getCurrentUserBreakGlassProp() {
+        User current = User.current();
+        if (current == null) return null;
+        return current.getProperty(OmniAuthUserProperty.class);
+    }
+
+    public void doBreakGlass(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        req.getView(this, "breakglass.jelly").forward(req, rsp);
+    }
+
+    @POST
+    public void doBreakGlassEnrollInit(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        rsp.setContentType("application/json;charset=UTF-8");
+
+        byte[] secretBytes = new byte[20];
+        new java.security.SecureRandom().nextBytes(secretBytes);
+        String secret = org.jboss.aerogear.security.otp.api.Base32.encode(secretBytes);
+
+        User currentUser = User.current();
+        String userId = currentUser != null ? currentUser.getId() : "unknown";
+
+        // Account label: prefer Entra UPN (their corporate email), fallback to Jenkins username
+        OmniAuthUserProperty bgProp = currentUser != null ? currentUser.getProperty(OmniAuthUserProperty.class) : null;
+        String account = (bgProp != null && bgProp.getEntraUpn() != null && !bgProp.getEntraUpn().isEmpty())
+                ? bgProp.getEntraUpn() : userId;
+
+        // Issuer: "Jenkins (hostname) OA" — fits on mobile, identifies instance, hints OmniAuth
+        String rootUrl = Jenkins.get().getRootUrl();
+        String host = "jenkins";
+        if (rootUrl != null) {
+            try { host = new java.net.URL(rootUrl).getHost(); } catch (Exception ignored) {}
+        }
+        String issuer = "Jenkins (" + host + ") OA";
+
+        String issuerEnc  = java.net.URLEncoder.encode(issuer,  "UTF-8").replace("+", "%20");
+        String accountEnc = java.net.URLEncoder.encode(account, "UTF-8").replace("+", "%20");
+        String uri = "otpauth://totp/" + issuerEnc + "%3A" + accountEnc
+                   + "?secret=" + secret + "&issuer=" + issuerEnc;
+
+        com.google.zxing.qrcode.QRCodeWriter writer = new com.google.zxing.qrcode.QRCodeWriter();
+        com.google.zxing.common.BitMatrix matrix = writer.encode(uri, com.google.zxing.BarcodeFormat.QR_CODE, 220, 220);
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        com.google.zxing.client.j2se.MatrixToImageWriter.writeToStream(matrix, "PNG", baos);
+        String qr = java.util.Base64.getEncoder().encodeToString(baos.toByteArray());
+
+        String escaped = secret.replace("\\", "\\\\").replace("\"", "\\\"");
+        rsp.getWriter().write("{\"secret\":\"" + escaped + "\",\"qr\":\"data:image/png;base64," + qr + "\"}");
+    }
+
+    @POST
+    public void doBreakGlassEnrollVerify(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        rsp.setContentType("application/json;charset=UTF-8");
+
+        String secret     = req.getParameter("secret");
+        String code       = req.getParameter("code");
+        String deviceName = req.getParameter("deviceName");
+        if (secret == null || secret.isBlank() || code == null || code.trim().length() != 6) {
+            rsp.getWriter().write("{\"success\":false,\"error\":\"Invalid request.\"}");
+            return;
+        }
+        if (deviceName == null || deviceName.isBlank()) deviceName = "My Device";
+        try {
+            if (!new org.jboss.aerogear.security.otp.Totp(secret.trim()).verify(code.trim())) {
+                rsp.getWriter().write("{\"success\":false,\"error\":\"Code is incorrect. Check your app and try again.\"}");
+                return;
+            }
+        } catch (Exception ex) {
+            rsp.getWriter().write("{\"success\":false,\"error\":\"Invalid secret format.\"}");
+            return;
+        }
+        User current = User.current();
+        if (current == null) {
+            rsp.getWriter().write("{\"success\":false,\"error\":\"Not authenticated.\"}");
+            return;
+        }
+        OmniAuthUserProperty prop = current.getProperty(OmniAuthUserProperty.class);
+        if (prop == null) {
+            prop = new OmniAuthUserProperty(null, null);
+            current.addProperty(prop);
+        }
+        if (!prop.addBreakGlassDevice(deviceName.trim(), secret.trim())) {
+            rsp.getWriter().write("{\"success\":false,\"error\":\"Maximum of 3 devices reached. Remove one before adding another.\"}");
+            return;
+        }
+        current.save();
+        OmniAuthAuditLog.get().logBreakGlassEnrolled(current.getId());
+        rsp.getWriter().write("{\"success\":true}");
+    }
+
+    @POST
+    public void doBreakGlassEnrollRemove(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        rsp.setContentType("application/json;charset=UTF-8");
+        String deviceId = req.getParameter("deviceId");
+        User current = User.current();
+        if (current != null && deviceId != null) {
+            OmniAuthUserProperty prop = current.getProperty(OmniAuthUserProperty.class);
+            if (prop != null) {
+                prop.removeBreakGlassDevice(deviceId);
+                current.save();
+                OmniAuthAuditLog.get().logBreakGlassUnenrolled(current.getId());
+            }
+        }
+        rsp.getWriter().write("{\"success\":true}");
+    }
+
+    @POST
+    public void doBreakGlassActivate(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        rsp.setContentType("application/json;charset=UTF-8");
+
+        String reason = req.getParameter("reason");
+        String totpCode = req.getParameter("totpCode");
+
+        if (reason == null || reason.trim().isEmpty()) {
+            rsp.getWriter().write("{\"success\":false,\"error\":\"Reason is required.\"}");
+            return;
+        }
+        if (totpCode == null || totpCode.trim().length() != 6) {
+            rsp.getWriter().write("{\"success\":false,\"error\":\"Enter the 6-digit TOTP code.\"}");
+            return;
+        }
+
+        User current = User.current();
+        if (current == null) {
+            rsp.getWriter().write("{\"success\":false,\"error\":\"Not authenticated.\"}");
+            return;
+        }
+        String userId = current.getId();
+
+        OmniAuthUserProperty prop = current.getProperty(OmniAuthUserProperty.class);
+        if (prop == null || !prop.isBreakGlassTotpEnrolled()) {
+            OmniAuthAuditLog.get().logBreakGlassFailed(userId, "No TOTP enrolled");
+            rsp.getWriter().write("{\"success\":false,\"error\":\"No TOTP enrolled. Configure Break Glass in OmniAuth → Break Glass.\"}");
+            return;
+        }
+
+        if (!prop.verifyBreakGlassCode(totpCode.trim())) {
+            OmniAuthAuditLog.get().logBreakGlassFailed(userId, "Invalid TOTP code");
+            rsp.getWriter().write("{\"success\":false,\"error\":\"Invalid TOTP code. Try again.\"}");
+            return;
+        }
+
+        long expiry = System.currentTimeMillis() + 15L * 60 * 1000;
+        req.getSession().setAttribute("omniauth.breakGlass.expiry", expiry);
+        req.getSession().setAttribute("omniauth.breakGlass.user", userId);
+        req.getSession().setAttribute("omniauth.breakGlass.reason", reason.trim());
+
+        OmniAuthAuditLog.get().logBreakGlassActivate(userId, reason.trim());
+        rsp.getWriter().write("{\"success\":true}");
+    }
+
+    @POST
+    public void doBreakGlassDeactivate(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        rsp.setContentType("application/json;charset=UTF-8");
+
+        req.getSession().removeAttribute("omniauth.breakGlass.expiry");
+        req.getSession().removeAttribute("omniauth.breakGlass.user");
+        req.getSession().removeAttribute("omniauth.breakGlass.reason");
+
+        User current = User.current();
+        String userId = current != null ? current.getId() : "unknown";
+        OmniAuthAuditLog.get().logBreakGlassDeactivate(userId);
+        rsp.getWriter().write("{\"success\":true}");
+    }
+
+    public void doTotpReminder(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        req.getView(this, "totpReminder.jelly").forward(req, rsp);
+    }
+
+    @POST
+    public void doTotpReminderSkip(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        rsp.setContentType("application/json;charset=UTF-8");
+        User current = User.current();
+        if (current != null) {
+            OmniAuthUserProperty prop = current.getProperty(OmniAuthUserProperty.class);
+            if (prop == null) {
+                prop = new OmniAuthUserProperty(null, null);
+                current.addProperty(prop);
+            }
+            if (prop.getBreakGlassEnrollSkips() < 3) {
+                prop.setBreakGlassEnrollSkips(prop.getBreakGlassEnrollSkips() + 1);
+                current.save();
+            }
+        }
+        req.getSession().setAttribute("omniauth.totp.reminderDoneThisSession", Boolean.TRUE);
+        String returnTo = (String) req.getSession().getAttribute("omniauth.totp.returnTo");
+        req.getSession().removeAttribute("omniauth.totp.returnTo");
+        String redirect = (returnTo != null && !returnTo.isEmpty()) ? returnTo : req.getContextPath() + "/";
+        rsp.getWriter().write("{\"success\":true,\"redirect\":\"" + redirect.replace("\"", "\\\"") + "\"}");
+    }
+
+    public int getCurrentUserEnrollSkips() {
+        User current = User.current();
+        if (current == null) return 0;
+        OmniAuthUserProperty prop = current.getProperty(OmniAuthUserProperty.class);
+        return prop != null ? prop.getBreakGlassEnrollSkips() : 0;
+    }
+
+    public boolean isBreakGlassEnrollmentForced() { return getCurrentUserEnrollSkips() >= 3; }
+    public int getBreakGlassSkipsAfterThis() { return Math.max(0, 2 - getCurrentUserEnrollSkips()); }
+
     @POST
     public void doClearBruteForce(StaplerRequest req, StaplerResponse rsp) throws Exception {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);

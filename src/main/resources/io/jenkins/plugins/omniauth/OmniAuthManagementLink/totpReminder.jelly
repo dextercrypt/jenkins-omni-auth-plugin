@@ -1,0 +1,329 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:l="/lib/layout">
+
+  <j:set var="skips"    value="${it.currentUserEnrollSkips}"/>
+  <j:set var="forced"   value="${it.breakGlassEnrollmentForced}"/>
+  <j:set var="afterThis" value="${it.breakGlassSkipsAfterThis}"/>
+
+  <l:layout title="OmniAuth — Authenticator Setup" norefresh="true">
+    <l:main-panel>
+
+      <j:if test="${!forced}">
+        <div class="jenkins-app-bar">
+          <div class="jenkins-app-bar__content">
+            <h1 class="jenkins-app-bar__heading">Set Up Your Break Glass Authenticator</h1>
+          </div>
+        </div>
+      </j:if>
+
+      <j:choose>
+
+          <!-- ══ FORCED MODE ═══════════════════════════════════════════════════ -->
+          <j:when test="${forced}">
+            <div style="min-height:70vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:32px 24px;">
+            <div style="width:100%; max-width:600px;">
+
+            <!-- Action-required banner -->
+            <div style="display:flex; align-items:center; gap:12px; padding:12px 16px; background:#f8d7da; border:1px solid #f1aeb5; border-radius:8px; margin-bottom:20px;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#842029" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><circle cx="12" cy="16" r="0.5" fill="#842029"/>
+              </svg>
+              <span style="font-size:0.88em; color:#842029;"><strong>Action Required</strong> — You've used all 3 reminders. Enroll a TOTP device to continue using Jenkins.</span>
+            </div>
+
+            <!-- Enrollment card -->
+            <div class="jenkins-card" style="padding:0; overflow:hidden;">
+
+              <!-- Card header -->
+              <div style="padding:18px 24px; border-bottom:1px solid var(--panel-border-color,#e0e0e0); background:linear-gradient(135deg,#fff5f5 0%,#fff 100%);">
+                <div style="display:flex; align-items:center; gap:14px;">
+                  <div style="flex-shrink:0; width:48px; height:48px; border-radius:50%; background:#f8d7da; display:flex; align-items:center; justify-content:center;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#dc3545" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="5" y="11" width="14" height="10" rx="2"/><path d="M12 3a4 4 0 0 1 4 4v4H8V7a4 4 0 0 1 4-4z"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <div style="font-size:1em; font-weight:700; color:#212529; margin-bottom:3px;">Enroll Your Authenticator</div>
+                    <div style="font-size:0.83em; color:#6c757d; line-height:1.4;">
+                      This is a one-time setup. Scan the QR code into any TOTP app — takes under 2 minutes.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div style="padding:24px;">
+
+                <!-- Device name -->
+                <div style="margin-bottom:18px;">
+                  <label style="display:block; font-size:0.88em; font-weight:600; margin-bottom:4px;">Device name</label>
+                  <input id="device-name" type="text" class="jenkins-input" style="width:280px;"
+                         placeholder="e.g. iPhone — Google Authenticator"/>
+                  <div style="font-size:0.78em; color:var(--text-color-secondary,#888); margin-top:4px;">Helps you identify this device later.</div>
+                </div>
+
+                <!-- Loading -->
+                <div id="step-loading" style="text-align:center; padding:28px; color:var(--text-color-secondary,#6c757d); display:none;">
+                  <div style="font-size:0.9em;">Generating QR code…</div>
+                </div>
+
+                <!-- Step 1: Generate -->
+                <div id="step-generate">
+                  <div style="font-size:0.85em; color:var(--text-color-secondary,#6c757d); margin-bottom:14px; line-height:1.6;">
+                    Open your authenticator app (Google Authenticator, Microsoft Authenticator, Authy, or any TOTP app)
+                    and scan the QR code you'll generate below.
+                  </div>
+                  <button type="button" class="jenkins-button jenkins-button--primary" onclick="generateQr()">
+                    Generate QR Code
+                  </button>
+                </div>
+
+                <!-- Step 2: QR + verify -->
+                <div id="step-qr" style="display:none;">
+                  <ol style="margin:0 0 18px; padding-left:20px; font-size:0.88em; color:var(--text-color-secondary,#555); line-height:2;">
+                    <li>Open your authenticator app and tap <strong>+</strong> → <strong>Scan QR code</strong></li>
+                    <li>Scan the code below (scan into all apps you want before confirming)</li>
+                    <li>Enter the 6-digit code shown in your app to confirm</li>
+                  </ol>
+                  <div style="display:flex; gap:28px; align-items:flex-start; flex-wrap:wrap;">
+                    <div>
+                      <img id="qr-img" src="" alt="TOTP QR Code"
+                           style="width:190px; height:190px; border:1px solid var(--panel-border-color,#ddd); border-radius:10px; display:block;"/>
+                      <div style="margin-top:6px; font-size:0.75em; color:var(--text-color-secondary,#888); text-align:center;">
+                        Scan with authenticator app
+                      </div>
+                    </div>
+                    <div style="flex:1; min-width:200px;">
+                      <div style="margin-bottom:14px;">
+                        <div style="font-size:0.82em; font-weight:600; margin-bottom:4px; color:var(--text-color-secondary,#555);">Manual entry key</div>
+                        <div id="secret-display" style="font-family:monospace; font-size:0.82em; background:var(--background,#f8f9fa); border:1px solid var(--panel-border-color,#ddd); border-radius:6px; padding:8px 12px; letter-spacing:2px; word-break:break-all;"></div>
+                        <div style="font-size:0.75em; color:var(--text-color-secondary,#888); margin-top:3px;">Use this if you can't scan.</div>
+                      </div>
+                      <div style="margin-bottom:14px;">
+                        <label style="display:block; font-size:0.88em; font-weight:600; margin-bottom:6px;">
+                          Verify — enter 6-digit code from your app
+                        </label>
+                        <input id="verify-code" type="text" inputmode="numeric" maxlength="6" autocomplete="off"
+                               placeholder="123456" class="jenkins-input"
+                               style="width:140px; letter-spacing:4px; font-size:1.1em; text-align:center;"
+                               oninput="this.value=this.value.replace(/[^0-9]/g,'')"/>
+                      </div>
+                      <div id="verify-err" style="display:none; margin-bottom:12px; padding:8px 12px; background:#f8d7da; border:1px solid #f5c6cb; border-radius:6px; font-size:0.85em; color:#721c24;"></div>
+                      <button type="button" id="btn-verify" class="jenkins-button jenkins-button--primary" onclick="verifyCode()">
+                        Confirm &amp; Save
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Step 3: Success -->
+                <div id="step-success" style="display:none; text-align:center; padding:36px 0 20px;">
+                  <div style="width:64px; height:64px; border-radius:50%; background:#d1e7dd; display:flex; align-items:center; justify-content:center; margin:0 auto 16px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#146c43" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                  </div>
+                  <div style="font-size:1.05em; font-weight:700; color:#146c43; margin-bottom:6px;">Authenticator enrolled!</div>
+                  <div style="font-size:0.85em; color:var(--text-color-secondary,#6c757d); margin-bottom:20px;">
+                    You can now use Emergency Override on the Security page. Redirecting…
+                  </div>
+                  <div style="height:4px; background:#e9ecef; border-radius:2px; max-width:260px; margin:0 auto; overflow:hidden;">
+                    <div id="success-bar" style="height:100%; width:100%; background:#198754; transition:width 1.5s linear;"></div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            </div><!-- /max-width -->
+            </div><!-- /flex center -->
+
+          </j:when>
+
+          <!-- ══ REMINDER MODE ═════════════════════════════════════════════════ -->
+          <j:otherwise>
+            <div style="min-height:70vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:32px 24px;">
+            <div style="width:100%; max-width:600px;">
+
+            <div class="jenkins-card" style="padding:36px 32px; border-left:4px solid #ffc107;">
+
+              <!-- Icon -->
+              <div style="display:flex; justify-content:center; margin-bottom:22px;">
+                <div style="width:68px; height:68px; border-radius:50%; background:#fff8e1; display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 8px #fffbef;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#e6a817" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                  </svg>
+                </div>
+              </div>
+
+              <!-- Heading -->
+              <h2 style="text-align:center; margin:0 0 10px; font-size:1.15em; font-weight:700; color:#212529;">
+                Set Up Your Break Glass Authenticator
+              </h2>
+              <p style="text-align:center; margin:0 auto 22px; max-width:460px; font-size:0.88em; color:#6c757d; line-height:1.65;">
+                As a Jenkins administrator, enrolling a TOTP device lets you activate
+                <strong>Emergency Override</strong> — an audited safety mechanism for recovery
+                scenarios where direct access to the Authorization table is needed.
+              </p>
+
+              <!-- Reminder dots -->
+              <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:26px;">
+                <span style="font-size:0.78em; color:var(--text-color-secondary,#999); margin-right:4px;">Reminders used:</span>
+                <div style="width:11px; height:11px; border-radius:50%; background:${skips ge 1 ? '#ffc107' : '#dee2e6'}; border:1px solid ${skips ge 1 ? '#e0a800' : '#ced4da'};"></div>
+                <div style="width:11px; height:11px; border-radius:50%; background:${skips ge 2 ? '#ffc107' : '#dee2e6'}; border:1px solid ${skips ge 2 ? '#e0a800' : '#ced4da'};"></div>
+                <div style="width:11px; height:11px; border-radius:50%; background:#dee2e6; border:1px solid #ced4da;"></div>
+                <span style="font-size:0.78em; color:var(--text-color-secondary,#999); margin-left:4px;">${3 - skips} of 3 remaining</span>
+              </div>
+
+              <!-- CTAs -->
+              <div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
+                <a href="breakGlass"
+                   style="display:inline-flex; align-items:center; gap:8px; padding:9px 20px; border:none; border-radius:6px; background:#0d6efd; color:#fff; font-size:0.88em; font-weight:600; text-decoration:none; cursor:pointer;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M12 3a4 4 0 0 1 4 4v4H8V7a4 4 0 0 1 4-4z"/></svg>
+                  Enroll Now
+                </a>
+                <j:choose>
+                  <j:when test="${skips eq 2}">
+                    <button type="button" onclick="skipReminder()"
+                            style="padding:9px 20px; border:1px solid #ffc107; border-radius:6px; background:#fff; color:#856404; font-size:0.88em; font-weight:600; cursor:pointer;">
+                      Last reminder — Dismiss
+                    </button>
+                  </j:when>
+                  <j:otherwise>
+                    <button type="button" onclick="skipReminder()"
+                            style="padding:9px 20px; border:1px solid #ced4da; border-radius:6px; background:#fff; color:#495057; font-size:0.88em; cursor:pointer;">
+                      Remind me later (${afterThis} more after this)
+                    </button>
+                  </j:otherwise>
+                </j:choose>
+              </div>
+
+              <!-- Footer hint -->
+              <p style="text-align:center; margin:22px 0 0; font-size:0.78em; color:var(--text-color-secondary,#adb5bd);">
+                This reminder appears once per login session.
+                After all reminders are used, enrollment will be required before accessing Jenkins.
+              </p>
+
+            </div><!-- /jenkins-card -->
+            </div><!-- /max-width -->
+            </div><!-- /flex center -->
+
+          </j:otherwise>
+        </j:choose>
+
+      <script>//<![CDATA[
+        // ── Skip (reminder mode) ──────────────────────────────────────────────
+        function skipReminder() {
+          var base = window.location.pathname.split('/manage/')[0];
+          fetch(base + '/crumbIssuer/api/json')
+            .then(function(r) { return r.json(); })
+            .then(function(cd) {
+              var xhr = new XMLHttpRequest();
+              xhr.open('POST', base + '/manage/omniauth-management/totpReminderSkip', true);
+              xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+              xhr.setRequestHeader(cd.crumbRequestField, cd.crumb);
+              xhr.onload = function() {
+                try {
+                  var r = JSON.parse(xhr.responseText);
+                  window.location.href = r.redirect || base + '/';
+                } catch(e) { window.location.href = base + '/'; }
+              };
+              xhr.onerror = function() { window.location.href = base + '/'; };
+              xhr.send('');
+            });
+        }
+
+        // ── Inline enrollment (forced mode) ──────────────────────────────────
+        var pendingSecret = null;
+
+        function generateQr() {
+          document.getElementById('step-generate').style.display = 'none';
+          document.getElementById('step-loading').style.display  = 'block';
+          var base = window.location.pathname.split('/manage/')[0];
+          fetch(base + '/crumbIssuer/api/json')
+            .then(function(r) { return r.json(); })
+            .then(function(cd) {
+              var xhr = new XMLHttpRequest();
+              xhr.open('POST', base + '/manage/omniauth-management/breakGlassEnrollInit', true);
+              xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+              xhr.setRequestHeader(cd.crumbRequestField, cd.crumb);
+              xhr.onload = function() {
+                document.getElementById('step-loading').style.display = 'none';
+                try {
+                  var r = JSON.parse(xhr.responseText);
+                  pendingSecret = r.secret;
+                  document.getElementById('qr-img').src = r.qr;
+                  document.getElementById('secret-display').textContent = r.secret;
+                  document.getElementById('step-qr').style.display = 'block';
+                  document.getElementById('verify-code').focus();
+                } catch(e) {
+                  document.getElementById('step-generate').style.display = 'block';
+                }
+              };
+              xhr.onerror = function() {
+                document.getElementById('step-loading').style.display  = 'none';
+                document.getElementById('step-generate').style.display = 'block';
+              };
+              xhr.send('');
+            });
+        }
+
+        function verifyCode() {
+          var code       = document.getElementById('verify-code').value.trim();
+          var deviceName = document.getElementById('device-name').value.trim() || 'My Device';
+          var errEl      = document.getElementById('verify-err');
+          if (!pendingSecret) { errEl.textContent = 'No secret loaded. Refresh and try again.'; errEl.style.display = 'block'; return; }
+          if (code.length !== 6) { errEl.textContent = 'Enter the 6-digit code from your app.'; errEl.style.display = 'block'; return; }
+          errEl.style.display = 'none';
+          var btn = document.getElementById('btn-verify');
+          btn.disabled = true; btn.textContent = 'Verifying…';
+          var base = window.location.pathname.split('/manage/')[0];
+          fetch(base + '/crumbIssuer/api/json')
+            .then(function(r) { return r.json(); })
+            .then(function(cd) {
+              var xhr = new XMLHttpRequest();
+              xhr.open('POST', base + '/manage/omniauth-management/breakGlassEnrollVerify', true);
+              xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+              xhr.setRequestHeader(cd.crumbRequestField, cd.crumb);
+              xhr.onload = function() {
+                btn.disabled = false; btn.textContent = 'Confirm & Save';
+                try {
+                  var r = JSON.parse(xhr.responseText);
+                  if (r.success) {
+                    document.getElementById('step-qr').style.display      = 'none';
+                    document.getElementById('step-success').style.display = 'block';
+                    requestAnimationFrame(function() {
+                      requestAnimationFrame(function() {
+                        document.getElementById('success-bar').style.width = '0%';
+                      });
+                    });
+                    setTimeout(function() { window.location.href = base + '/'; }, 1600);
+                  } else {
+                    errEl.textContent = r.error || 'Verification failed.';
+                    errEl.style.display = 'block';
+                    document.getElementById('verify-code').value = '';
+                    document.getElementById('verify-code').focus();
+                  }
+                } catch(e) {
+                  errEl.textContent = 'Server error. Try again.'; errEl.style.display = 'block';
+                }
+              };
+              xhr.onerror = function() {
+                btn.disabled = false; btn.textContent = 'Confirm & Save';
+                errEl.textContent = 'Network error.'; errEl.style.display = 'block';
+              };
+              xhr.send('secret='     + encodeURIComponent(pendingSecret) +
+                       '&code='      + encodeURIComponent(code)          +
+                       '&deviceName='+ encodeURIComponent(deviceName));
+            });
+        }
+
+        document.addEventListener('keydown', function(e) {
+          var vc = document.getElementById('verify-code');
+          if (e.key === 'Enter' && vc && document.activeElement === vc) verifyCode();
+        });
+      //]]></script>
+
+    </l:main-panel>
+  </l:layout>
+
+</j:jelly>
