@@ -137,6 +137,26 @@ public class OmniAuthAuditLog {
     // Read for UI — returns last maxLines events across current + previous month
     // -------------------------------------------------------------------------
 
+    public int[] getFailureCountsByDay(int days) {
+        int[] counts = new int[days];
+        try {
+            java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneOffset.UTC);
+            List<Map<String, String>> entries = readRecent(5000);
+            for (Map<String, String> entry : entries) {
+                if (!"login_failure".equals(entry.get("action"))) continue;
+                String ts = entry.get("ts");
+                if (ts == null) continue;
+                try {
+                    java.time.LocalDate entryDate = java.time.Instant.parse(ts)
+                            .atZone(java.time.ZoneOffset.UTC).toLocalDate();
+                    long daysAgo = java.time.temporal.ChronoUnit.DAYS.between(entryDate, today);
+                    if (daysAgo >= 0 && daysAgo < days) counts[(int)(days - 1 - daysAgo)]++;
+                } catch (Exception ignored) {}
+            }
+        } catch (Exception ignored) {}
+        return counts;
+    }
+
     public List<Map<String, String>> readRecent(int maxLines) {
         List<String> lines = new ArrayList<>();
         File logsDir = logsDir();
