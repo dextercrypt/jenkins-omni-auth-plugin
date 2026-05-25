@@ -59,6 +59,24 @@ public class OmniAuthAssignmentConfig extends GlobalConfiguration {
         OmniAuthAuthorizationStrategy.invalidateCache();
     }
 
+    public synchronized boolean confirmReview(String userId, String authType, String scope) {
+        String normalizedScope = scope != null ? scope : "";
+        boolean found = false;
+        for (OmniAuthAssignment a : assignments) {
+            if (a.getUserId().equals(userId)
+                    && a.getAuthType().equalsIgnoreCase(authType)
+                    && a.getScope().equals(normalizedScope)) {
+                a.setReviewedAt(java.time.Instant.now().toString());
+                found = true;
+            }
+        }
+        if (found) {
+            save();
+            OmniAuthAuthorizationStrategy.invalidateCache();
+        }
+        return found;
+    }
+
     public synchronized void removeAssignment(String userId, String authType, String scope) {
         String normalizedScope = scope != null ? scope : "";
         boolean removed = assignments.removeIf(a ->

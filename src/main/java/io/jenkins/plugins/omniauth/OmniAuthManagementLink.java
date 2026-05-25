@@ -1052,6 +1052,19 @@ public class OmniAuthManagementLink extends ManagementLink {
     }
 
     // Users flagged for deletion
+    public int getPendingReviewCount() {
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        if (cfg == null || !cfg.isAccessReviewEnabled()) return 0;
+        OmniAuthAssignmentConfig ac = OmniAuthAssignmentConfig.get();
+        if (ac == null) return 0;
+        int threshold = cfg.getAccessReviewThresholdDays();
+        int count = 0;
+        for (OmniAuthAssignment a : ac.getAssignments()) {
+            if (a.isReviewDue(threshold)) count++;
+        }
+        return count;
+    }
+
     public int getPendingDeletionCount() {
         int count = 0;
         for (User user : User.getAll()) {
@@ -1673,6 +1686,18 @@ public class OmniAuthManagementLink extends ManagementLink {
             }
             AccessManagementUserInfo userInfo = new AccessManagementUserInfo(sid, dn, atype, roleName, entry.getValue(), lastLogin);
             userInfo.setProvisioningSource(provisioningSource);
+            // Check if any scoped OmniAuth assignment for this principal is overdue for review
+            OmniAuthGlobalConfig reviewCfg = OmniAuthGlobalConfig.get();
+            if (reviewCfg != null && reviewCfg.isAccessReviewEnabled()) {
+                OmniAuthAssignmentConfig ac = OmniAuthAssignmentConfig.get();
+                if (ac != null) {
+                    int threshold = reviewCfg.getAccessReviewThresholdDays();
+                    String authTypeStr = atype == AuthorizationType.GROUP ? "GROUP" : "USER";
+                    boolean due = ac.getAssignmentsForUser(sid, authTypeStr).stream()
+                            .anyMatch(a -> a.isReviewDue(threshold));
+                    userInfo.setHasReviewDue(due);
+                }
+            }
             result.add(userInfo);
         }
         // Also include GROUP entities from OmniAuthAssignmentConfig that may not have matrix entries
@@ -2379,6 +2404,9 @@ public class OmniAuthManagementLink extends ManagementLink {
         OmniAuthAssignmentConfig assignmentConfig = OmniAuthAssignmentConfig.get();
         if (assignmentConfig != null) {
             String authTypeStr = atype == AuthorizationType.GROUP ? "GROUP" : "USER";
+            OmniAuthGlobalConfig reviewCfg = OmniAuthGlobalConfig.get();
+            int reviewThreshold = (reviewCfg != null && reviewCfg.isAccessReviewEnabled())
+                    ? reviewCfg.getAccessReviewThresholdDays() : -1;
             for (OmniAuthAssignment a : assignmentConfig.getAssignmentsForUser(sid, authTypeStr)) {
                 if (a.getScope().isEmpty()) continue; // global handled above
                 String itemType = "FOLDER".equals(a.getScopeType()) ? "folder" : "job";
@@ -2389,9 +2417,11 @@ public class OmniAuthManagementLink extends ManagementLink {
                                 : Collections.emptyList());
                 List<String> customPerms = "CUSTOM".equalsIgnoreCase(a.getRoleId())
                         ? a.getCustomPermissions() : Collections.emptyList();
-                result.add(new UserAssignmentInfo(a.getScope(), a.getScope(), itemType,
+                UserAssignmentInfo info = new UserAssignmentInfo(a.getScope(), a.getScope(), itemType,
                         a.getRoleId(), new ArrayList<>(perms),
-                        a.getExpiresAt(), new ArrayList<>(customPerms)));
+                        a.getExpiresAt(), new ArrayList<>(customPerms));
+                if (reviewThreshold > 0) info.setReviewDue(a.isReviewDue(reviewThreshold));
+                result.add(info);
             }
         }
 
@@ -2560,6 +2590,32 @@ public class OmniAuthManagementLink extends ManagementLink {
         }
     }
 
+    public void doConfirmAccess(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String sid   = req.getParameter("sid");
+        String type  = req.getParameter("type");
+        String scope = req.getParameter("scope");
+        if (sid == null || sid.isBlank()) {
+            rsp.sendRedirect("accessManagement"); return;
+        }
+        AuthorizationType atype = "GROUP".equalsIgnoreCase(type)
+                ? AuthorizationType.GROUP : AuthorizationType.USER;
+        String authTypeStr = atype == AuthorizationType.GROUP ? "GROUP" : "USER";
+
+        OmniAuthAssignmentConfig config = OmniAuthAssignmentConfig.get();
+        String confirmedRole = null;
+        if (config != null) {
+            String normalizedScope = scope != null ? scope : "";
+            confirmedRole = config.getAssignmentsForUser(sid, authTypeStr).stream()
+                    .filter(a -> a.getScope().equals(normalizedScope))
+                    .findFirst().map(OmniAuthAssignment::getRoleId).orElse(null);
+            config.confirmReview(sid, authTypeStr, normalizedScope);
+        }
+        OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+        if (audit != null) audit.logReviewConfirmed(Jenkins.getAuthentication2().getName(), sid, confirmedRole, scope);
+        rsp.sendRedirect(detailUrl(sid, atype, "reviewed=true"));
+    }
+
     // -------------------------------------------------------------------------
     // Group assignment helpers
     // -------------------------------------------------------------------------
@@ -2596,6 +2652,9 @@ public class OmniAuthManagementLink extends ManagementLink {
         // Item-level assignments
         OmniAuthAssignmentConfig aConfig = OmniAuthAssignmentConfig.get();
         if (aConfig != null) {
+            OmniAuthGlobalConfig reviewCfg = OmniAuthGlobalConfig.get();
+            int reviewThreshold = (reviewCfg != null && reviewCfg.isAccessReviewEnabled())
+                    ? reviewCfg.getAccessReviewThresholdDays() : -1;
             for (OmniAuthAssignment a : aConfig.getAssignmentsForUser(oid, "GROUP")) {
                 if (a.getScope().isEmpty()) continue;
                 String itemType = "FOLDER".equals(a.getScopeType()) ? "folder" : "job";
@@ -2606,8 +2665,10 @@ public class OmniAuthManagementLink extends ManagementLink {
                                 : Collections.emptyList());
                 List<String> customPerms = "CUSTOM".equalsIgnoreCase(a.getRoleId())
                         ? a.getCustomPermissions() : Collections.emptyList();
-                result.add(new UserAssignmentInfo(a.getScope(), a.getScope(), itemType,
-                        a.getRoleId(), new ArrayList<>(perms), a.getExpiresAt(), new ArrayList<>(customPerms)));
+                UserAssignmentInfo info = new UserAssignmentInfo(a.getScope(), a.getScope(), itemType,
+                        a.getRoleId(), new ArrayList<>(perms), a.getExpiresAt(), new ArrayList<>(customPerms));
+                if (reviewThreshold > 0) info.setReviewDue(a.isReviewDue(reviewThreshold));
+                result.add(info);
             }
         }
         return result;
@@ -3451,6 +3512,7 @@ public class OmniAuthManagementLink extends ManagementLink {
         private final Set<String> permissionIds;
         private final String lastLoginAt;
         private String provisioningSource = "NATIVE";
+        private boolean hasReviewDue = false;
 
         public AccessManagementUserInfo(String sid, String displayName, AuthorizationType type,
                                         String roleName, Set<String> permissionIds, String lastLoginAt) {
@@ -3472,6 +3534,8 @@ public class OmniAuthManagementLink extends ManagementLink {
         public String getProvisioningSource()       { return provisioningSource; }
         public void setProvisioningSource(String s) { this.provisioningSource = s != null ? s : "NATIVE"; }
         public boolean isGroupManaged()             { return "VIA_ENTRA_GROUP".equals(provisioningSource); }
+        public boolean isHasReviewDue()             { return hasReviewDue; }
+        public void setHasReviewDue(boolean v)      { this.hasReviewDue = v; }
 
         public String getAvatarLetter() {
             String src = (displayName != null && !displayName.equals(sid)) ? displayName : sid;
@@ -4132,8 +4196,11 @@ public class OmniAuthManagementLink extends ManagementLink {
         public List<String> getPermissionIds()       { return permissionIds; }
         public String getExpiresAt()                 { return expiresAt; }
         public List<String> getCustomPermissions()   { return customPermissions; }
+        private boolean reviewDue = false;
         public boolean isGlobal()                    { return scope == null || scope.isEmpty(); }
         public int getPermissionCount()              { return permissionIds != null ? permissionIds.size() : 0; }
+        public boolean isReviewDue()                 { return reviewDue; }
+        public void setReviewDue(boolean v)          { this.reviewDue = v; }
 
         public String getCustomPermissionsJson() {
             if (customPermissions == null || customPermissions.isEmpty()) return "[]";

@@ -330,6 +330,34 @@ public class SmtpHelper {
                 "Automated Security Alert", footerNote(cfg));
     }
 
+    public static String buildAccessReviewHtml(OmniAuthGlobalConfig cfg,
+                                                List<OmniAuthAssignment> overdue,
+                                                int thresholdDays) {
+        String ts = now();
+        StringBuilder content = new StringBuilder();
+        content.append(sectionLabel("Assignments Pending Review"));
+        for (OmniAuthAssignment a : overdue) {
+            String scope = a.getScope().isEmpty() ? "(global)" : a.getScope();
+            content.append(userItem(a.getUserId(), "#d97706", a.getUserId(),
+                    a.getRoleId() + " &middot; " + scope));
+        }
+        content.append(gap(12))
+               .append(notice("#fffbeb", "#fcd34d", "#92400e",
+                       "These assignments are over " + thresholdDays
+                       + " days old. Open Access Management, then Confirm or Revoke each one."));
+
+        return card(logoSrc(cfg), ts,
+                "#d97706", "#fef3c7", "&#10003;", "#d97706",
+                "#fef3c7", "#92400e", "#d97706",
+                "Action Required &nbsp;&middot;&nbsp; Access Review",
+                overdue.size() + " Assignment(s) Pending Review",
+                "The following access assignments have not been reviewed in over " + thresholdDays + " days.",
+                content.toString(),
+                "#d97706", rootUrl() + "/manage/omniauth-management/accessManagement",
+                "Open Access Management &rarr;",
+                "Review threshold: " + thresholdDays + " days", footerNote(cfg));
+    }
+
     public static String buildGraphApiFailedHtml(OmniAuthGlobalConfig cfg,
                                                    String userId, String errorMessage) {
         String ts = now();

@@ -58,6 +58,10 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     private String  staleWarningCron       = "0 9 * * 1";
     private int     staleWarningWindowDays = 14;
 
+    // ── Access review ─────────────────────────────────────────────────────────
+    private boolean accessReviewEnabled       = false;
+    private int     accessReviewThresholdDays = 90;
+
     // ── Notification branding ─────────────────────────────────────────────────
     private String notificationLogoUrl  = "";
     private String notificationFooterNote = "";
@@ -69,7 +73,7 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
 
     public static final String[] ALL_EVENTS = {
         "cleanup", "userDeleted", "configChanged", "protectedListChanged",
-        "graphApiFailure", "adminGranted", "bruteForce", "staleWarning"
+        "graphApiFailure", "adminGranted", "bruteForce", "staleWarning", "accessReview"
     };
 
     // ── Cleanup history ───────────────────────────────────────────────────────
@@ -134,6 +138,10 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     public boolean isStaleWarningEnabled()    { return staleWarningEnabled; }
     public String  getStaleWarningCron()      { return staleWarningCron; }
     public int     getStaleWarningWindowDays(){ return staleWarningWindowDays; }
+
+    // Access review
+    public boolean isAccessReviewEnabled()       { return accessReviewEnabled; }
+    public int     getAccessReviewThresholdDays() { return accessReviewThresholdDays; }
 
     // Per-channel event subscriptions
     public List<String> getSmtpEvents()  { return Collections.unmodifiableList(smtpEvents); }
@@ -224,6 +232,10 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
         staleWarningEnabled    = json.optBoolean("staleWarningEnabled", false);
         staleWarningCron       = jsonStr(json, "staleWarningCron",       "0 9 * * 1");
         staleWarningWindowDays = jsonInt(json, "staleWarningWindowDays", 14);
+
+        // Access review
+        accessReviewEnabled       = json.optBoolean("accessReviewEnabled", false);
+        accessReviewThresholdDays = jsonInt(json, "accessReviewThresholdDays", 90);
 
         // Per-channel event subscriptions
         smtpEvents  = jsonStringList(json, "smtpEvents");

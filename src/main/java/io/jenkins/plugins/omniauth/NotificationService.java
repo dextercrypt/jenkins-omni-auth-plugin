@@ -211,6 +211,36 @@ public class NotificationService {
     }
 
     // -------------------------------------------------------------------------
+    // Event: Access review digest
+    // -------------------------------------------------------------------------
+
+    public static void sendAccessReviewDigest(OmniAuthGlobalConfig cfg,
+                                               List<OmniAuthAssignment> overdue,
+                                               int thresholdDays) {
+        if (cfg == null || overdue.isEmpty()) return;
+        String subject = "[Jenkins OmniAuth] " + overdue.size()
+                + " access assignment(s) pending review (" + thresholdDays + "+ days old)";
+
+        StringBuilder plain = new StringBuilder();
+        plain.append("OmniAuth Access Review Digest\n")
+             .append("=============================\n\n")
+             .append("The following assignments have not been reviewed in over ")
+             .append(thresholdDays).append(" days:\n\n");
+        for (OmniAuthAssignment a : overdue) {
+            plain.append("  - ").append(a.getUserId())
+                 .append(" | ").append(a.getRoleId())
+                 .append(" on ").append(a.getScope().isEmpty() ? "(global)" : a.getScope())
+                 .append("\n");
+        }
+        plain.append("\nReview each assignment in Access Management and confirm or revoke as appropriate.\n")
+             .append(ctaLine("Open Access Management", "accessManagement"))
+             .append("\n---\nJenkins OmniAuth Plugin");
+
+        dispatch(cfg, "accessReview", subject, plain.toString(),
+                SmtpHelper.buildAccessReviewHtml(cfg, overdue, thresholdDays));
+    }
+
+    // -------------------------------------------------------------------------
     // Event: Graph API failed
     // -------------------------------------------------------------------------
 
