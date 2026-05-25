@@ -377,7 +377,7 @@
                     <j:forEach var="m" items="${members}">
                       <tr style="border-bottom:1px solid var(--panel-border-color,#f0f0f0);">
                         <td style="padding:11px 16px;">
-                          <a href="userDetail?sid=${m.userId}&amp;type=USER"
+                          <a href="checkAccess?sid=${m.userId}&amp;type=USER"
                              style="color:#0078d4;text-decoration:none;font-weight:600;">${m.fullName}</a>
                           <span style="font-size:0.8em;color:#888;margin-left:6px;">${m.userId}</span>
                         </td>

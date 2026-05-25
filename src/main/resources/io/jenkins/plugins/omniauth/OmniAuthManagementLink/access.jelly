@@ -1,7 +1,7 @@
 <?jelly escape-by-default='true'?>
 <j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:l="/lib/layout">
 
-  <l:layout title="OmniAuth — Check Access" norefresh="true">
+  <l:layout title="OmniAuth — User Overview" norefresh="true">
     <l:side-panel>
       <st:include page="sidepanel.jelly"/>
     </l:side-panel>
@@ -9,7 +9,7 @@
 
       <div class="jenkins-app-bar">
         <div class="jenkins-app-bar__content">
-          <h1 class="jenkins-app-bar__heading">Check Access</h1>
+          <h1 class="jenkins-app-bar__heading">User Overview</h1>
         </div>
       </div>
 

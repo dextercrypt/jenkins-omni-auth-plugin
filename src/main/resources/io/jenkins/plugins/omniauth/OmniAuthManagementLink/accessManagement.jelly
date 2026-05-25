@@ -447,7 +447,7 @@
           if (rowEl.dataset.type === 'GROUP') {
             window.location.href = 'groupDetail?oid=' + encodeURIComponent(rowEl.dataset.sid);
           } else {
-            window.location.href = 'userDetail?sid=' + encodeURIComponent(rowEl.dataset.sid) +
+            window.location.href = 'checkAccess?sid=' + encodeURIComponent(rowEl.dataset.sid) +
                                     '&type=' + encodeURIComponent(rowEl.dataset.type);
           }
         }

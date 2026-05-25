@@ -87,7 +87,7 @@ public class OmniAuthManagementLink extends ManagementLink {
         req.getView(this, "staleUsers.jelly").forward(req, rsp);
     }
 
-    public void doAccess(StaplerRequest req, StaplerResponse rsp) throws Exception {
+    public void doUserOverview(StaplerRequest req, StaplerResponse rsp) throws Exception {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
         req.getView(this, "access.jelly").forward(req, rsp);
     }
@@ -3514,7 +3514,7 @@ public class OmniAuthManagementLink extends ManagementLink {
     // User-centric hierarchy view
     // =========================================================================
 
-    public void doUserDetail(StaplerRequest req, StaplerResponse rsp) throws Exception {
+    public void doCheckAccess(StaplerRequest req, StaplerResponse rsp) throws Exception {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
         String sid = req.getParameter("sid");
         if (sid != null) {
