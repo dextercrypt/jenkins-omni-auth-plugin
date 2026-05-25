@@ -975,6 +975,21 @@ public class OmniAuthManagementLink extends ManagementLink {
         return INTERNAL_USERS.contains(u.getId());
     }
 
+    /** Returns true if the user has global Administer access via any source (OmniAuth or Jenkins-native). */
+    public boolean isUserGlobalAdmin(String sid) {
+        if (sid == null || sid.isEmpty()) return false;
+        try {
+            User u = User.getById(sid, false);
+            if (u == null) return false;
+            Authentication auth = u.impersonate2();
+            try (ACLContext ignored = ACL.as2(auth)) {
+                return Jenkins.get().hasPermission(Jenkins.ADMINISTER);
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+
     // -------------------------------------------------------------------------
     // Overview stats (used by index.jelly)
     // -------------------------------------------------------------------------
