@@ -170,6 +170,44 @@
             </div>
           </div>
 
+          <!-- ================================================================
+               ACCESS REVIEW
+               ================================================================ -->
+          <div class="jenkins-card" style="padding: 0; margin-bottom: 20px; overflow: hidden;">
+            <div style="padding: 14px 20px; border-bottom: 1px solid var(--panel-border-color, #e0e0e0); display: flex; align-items: center; gap: 10px;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#d97706;flex-shrink:0;">
+                <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+              </svg>
+              <h3 style="margin: 0; font-size: 0.95em; font-weight: 600;">Access Review</h3>
+            </div>
+            <div style="padding: 16px 20px;">
+              <div style="margin-bottom: 16px;">
+                <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.82em; margin-bottom: 14px;">
+                  Flag scoped assignments that haven't been reviewed in a while.
+                  A weekly email digest is sent listing overdue grants so admins can confirm or revoke them.
+                </div>
+                <label class="oau-toggle-wrap" style="gap: 10px;">
+                  <input type="checkbox" name="accessReviewEnabled" class="oau-toggle-chk" id="accessReviewEnabled"
+                         value="true" ${cfg.accessReviewEnabled ? 'checked="checked"' : ''}/>
+                  <span class="oau-toggle-track"><span class="oau-toggle-thumb"></span></span>
+                  <span style="font-size: 0.88em; font-weight: 500;">Enable access review</span>
+                </label>
+              </div>
+              <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+                <label style="flex: 1; min-width: 200px;">
+                  <div style="font-weight: 600; font-size: 0.88em; margin-bottom: 4px;">Review threshold (days)</div>
+                  <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.8em; margin-bottom: 8px;">
+                    Assignments older than this (since grant or last review) are flagged.
+                  </div>
+                  <input type="number" onwheel="this.blur()" name="accessReviewThresholdDays" min="7" max="3650"
+                         value="${cfg.accessReviewThresholdDays}"
+                         class="jenkins-input" style="width: 100px;"/>
+                  <span style="margin-left: 8px; color: var(--text-color-secondary,#888); font-size: 0.85em;">days</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
           <div style="display: flex; gap: 10px; align-items: center;">
             <button type="submit" class="jenkins-button jenkins-button--primary">Save Settings</button>
             <a href="." class="jenkins-button">Cancel</a>

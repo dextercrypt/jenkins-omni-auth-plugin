@@ -154,6 +154,30 @@
           </div>
         </j:if>
 
+        <j:set var="pendingReview" value="${it.pendingReviewCount}"/>
+        <j:if test="${pendingReview gt 0}">
+          <div id="oau_review_dismiss_banner" class="oau-status-banner oau-status-banner--info">
+            <div class="oau-status-banner__icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+              </svg>
+            </div>
+            <div class="oau-status-banner__body">
+              <strong>${pendingReview} access assignment<j:if test="${pendingReview != 1}">s</j:if> pending review</strong>
+              <span class="oau-status-banner__sep">—</span>
+              Open Access Management to confirm or revoke stale grants.
+            </div>
+            <a href="accessManagement" class="oau-status-banner__action">Review now →</a>
+            <button class="oau-status-banner__close" onclick="oauDismissWeekly('oau_review_dismiss')" title="Dismiss for 1 week">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+        </j:if>
+
         <!-- ── KPI Cards ──────────────────────────────────────────────────── -->
         <div class="oau-kpi-row">
 
@@ -937,7 +961,7 @@
         (function() {
           var WEEK = 7 * 24 * 60 * 60 * 1000;
           // Weekly info banners: localStorage-scoped
-          ['oau_notif_dismiss', 'oau_cleanup_dismiss'].forEach(function(key) {
+          ['oau_notif_dismiss', 'oau_cleanup_dismiss', 'oau_review_dismiss'].forEach(function(key) {
             var ts = localStorage.getItem(key);
             if (ts && (Date.now() - parseInt(ts, 10)) < WEEK) {
               var el = document.getElementById(key + '_banner');

@@ -133,6 +133,14 @@ public class OmniAuthAuditLog {
         write(e);
     }
 
+    public void logReviewConfirmed(String by, String user, String role, String scope) {
+        Map<String, String> e = event("review_confirmed");
+        e.put("by", by); e.put("user", user);
+        if (role != null && !role.isBlank()) e.put("role", role);
+        e.put("scope", scopeLabel(scope));
+        write(e);
+    }
+
     // -------------------------------------------------------------------------
     // Read for UI — returns last maxLines events across current + previous month
     // -------------------------------------------------------------------------

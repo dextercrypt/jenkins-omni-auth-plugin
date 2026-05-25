@@ -13,7 +13,8 @@ public class OmniAuthAssignment {
     private List<String> customPermissions = new ArrayList<>();
     private String grantedAt;
     private String grantedBy;
-    private String expiresAt;  // ISO-8601 UTC, null = no expiry
+    private String expiresAt;   // ISO-8601 UTC, null = no expiry
+    private String reviewedAt;  // ISO-8601 UTC, null = never reviewed
 
     public OmniAuthAssignment() {}
 
@@ -62,6 +63,9 @@ public class OmniAuthAssignment {
     public String getExpiresAt() { return expiresAt; }
     public void setExpiresAt(String expiresAt) { this.expiresAt = (expiresAt != null && !expiresAt.isBlank()) ? expiresAt : null; }
 
+    public String getReviewedAt() { return reviewedAt; }
+    public void setReviewedAt(String reviewedAt) { this.reviewedAt = (reviewedAt != null && !reviewedAt.isBlank()) ? reviewedAt : null; }
+
     public boolean isExpired() {
         if (expiresAt == null || expiresAt.isBlank()) return false;
         try {
@@ -69,5 +73,20 @@ public class OmniAuthAssignment {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /** True when this assignment has not been reviewed within thresholdDays. Expired assignments are excluded. */
+    public boolean isReviewDue(int thresholdDays) {
+        if (isExpired()) return false;
+        java.time.Instant cutoff = java.time.Instant.now().minus(thresholdDays, java.time.temporal.ChronoUnit.DAYS);
+        java.time.Instant baseline;
+        try {
+            baseline = (reviewedAt != null && !reviewedAt.isBlank())
+                    ? java.time.Instant.parse(reviewedAt)
+                    : java.time.Instant.parse(grantedAt);
+        } catch (Exception e) {
+            return false;
+        }
+        return baseline.isBefore(cutoff);
     }
 }
