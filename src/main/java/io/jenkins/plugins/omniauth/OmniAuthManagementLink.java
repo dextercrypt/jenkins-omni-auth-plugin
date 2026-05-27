@@ -1086,9 +1086,12 @@ public class OmniAuthManagementLink extends ManagementLink {
             String displayName = resolveDisplayName(a.getUserId(),
                     "GROUP".equalsIgnoreCase(a.getAuthType()) ? AuthorizationType.GROUP : AuthorizationType.USER);
             String baseline = (a.getReviewedAt() != null && !a.getReviewedAt().isBlank())
-                    ? a.getReviewedAt() : a.getGrantedAt();
-            long daysAgo = 0;
-            try { daysAgo = java.time.temporal.ChronoUnit.DAYS.between(java.time.Instant.parse(baseline), java.time.Instant.now()); } catch (Exception ignored) {}
+                    ? a.getReviewedAt()
+                    : (a.getGrantedAt() != null && !a.getGrantedAt().isBlank() ? a.getGrantedAt() : null);
+            long daysAgo = -1; // -1 = unknown grant date
+            if (baseline != null) {
+                try { daysAgo = java.time.temporal.ChronoUnit.DAYS.between(java.time.Instant.parse(baseline), java.time.Instant.now()); } catch (Exception ignored) {}
+            }
             String scope = a.getScope();
             String displayScope = (scope == null || scope.isBlank()) ? "Global" : scope;
             items.add(new PendingReviewItem(a.getUserId(), displayName, a.getAuthType(), a.getRoleId(),

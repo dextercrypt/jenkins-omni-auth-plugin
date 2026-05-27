@@ -80,12 +80,12 @@ public class OmniAuthAssignment {
         if (expiresAt != null && !expiresAt.isBlank()) return false;
         java.time.Instant cutoff = java.time.Instant.now().minus(thresholdDays, java.time.temporal.ChronoUnit.DAYS);
         java.time.Instant baseline;
-        try {
-            baseline = (reviewedAt != null && !reviewedAt.isBlank())
-                    ? java.time.Instant.parse(reviewedAt)
-                    : java.time.Instant.parse(grantedAt);
-        } catch (Exception e) {
-            return false;
+        if (reviewedAt != null && !reviewedAt.isBlank()) {
+            try { baseline = java.time.Instant.parse(reviewedAt); } catch (Exception e) { return false; }
+        } else if (grantedAt != null && !grantedAt.isBlank()) {
+            try { baseline = java.time.Instant.parse(grantedAt); } catch (Exception e) { return false; }
+        } else {
+            return true; // no grant date — unknown age, treat as immediately overdue
         }
         return baseline.isBefore(cutoff);
     }

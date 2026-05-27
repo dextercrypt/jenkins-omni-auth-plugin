@@ -180,7 +180,10 @@
                       <!-- Overdue cell -->
                       <td style="padding:10px 8px; text-align:center;">
                         <span style="background:#fff3cd;color:#856404;padding:3px 10px;border-radius:12px;font-size:0.78em;font-weight:700;white-space:nowrap;">
-                          ${item.daysAgo}d ago
+                          <j:choose>
+                            <j:when test="${item.daysAgo == -1}">unknown age</j:when>
+                            <j:otherwise>${item.daysAgo}d ago</j:otherwise>
+                          </j:choose>
                           <j:if test="${!item.everReviewed}"> · never reviewed</j:if>
                         </span>
                       </td>
