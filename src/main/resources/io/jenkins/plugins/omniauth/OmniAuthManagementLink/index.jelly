@@ -262,6 +262,19 @@
             <div class="oau-kpi-card__label">Live Sessions</div>
           </a>
 
+          <a href="security" class="oau-kpi-card">
+            <div class="oau-kpi-card__icon" style="background:${failed24h gt 0 ? '#f8d7da' : '#f0f0f0'};">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                   stroke="${failed24h gt 0 ? '#c42b1c' : '#adb5bd'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/>
+                <circle cx="12" cy="16" r="1" fill="currentColor"/>
+              </svg>
+            </div>
+            <div class="oau-kpi-card__value" style="color:${failed24h gt 0 ? '#c42b1c' : '#adb5bd'};">${failed24h}</div>
+            <div class="oau-kpi-card__label">Failed Logins <span class="oau-kpi-card__sublabel">(24h)</span></div>
+          </a>
+
         </div>
 
         <!-- ── Row 2: Needs Attention + Expiring Access + User Composition + Notifications ── -->
