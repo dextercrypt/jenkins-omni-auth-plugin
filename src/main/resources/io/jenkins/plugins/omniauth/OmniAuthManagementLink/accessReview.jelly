@@ -1,0 +1,242 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:l="/lib/layout">
+
+  <l:layout title="OmniAuth — Access Review" norefresh="true">
+    <l:side-panel>
+      <st:include page="sidepanel.jelly"/>
+    </l:side-panel>
+    <l:main-panel>
+
+      <div class="jenkins-app-bar">
+        <div class="jenkins-app-bar__content">
+          <h1 class="jenkins-app-bar__heading">Access Review</h1>
+        </div>
+      </div>
+
+      <div style="padding: 0 24px 32px;">
+
+        <j:if test="${request2.getParameter('confirmed') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom: 16px;">
+            Access kept — review clock reset.
+          </div>
+        </j:if>
+        <j:if test="${request2.getParameter('confirmedAll') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom: 16px;">
+            All overdue assignments kept — review clocks reset.
+          </div>
+        </j:if>
+        <j:if test="${request2.getParameter('revoked') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom: 16px;">
+            Assignment revoked.
+          </div>
+        </j:if>
+
+        <j:set var="cfg" value="${it.omniAuthGlobalConfig}"/>
+        <j:set var="items" value="${it.pendingReviewItems}"/>
+
+        <!-- Feature disabled state -->
+        <j:if test="${!cfg.accessReviewEnabled}">
+          <div style="text-align:center; padding: 60px 0; color: var(--text-color-secondary, #6c757d);">
+            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none"
+                 stroke="#adb5bd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+                 style="display:block;margin:0 auto 16px;">
+              <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+            </svg>
+            <div style="font-size: 1em; font-weight: 600; margin-bottom: 6px;">Access review is disabled</div>
+            <div style="font-size: 0.85em; margin-bottom: 20px;">
+              Enable it in Settings to start flagging stale access grants.
+            </div>
+            <a href="settings" class="jenkins-button jenkins-button--primary">Go to Settings →</a>
+          </div>
+        </j:if>
+
+        <!-- Feature enabled -->
+        <j:if test="${cfg.accessReviewEnabled}">
+
+          <!-- Summary bar -->
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 20px; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <j:choose>
+                <j:when test="${items.isEmpty()}">
+                  <span style="font-size:0.88em; color:var(--text-color-secondary,#6c757d);">
+                    All assignments are within the ${cfg.accessReviewThresholdDays}-day review window.
+                  </span>
+                </j:when>
+                <j:otherwise>
+                  <span style="font-size:1em; font-weight:700; color:#b45309;">${items.size()}</span>
+                  <span style="font-size:0.88em; color:var(--text-color-secondary,#6c757d);">
+                    assignment<j:if test="${items.size() != 1}">s</j:if> overdue
+                    (threshold: ${cfg.accessReviewThresholdDays} days)
+                  </span>
+                </j:otherwise>
+              </j:choose>
+            </div>
+            <j:if test="${!items.isEmpty()}">
+              <form method="post" action="confirmAllAccess" style="margin:0;">
+                <input type="hidden" name="${app.crumbRequestField}" value="${app.crumb}"/>
+                <button type="submit" class="jenkins-button"
+                        style="background:#d97706;color:#fff;border-color:#d97706;font-weight:600;"
+                        onclick="return confirm('Keep all ${items.size()} overdue assignments?')">
+                  &#10003; Keep All
+                </button>
+              </form>
+            </j:if>
+          </div>
+
+          <!-- All-clear empty state -->
+          <j:if test="${items.isEmpty()}">
+            <div class="jenkins-card" style="text-align:center; padding:60px 0; color:var(--text-color-secondary,#6c757d);">
+              <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none"
+                   stroke="#146c43" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+                   style="display:block;margin:0 auto 16px;">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                <polyline points="9 12 11 14 15 10"/>
+              </svg>
+              <div style="font-size:1em;font-weight:600;color:#146c43;margin-bottom:6px;">All caught up</div>
+              <div style="font-size:0.85em;">No assignments need review right now.</div>
+            </div>
+          </j:if>
+
+          <!-- Table -->
+          <j:if test="${!items.isEmpty()}">
+            <div class="jenkins-card" style="padding:0; overflow:hidden;">
+              <table style="width:100%; border-collapse:collapse; font-size:0.85em;">
+                <thead>
+                  <tr style="border-bottom:1px solid var(--panel-border-color,#e9ecef); background:var(--background,#f8f9fa);">
+                    <th style="padding:10px 16px; text-align:left; font-weight:600; color:var(--text-color-secondary,#6c757d); font-size:0.85em;">User / Group</th>
+                    <th style="padding:10px 8px;  text-align:left; font-weight:600; color:var(--text-color-secondary,#6c757d); font-size:0.85em;">Role</th>
+                    <th style="padding:10px 8px;  text-align:left; font-weight:600; color:var(--text-color-secondary,#6c757d); font-size:0.85em;">Scope</th>
+                    <th style="padding:10px 8px;  text-align:center; font-weight:600; color:var(--text-color-secondary,#6c757d); font-size:0.85em;">Overdue</th>
+                    <th style="padding:10px 16px; text-align:right; font-weight:600; color:var(--text-color-secondary,#6c757d); font-size:0.85em;">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <j:forEach var="item" items="${items}">
+                    <tr style="border-bottom:1px solid var(--panel-border-color,#f5f5f5); transition:background 0.1s;"
+                        onmouseover="this.style.background='var(--even-row-color,#fafafa)'"
+                        onmouseout="this.style.background=''">
+
+                      <!-- User / Group cell -->
+                      <td style="padding:10px 16px;">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                          <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.85em;flex-shrink:0;
+                                      background:${item.group ? '#e8d5fb' : '#e8f0fe'};
+                                      color:${item.group ? '#7c3aed' : '#0078d4'};">
+                            ${item.avatarLetter}
+                          </div>
+                          <div>
+                            <div style="font-weight:600;">${item.displayName}</div>
+                            <div style="font-size:0.78em; color:var(--text-color-secondary,#6c757d);">
+                              <j:if test="${item.group}">
+                                <span style="background:#e8d5fb;color:#7c3aed;font-size:0.8em;padding:1px 6px;border-radius:10px;font-weight:600;">GROUP</span>
+                              </j:if>
+                              <j:if test="${!item.group}">
+                                <span style="background:#e8f0fe;color:#0078d4;font-size:0.8em;padding:1px 6px;border-radius:10px;font-weight:600;">USER</span>
+                              </j:if>
+                              <span style="margin-left:4px;">${item.userId}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      <!-- Role cell -->
+                      <td style="padding:10px 8px;">
+                        <span style="background:#f0f0f0;color:#495057;padding:2px 8px;border-radius:10px;font-size:0.82em;font-weight:600;">
+                          ${item.roleId}
+                        </span>
+                      </td>
+
+                      <!-- Scope cell -->
+                      <td style="padding:10px 8px; color:var(--text-color-secondary,#6c757d); max-width:200px;">
+                        <div style="display:flex;align-items:center;gap:6px;">
+                          <j:choose>
+                            <j:when test="${item.scopeType eq 'GLOBAL'}">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                                   stroke="#6c757d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"/>
+                                <line x1="2" y1="12" x2="22" y2="12"/>
+                                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                              </svg>
+                            </j:when>
+                            <j:when test="${item.scopeType eq 'FOLDER'}">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                                   stroke="#6c757d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                              </svg>
+                            </j:when>
+                            <j:otherwise>
+                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                                   stroke="#6c757d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+                              </svg>
+                            </j:otherwise>
+                          </j:choose>
+                          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${item.displayScope}">
+                            ${item.displayScope}
+                          </span>
+                        </div>
+                      </td>
+
+                      <!-- Overdue cell -->
+                      <td style="padding:10px 8px; text-align:center;">
+                        <span style="background:#fff3cd;color:#856404;padding:3px 10px;border-radius:12px;font-size:0.78em;font-weight:700;white-space:nowrap;">
+                          ${item.daysAgo}d ago
+                          <j:if test="${!item.everReviewed}"> · never reviewed</j:if>
+                        </span>
+                      </td>
+
+                      <!-- Action cell -->
+                      <td style="padding:10px 16px; text-align:right; white-space:nowrap;">
+                        <form method="post" action="confirmAccess" style="display:inline;">
+                          <input type="hidden" name="${app.crumbRequestField}" value="${app.crumb}"/>
+                          <input type="hidden" name="sid"      value="${item.userId}"/>
+                          <input type="hidden" name="type"     value="${item.authType}"/>
+                          <input type="hidden" name="scope"    value="${item.scope}"/>
+                          <input type="hidden" name="returnTo" value="accessReview"/>
+                          <button type="submit"
+                                  style="background:#fff8e1;color:#92400e;border:1px solid #fcd34d;border-radius:6px;padding:4px 12px;font-size:0.82em;font-weight:600;cursor:pointer;">
+                            &#10003; Keep
+                          </button>
+                        </form>
+                        <form method="post" action="revokeFromReview" style="display:inline;margin-left:4px;"
+                              onsubmit="return confirm('Revoke access for ${item.displayName}?')">
+                          <input type="hidden" name="${app.crumbRequestField}" value="${app.crumb}"/>
+                          <input type="hidden" name="sid"   value="${item.userId}"/>
+                          <input type="hidden" name="type"  value="${item.authType}"/>
+                          <input type="hidden" name="scope" value="${item.scope}"/>
+                          <button type="submit"
+                                  style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:6px;padding:4px 12px;font-size:0.82em;font-weight:600;cursor:pointer;">
+                            &#10005; Revoke
+                          </button>
+                        </form>
+                        <j:choose>
+                          <j:when test="${item.group}">
+                            <a href="groupDetail?oid=${item.userId}"
+                               style="margin-left:6px;font-size:0.82em;color:#0078d4;text-decoration:none;">
+                              View →
+                            </a>
+                          </j:when>
+                          <j:otherwise>
+                            <a href="userDetail?sid=${item.userId}&amp;type=USER"
+                               style="margin-left:6px;font-size:0.82em;color:#0078d4;text-decoration:none;">
+                              View →
+                            </a>
+                          </j:otherwise>
+                        </j:choose>
+                      </td>
+
+                    </tr>
+                  </j:forEach>
+                </tbody>
+              </table>
+            </div>
+          </j:if>
+
+        </j:if>
+
+      </div>
+
+    </l:main-panel>
+  </l:layout>
+
+</j:jelly>

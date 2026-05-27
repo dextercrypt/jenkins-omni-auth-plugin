@@ -75,9 +75,9 @@ public class OmniAuthAssignment {
         }
     }
 
-    /** True when this assignment has not been reviewed within thresholdDays. Expired assignments are excluded. */
+    /** True when this assignment has not been reviewed within thresholdDays. Assignments with any expiry date are excluded. */
     public boolean isReviewDue(int thresholdDays) {
-        if (isExpired()) return false;
+        if (expiresAt != null && !expiresAt.isBlank()) return false;
         java.time.Instant cutoff = java.time.Instant.now().minus(thresholdDays, java.time.temporal.ChronoUnit.DAYS);
         java.time.Instant baseline;
         try {

@@ -97,6 +97,11 @@ public class OmniAuthManagementLink extends ManagementLink {
         req.getView(this, "accessManagement.jelly").forward(req, rsp);
     }
 
+    public void doAccessReview(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        req.getView(this, "accessReview.jelly").forward(req, rsp);
+    }
+
     public void doAuditLog(StaplerRequest req, StaplerResponse rsp) throws Exception {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
         req.getView(this, "auditLog.jelly").forward(req, rsp);
@@ -725,6 +730,10 @@ public class OmniAuthManagementLink extends ManagementLink {
             String swWin  = req.getParameter("staleWarningWindowDays");
             if (swCron != null) json.put("staleWarningCron",       swCron.trim());
             if (swWin  != null) json.put("staleWarningWindowDays", swWin.trim());
+            // access review
+            json.put("accessReviewEnabled", req.getParameter("accessReviewEnabled") != null);
+            String arDays = req.getParameter("accessReviewThresholdDays");
+            if (arDays != null) json.put("accessReviewThresholdDays", arDays.trim());
             // preserve fields managed by the Notifications page
             json.put("notificationsEnabled", config.isNotificationsEnabled());
             json.put("smtpEnabled",          config.isSmtpEnabled());
@@ -1063,6 +1072,31 @@ public class OmniAuthManagementLink extends ManagementLink {
             if (a.isReviewDue(threshold)) count++;
         }
         return count;
+    }
+
+    public List<PendingReviewItem> getPendingReviewItems() {
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        if (cfg == null || !cfg.isAccessReviewEnabled()) return Collections.emptyList();
+        OmniAuthAssignmentConfig ac = OmniAuthAssignmentConfig.get();
+        if (ac == null) return Collections.emptyList();
+        int threshold = cfg.getAccessReviewThresholdDays();
+        List<PendingReviewItem> items = new ArrayList<>();
+        for (OmniAuthAssignment a : ac.getAssignments()) {
+            if (!a.isReviewDue(threshold)) continue;
+            String displayName = resolveDisplayName(a.getUserId(),
+                    "GROUP".equalsIgnoreCase(a.getAuthType()) ? AuthorizationType.GROUP : AuthorizationType.USER);
+            String baseline = (a.getReviewedAt() != null && !a.getReviewedAt().isBlank())
+                    ? a.getReviewedAt() : a.getGrantedAt();
+            long daysAgo = 0;
+            try { daysAgo = java.time.temporal.ChronoUnit.DAYS.between(java.time.Instant.parse(baseline), java.time.Instant.now()); } catch (Exception ignored) {}
+            String scope = a.getScope();
+            String displayScope = (scope == null || scope.isBlank()) ? "Global" : scope;
+            items.add(new PendingReviewItem(a.getUserId(), displayName, a.getAuthType(), a.getRoleId(),
+                    scope, displayScope, a.getScopeType(), (int) daysAgo,
+                    a.getReviewedAt() != null && !a.getReviewedAt().isBlank()));
+        }
+        items.sort((x, y) -> Integer.compare(y.getDaysAgo(), x.getDaysAgo()));
+        return items;
     }
 
     public int getPendingDeletionCount() {
@@ -2592,9 +2626,10 @@ public class OmniAuthManagementLink extends ManagementLink {
 
     public void doConfirmAccess(StaplerRequest req, StaplerResponse rsp) throws Exception {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
-        String sid   = req.getParameter("sid");
-        String type  = req.getParameter("type");
-        String scope = req.getParameter("scope");
+        String sid      = req.getParameter("sid");
+        String type     = req.getParameter("type");
+        String scope    = req.getParameter("scope");
+        String returnTo = req.getParameter("returnTo");
         if (sid == null || sid.isBlank()) {
             rsp.sendRedirect("accessManagement"); return;
         }
@@ -2613,7 +2648,54 @@ public class OmniAuthManagementLink extends ManagementLink {
         }
         OmniAuthAuditLog audit = OmniAuthAuditLog.get();
         if (audit != null) audit.logReviewConfirmed(Jenkins.getAuthentication2().getName(), sid, confirmedRole, scope);
-        rsp.sendRedirect(detailUrl(sid, atype, "reviewed=true"));
+        if ("accessReview".equals(returnTo)) {
+            rsp.sendRedirect("accessReview?confirmed=true");
+        } else {
+            rsp.sendRedirect(detailUrl(sid, atype, "reviewed=true"));
+        }
+    }
+
+    @POST
+    public void doConfirmAllAccess(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        if (cfg == null || !cfg.isAccessReviewEnabled()) { rsp.sendRedirect("accessReview"); return; }
+        OmniAuthAssignmentConfig ac = OmniAuthAssignmentConfig.get();
+        if (ac == null) { rsp.sendRedirect("accessReview"); return; }
+        int threshold = cfg.getAccessReviewThresholdDays();
+        String by = Jenkins.getAuthentication2().getName();
+        OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+        for (OmniAuthAssignment a : ac.getAssignments()) {
+            if (!a.isReviewDue(threshold)) continue;
+            ac.confirmReview(a.getUserId(), a.getAuthType(), a.getScope());
+            if (audit != null) audit.logReviewConfirmed(by, a.getUserId(), a.getRoleId(), a.getScope());
+        }
+        rsp.sendRedirect("accessReview?confirmedAll=true");
+    }
+
+    @POST
+    public void doRevokeFromReview(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String sid   = req.getParameter("sid");
+        String type  = req.getParameter("type");
+        String scope = req.getParameter("scope");
+        if (sid == null || sid.isBlank()) {
+            rsp.sendRedirect("accessReview"); return;
+        }
+        String authTypeStr = "GROUP".equalsIgnoreCase(type) ? "GROUP" : "USER";
+        OmniAuthAssignmentConfig config = OmniAuthAssignmentConfig.get();
+        String revokedRole = null;
+        if (config != null) {
+            String normalizedScope = scope != null ? scope : "";
+            revokedRole = config.getAssignmentsForUser(sid, authTypeStr).stream()
+                    .filter(a -> a.getScope().equals(normalizedScope))
+                    .findFirst().map(OmniAuthAssignment::getRoleId).orElse(null);
+            config.removeAssignment(sid, authTypeStr, normalizedScope);
+        }
+        OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+        if (audit != null) audit.logRevoke(Jenkins.getAuthentication2().getName(), sid,
+                scope != null ? scope : "", revokedRole);
+        rsp.sendRedirect("accessReview?revoked=true");
     }
 
     // -------------------------------------------------------------------------
@@ -4245,6 +4327,48 @@ public class OmniAuthManagementLink extends ManagementLink {
         public final Set<String> permissionIds;
         ScopedRole(String... ids) {
             this.permissionIds = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(ids)));
+        }
+    }
+
+    public static final class PendingReviewItem {
+        private final String userId;
+        private final String displayName;
+        private final String authType;
+        private final String roleId;
+        private final String scope;
+        private final String displayScope;
+        private final String scopeType;
+        private final int daysAgo;
+        private final boolean everReviewed;
+
+        public PendingReviewItem(String userId, String displayName, String authType,
+                                 String roleId, String scope, String displayScope,
+                                 String scopeType, int daysAgo, boolean everReviewed) {
+            this.userId       = userId;
+            this.displayName  = displayName;
+            this.authType     = authType;
+            this.roleId       = roleId;
+            this.scope        = scope;
+            this.displayScope = displayScope;
+            this.scopeType    = scopeType;
+            this.daysAgo      = daysAgo;
+            this.everReviewed = everReviewed;
+        }
+
+        public String getUserId()       { return userId; }
+        public String getDisplayName()  { return displayName; }
+        public String getAuthType()     { return authType; }
+        public String getRoleId()       { return roleId; }
+        public String getScope()        { return scope; }
+        public String getDisplayScope() { return displayScope; }
+        public String getScopeType()    { return scopeType; }
+        public int getDaysAgo()         { return daysAgo; }
+        public boolean isEverReviewed() { return everReviewed; }
+        public boolean isGroup()        { return "GROUP".equalsIgnoreCase(authType); }
+
+        public String getAvatarLetter() {
+            String src = (displayName != null && !displayName.equals(userId)) ? displayName : userId;
+            return (src != null && !src.isEmpty()) ? src.substring(0, 1).toUpperCase() : "?";
         }
     }
 }

@@ -187,8 +187,14 @@
                   A weekly email digest is sent listing overdue grants so admins can confirm or revoke them.
                 </div>
                 <label class="oau-toggle-wrap" style="gap: 10px;">
-                  <input type="checkbox" name="accessReviewEnabled" class="oau-toggle-chk" id="accessReviewEnabled"
-                         value="true" ${cfg.accessReviewEnabled ? 'checked="checked"' : ''}/>
+                  <j:choose>
+                    <j:when test="${cfg.accessReviewEnabled}">
+                      <input type="checkbox" name="accessReviewEnabled" id="accessReviewEnabled" class="oau-toggle-chk" checked="checked"/>
+                    </j:when>
+                    <j:otherwise>
+                      <input type="checkbox" name="accessReviewEnabled" id="accessReviewEnabled" class="oau-toggle-chk"/>
+                    </j:otherwise>
+                  </j:choose>
                   <span class="oau-toggle-track"><span class="oau-toggle-thumb"></span></span>
                   <span style="font-size: 0.88em; font-weight: 500;">Enable access review</span>
                 </label>
