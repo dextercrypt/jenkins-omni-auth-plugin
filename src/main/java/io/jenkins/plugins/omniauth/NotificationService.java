@@ -232,8 +232,8 @@ public class NotificationService {
                  .append(" on ").append(a.getScope().isEmpty() ? "(global)" : a.getScope())
                  .append("\n");
         }
-        plain.append("\nReview each assignment in Access Management and confirm or revoke as appropriate.\n")
-             .append(ctaLine("Open Access Management", "accessManagement"))
+        plain.append("\nReview each assignment and keep or revoke as appropriate.\n")
+             .append(ctaLine("Open Access Review", "accessReview"))
              .append("\n---\nJenkins OmniAuth Plugin");
 
         dispatch(cfg, "accessReview", subject, plain.toString(),

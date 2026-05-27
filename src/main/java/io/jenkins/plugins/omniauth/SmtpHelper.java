@@ -353,8 +353,8 @@ public class SmtpHelper {
                 overdue.size() + " Assignment(s) Pending Review",
                 "The following access assignments have not been reviewed in over " + thresholdDays + " days.",
                 content.toString(),
-                "#d97706", rootUrl() + "/manage/omniauth-management/accessManagement",
-                "Open Access Management &rarr;",
+                "#d97706", rootUrl() + "/manage/omniauth-management/accessReview",
+                "Open Access Review &rarr;",
                 "Review threshold: " + thresholdDays + " days", footerNote(cfg));
     }
 

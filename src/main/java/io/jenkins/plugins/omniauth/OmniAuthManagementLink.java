@@ -875,6 +875,24 @@ public class OmniAuthManagementLink extends ManagementLink {
                 html = SmtpHelper.buildProtectedListChangedHtml(cfg, "admin",
                     java.util.Arrays.asList("alice.smith"),
                     java.util.Arrays.asList("old.vendor")); break;
+            case "accessReview": {
+                OmniAuthAssignment a1 = new OmniAuthAssignment("alice.smith", "USER", "developer",
+                        "platform/payments-api", "JOB",
+                        java.util.Collections.emptyList(),
+                        java.time.Instant.now().minus(95, java.time.temporal.ChronoUnit.DAYS).toString(), "admin");
+                OmniAuthAssignment a2 = new OmniAuthAssignment("bob.jones", "USER", "admin",
+                        "", "GLOBAL",
+                        java.util.Collections.emptyList(),
+                        java.time.Instant.now().minus(120, java.time.temporal.ChronoUnit.DAYS).toString(), "admin");
+                OmniAuthAssignment a3 = new OmniAuthAssignment("contractors", "GROUP", "read-only",
+                        "platform", "FOLDER",
+                        java.util.Collections.emptyList(),
+                        java.time.Instant.now().minus(200, java.time.temporal.ChronoUnit.DAYS).toString(), "admin");
+                html = SmtpHelper.buildAccessReviewHtml(cfg,
+                        java.util.Arrays.asList(a1, a2, a3),
+                        cfg != null ? cfg.getAccessReviewThresholdDays() : 90);
+                break;
+            }
             case "graphApiFailure":
                 html = SmtpHelper.buildGraphApiFailedHtml(cfg, "john.doe@corp.com",
                     "403 Forbidden: Insufficient privileges to complete the operation."); break;
