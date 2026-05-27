@@ -971,10 +971,18 @@
         })();
 
         function oauDismissWarning() {
-          // Page-view only — no persistence, reappears on next load
+          localStorage.setItem('oau_warning_dismissed', Date.now().toString());
           var el = document.getElementById('oau-warning-banner');
           if (el) el.style.display = 'none';
         }
+
+        (function() {
+          var ts = localStorage.getItem('oau_warning_dismissed');
+          if (ts && (Date.now() - parseInt(ts)) < 6 * 60 * 60 * 1000) {
+            var el = document.getElementById('oau-warning-banner');
+            if (el) el.style.display = 'none';
+          }
+        })();
 
         function oauDismissWeekly(key) {
           localStorage.setItem(key, Date.now().toString());
