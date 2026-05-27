@@ -166,9 +166,9 @@
             <div class="oau-status-banner__body">
               <strong>${pendingReview} access assignment<j:if test="${pendingReview != 1}">s</j:if> pending review</strong>
               <span class="oau-status-banner__sep">—</span>
-              Open Access Management to confirm or revoke stale grants.
+              Open Access Review to keep or revoke stale grants.
             </div>
-            <a href="accessManagement" class="oau-status-banner__action">Review now →</a>
+            <a href="accessReview" class="oau-status-banner__action">Review now →</a>
             <button class="oau-status-banner__close" onclick="oauDismissWeekly('oau_review_dismiss')" title="Dismiss for 1 week">
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
                    stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -414,7 +414,7 @@
                   </j:if>
 
                   <j:if test="${expiringGrants.size() gt 0}">
-                    <a href="accessManagement" class="oau-attention-row oau-attention-row--info">
+                    <a href="accessReview" class="oau-attention-row oau-attention-row--info">
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
