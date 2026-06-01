@@ -2625,31 +2625,49 @@ public class OmniAuthManagementLink extends ManagementLink {
         }
     }
 
-    /** Typeahead endpoint — returns up to 10 users whose id or display name contains the query. */
+    /** Typeahead endpoint — returns up to 10 users + groups whose id/name contains the query. */
     public void doSuggestApprovers(StaplerRequest req, StaplerResponse rsp) throws Exception {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
         String q = req.getParameter("q");
         if (q == null) q = "";
         String lq = q.toLowerCase().trim();
-        StringBuilder sb = new StringBuilder("[");
-        int count = 0;
+
+        java.util.List<String> results = new java.util.ArrayList<>();
+
+        // Groups first — from OmniAuth group assignments (unique group IDs)
+        OmniAuthAssignmentConfig assignmentConfig = OmniAuthAssignmentConfig.get();
+        if (assignmentConfig != null) {
+            java.util.LinkedHashSet<String> seen = new java.util.LinkedHashSet<>();
+            for (OmniAuthAssignment a : assignmentConfig.getAssignments()) {
+                if (!"GROUP".equalsIgnoreCase(a.getAuthType())) continue;
+                String gid = a.getUserId();
+                if (gid == null || gid.isBlank() || seen.contains(gid)) continue;
+                seen.add(gid);
+                if (!lq.isEmpty() && !gid.toLowerCase().contains(lq)) continue;
+                results.add("{\"id\":\"" + jsonEsc(gid) + "\",\"type\":\"group\"}");
+                if (results.size() >= 5) break;
+            }
+        }
+
+        // Users — remaining slots up to 10 total
+        int remaining = 10 - results.size();
         for (User user : User.getAll()) {
-            if (count >= 10) break;
+            if (remaining <= 0) break;
             if (isInternalUser(user)) continue;
-            String id   = user.getId();
-            String full = user.getFullName();
+            String id      = user.getId();
+            String full    = user.getFullName();
             String display = (full != null && !full.equals(id)) ? full : null;
             String combined = (id + " " + (display != null ? display : "")).toLowerCase();
             if (!lq.isEmpty() && !combined.contains(lq)) continue;
-            if (count > 0) sb.append(",");
-            sb.append("{\"id\":\"").append(jsonEsc(id)).append("\"");
-            if (display != null) sb.append(",\"displayName\":\"").append(jsonEsc(display)).append("\"");
-            sb.append("}");
-            count++;
+            StringBuilder entry = new StringBuilder("{\"id\":\"").append(jsonEsc(id)).append("\",\"type\":\"user\"");
+            if (display != null) entry.append(",\"displayName\":\"").append(jsonEsc(display)).append("\"");
+            entry.append("}");
+            results.add(entry.toString());
+            remaining--;
         }
-        sb.append("]");
+
         rsp.setContentType("application/json;charset=UTF-8");
-        rsp.getWriter().write(sb.toString());
+        rsp.getWriter().write("[" + String.join(",", results) + "]");
     }
 
     private static String jsonEsc(String s) {

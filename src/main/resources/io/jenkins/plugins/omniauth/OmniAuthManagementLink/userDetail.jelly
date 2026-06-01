@@ -627,12 +627,18 @@
           max-height:220px; overflow-y:auto;
         }
         .udx-suggest-row {
-          display:flex; align-items:center; gap:10px;
-          padding:9px 14px; cursor:pointer; transition:background 0.1s;
+          display:flex; align-items:center; gap:9px;
+          padding:8px 12px; cursor:pointer; transition:background 0.1s;
         }
         .udx-suggest-row:hover { background:#f0f4ff; }
-        .udx-suggest-id  { font-size:0.88em; font-weight:600; color:#1a1a1a; }
-        .udx-suggest-dn  { font-size:0.8em; color:#6c757d; }
+        .udx-suggest-icon { display:inline-flex; flex-shrink:0; }
+        .udx-suggest-id   { font-size:0.88em; font-weight:600; color:#1a1a1a; line-height:1.2; }
+        .udx-suggest-dn   { font-size:0.78em; color:#6c757d; line-height:1.2; }
+        .udx-suggest-chip {
+          margin-left:auto; flex-shrink:0;
+          font-size:0.68em; font-weight:700; padding:1px 6px;
+          border-radius:8px; text-transform:uppercase; letter-spacing:0.04em;
+        }
         .udx-expiry-badge.udx-expiry-soon {
           background:#ffe0e0; color:#dc3545; border-color:#dc3545;
         }
@@ -759,22 +765,47 @@
             if (!users || !users.length) { drop.style.display = 'none'; return; }
             drop.innerHTML = '';
             users.forEach(function(u) {
+              var isGroup = u.type === 'group';
               var row = document.createElement('div');
               row.className = 'udx-suggest-row';
+
+              // Icon
+              var icon = document.createElement('span');
+              icon.className = 'udx-suggest-icon';
+              icon.innerHTML = isGroup
+                ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
+                : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+              icon.style.color = isGroup ? '#7c3aed' : '#1a73e8';
+              icon.style.flexShrink = '0';
+              row.appendChild(icon);
+
+              // Text
+              var text = document.createElement('div');
+              text.style.cssText = 'display:flex;flex-direction:column;gap:1px;min-width:0;';
               var nameEl = document.createElement('span');
               nameEl.className = 'udx-suggest-id';
               nameEl.textContent = u.id;
-              row.appendChild(nameEl);
+              text.appendChild(nameEl);
               if (u.displayName) {
                 var dn = document.createElement('span');
                 dn.className = 'udx-suggest-dn';
                 dn.textContent = u.displayName;
-                row.appendChild(dn);
+                text.appendChild(dn);
               }
+              row.appendChild(text);
+
+              // Type chip
+              var chip = document.createElement('span');
+              chip.className = 'udx-suggest-chip';
+              chip.textContent = isGroup ? 'group' : 'user';
+              chip.style.background = isGroup ? '#ede9fe' : '#dbeafe';
+              chip.style.color      = isGroup ? '#6d28d9' : '#1e40af';
+              row.appendChild(chip);
+
               row.onmousedown = function() {
                 var displayEl = document.getElementById(hiddenId.replace('Group','GroupDisplay'));
                 hidden.value = u.id;
-                if (displayEl) displayEl.value = u.displayName || u.id;
+                if (displayEl) displayEl.value = u.id;
                 drop.style.display = 'none';
               };
               drop.appendChild(row);
