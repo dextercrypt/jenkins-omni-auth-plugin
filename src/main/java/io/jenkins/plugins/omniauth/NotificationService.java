@@ -241,6 +241,73 @@ public class NotificationService {
     }
 
     // -------------------------------------------------------------------------
+    // Event: JIT access requested (sent to approvers)
+    // -------------------------------------------------------------------------
+
+    public static void sendJitRequested(OmniAuthGlobalConfig cfg,
+                                         OmniAuthJitRequest req, String approverGroup) {
+        if (cfg == null) return;
+        String subject = "[Jenkins OmniAuth] JIT Request — " + req.getRequesterId()
+                + " wants access to " + req.getScope();
+
+        StringBuilder plain = new StringBuilder();
+        plain.append("OmniAuth JIT Access Request\n")
+             .append("===========================\n\n")
+             .append("Requested by:  ").append(req.getRequesterId()).append("\n")
+             .append("Pipeline:      ").append(req.getScope()).append("\n")
+             .append("Duration:      ").append(req.getRequestedDurationHours()).append(" hour(s)\n")
+             .append("Approver:      ").append(approverGroup.isEmpty() ? "(any admin)" : approverGroup).append("\n\n")
+             .append("Reason\n------\n").append(req.getReason()).append("\n\n")
+             .append("Approve or deny from OmniAuth Management → JIT Requests.\n")
+             .append(ctaLine("Open JIT Requests", "jitRequests"))
+             .append("\n---\nJenkins OmniAuth Plugin");
+
+        dispatch(cfg, "jitRequest", subject, plain.toString(),
+                SmtpHelper.buildJitRequestedHtml(cfg, req, approverGroup));
+    }
+
+    // -------------------------------------------------------------------------
+    // Event: JIT access approved (sent to requester)
+    // -------------------------------------------------------------------------
+
+    public static void sendJitApproved(OmniAuthGlobalConfig cfg, OmniAuthJitRequest req) {
+        if (cfg == null) return;
+        String subject = "[Jenkins OmniAuth] JIT Access Approved — " + req.getScope();
+
+        String plain = "OmniAuth JIT Access Approved\n"
+                + "============================\n\n"
+                + "Your JIT access request has been approved.\n\n"
+                + "Pipeline:    " + req.getScope() + "\n"
+                + "Approved by: " + req.getApproverId() + "\n"
+                + "Duration:    " + req.getRequestedDurationHours() + " hour(s)\n\n"
+                + "Go to the pipeline and build.\n"
+                + "\n---\nJenkins OmniAuth Plugin";
+
+        dispatch(cfg, "jitApproved", subject, plain,
+                SmtpHelper.buildJitApprovedHtml(cfg, req));
+    }
+
+    // -------------------------------------------------------------------------
+    // Event: JIT access denied (sent to requester)
+    // -------------------------------------------------------------------------
+
+    public static void sendJitDenied(OmniAuthGlobalConfig cfg, OmniAuthJitRequest req) {
+        if (cfg == null) return;
+        String subject = "[Jenkins OmniAuth] JIT Request Denied — " + req.getScope();
+
+        String plain = "OmniAuth JIT Request Denied\n"
+                + "===========================\n\n"
+                + "Your JIT access request was denied.\n\n"
+                + "Pipeline:   " + req.getScope() + "\n"
+                + "Denied by:  " + req.getApproverId() + "\n"
+                + (req.getApproverComment().isBlank() ? "" : "Reason:     " + req.getApproverComment() + "\n")
+                + "\n---\nJenkins OmniAuth Plugin";
+
+        dispatch(cfg, "jitDenied", subject, plain,
+                SmtpHelper.buildJitDeniedHtml(cfg, req));
+    }
+
+    // -------------------------------------------------------------------------
     // Event: Graph API failed
     // -------------------------------------------------------------------------
 

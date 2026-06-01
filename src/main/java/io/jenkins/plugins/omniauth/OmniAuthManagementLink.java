@@ -102,6 +102,11 @@ public class OmniAuthManagementLink extends ManagementLink {
         req.getView(this, "accessReview.jelly").forward(req, rsp);
     }
 
+    public void doJitRequests(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        req.getView(this, "jitRequests.jelly").forward(req, rsp);
+    }
+
     public void doAuditLog(StaplerRequest req, StaplerResponse rsp) throws Exception {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
         req.getView(this, "auditLog.jelly").forward(req, rsp);
@@ -1118,6 +1123,77 @@ public class OmniAuthManagementLink extends ManagementLink {
         }
         items.sort((x, y) -> Integer.compare(y.getDaysAgo(), x.getDaysAgo()));
         return items;
+    }
+
+    // ── JIT: getters ────────────────────────────────────────────────────────
+
+    public int getPendingJitCount() {
+        OmniAuthJitRequestStore store = OmniAuthJitRequestStore.get();
+        return store == null ? 0 : store.getPendingCount();
+    }
+
+    public List<OmniAuthJitRequest> getPendingJitRequests() {
+        OmniAuthJitRequestStore store = OmniAuthJitRequestStore.get();
+        return store == null ? Collections.emptyList() : store.getPendingRequests();
+    }
+
+    public List<OmniAuthJitRequest> getRecentJitRequests() {
+        OmniAuthJitRequestStore store = OmniAuthJitRequestStore.get();
+        return store == null ? Collections.emptyList() : store.getRecentRequests(50);
+    }
+
+    // ── JIT: admin actions ───────────────────────────────────────────────────
+
+    @POST
+    public void doApproveJit(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String requestId = req.getParameter("requestId");
+        if (requestId == null || requestId.isBlank()) { rsp.sendRedirect("jitRequests"); return; }
+        String approver = Jenkins.getAuthentication2().getName();
+        OmniAuthJitRequestStore store = OmniAuthJitRequestStore.get();
+        OmniAuthJitRequest jitReq = store != null ? store.findById(requestId) : null;
+        if (jitReq != null && store.approve(requestId, approver)) {
+            OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+            if (audit != null) audit.logJitApproved(approver, jitReq.getRequesterId(),
+                    jitReq.getScope(), jitReq.getRequestedDurationHours());
+            OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+            NotificationService.sendJitApproved(cfg, jitReq);
+        }
+        rsp.sendRedirect("jitRequests?approved=true");
+    }
+
+    @POST
+    public void doDenyJit(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String requestId = req.getParameter("requestId");
+        String comment   = req.getParameter("comment");
+        if (requestId == null || requestId.isBlank()) { rsp.sendRedirect("jitRequests"); return; }
+        String approver = Jenkins.getAuthentication2().getName();
+        OmniAuthJitRequestStore store = OmniAuthJitRequestStore.get();
+        OmniAuthJitRequest jitReq = store != null ? store.findById(requestId) : null;
+        if (jitReq != null && store.deny(requestId, approver, comment)) {
+            OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+            if (audit != null) audit.logJitDenied(approver, jitReq.getRequesterId(),
+                    jitReq.getScope(), comment);
+            OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+            NotificationService.sendJitDenied(cfg, jitReq);
+        }
+        rsp.sendRedirect("jitRequests?denied=true");
+    }
+
+    @POST
+    public void doRevokeActiveJit(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String requestId = req.getParameter("requestId");
+        if (requestId == null || requestId.isBlank()) { rsp.sendRedirect("jitRequests"); return; }
+        String revokedBy = Jenkins.getAuthentication2().getName();
+        OmniAuthJitRequestStore store = OmniAuthJitRequestStore.get();
+        OmniAuthJitRequest jitReq = store != null ? store.findById(requestId) : null;
+        if (jitReq != null && store.revoke(requestId, revokedBy)) {
+            OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+            if (audit != null) audit.logJitRevoked(revokedBy, jitReq.getRequesterId(), jitReq.getScope());
+        }
+        rsp.sendRedirect("jitRequests?revoked=true");
     }
 
     public int getPendingDeletionCount() {

@@ -15,6 +15,10 @@ public class OmniAuthAssignment {
     private String grantedBy;
     private String expiresAt;   // ISO-8601 UTC, null = no expiry
     private String reviewedAt;  // ISO-8601 UTC, null = never reviewed
+    private String accessType;  // STANDING (default) | JIT
+    private String approverGroup;
+    private int    maxDurationHours     = 4;
+    private int    approvalTimeoutHours = 4;
 
     public OmniAuthAssignment() {}
 
@@ -65,6 +69,19 @@ public class OmniAuthAssignment {
 
     public String getReviewedAt() { return reviewedAt; }
     public void setReviewedAt(String reviewedAt) { this.reviewedAt = (reviewedAt != null && !reviewedAt.isBlank()) ? reviewedAt : null; }
+
+    public String getAccessType() { return accessType != null ? accessType : "STANDING"; }
+    public void setAccessType(String v) { this.accessType = v; }
+    public boolean isJit() { return "JIT".equalsIgnoreCase(accessType); }
+
+    public String getApproverGroup() { return approverGroup != null ? approverGroup : ""; }
+    public void setApproverGroup(String v) { this.approverGroup = v; }
+
+    public int getMaxDurationHours() { return maxDurationHours > 0 ? maxDurationHours : 4; }
+    public void setMaxDurationHours(int v) { this.maxDurationHours = v; }
+
+    public int getApprovalTimeoutHours() { return approvalTimeoutHours > 0 ? approvalTimeoutHours : 4; }
+    public void setApprovalTimeoutHours(int v) { this.approvalTimeoutHours = v; }
 
     public boolean isExpired() {
         if (expiresAt == null || expiresAt.isBlank()) return false;

@@ -214,10 +214,165 @@ public class OmniAuthPageDecorator {
         "}catch(e){}" +
         "})();</script>";
 
+    // Injected on all authenticated pages — JS exits early if not on a job page.
+    private static final String JIT_BANNER_SCRIPT =
+        "<script>(function(){" +
+        "try{" +
+        "function extractJobPath(p){" +
+          "var m=p.match(/\\/job\\/(.+)/);" +
+          "if(!m)return null;" +
+          "var parts=m[1].split('/');" +
+          "var out=[];" +
+          "for(var i=0;i<parts.length;i++){" +
+            "var s=parts[i];" +
+            "if(!s||s==='job')continue;" +
+            "if(/^\\d+$/.test(s)||['build','configure','workspace','changes','lastBuild','api','console','testReport','cobertura','robot'].indexOf(s)>=0)break;" +
+            "out.push(s);" +
+          "}" +
+          "return out.length?out.join('/'):null;" +
+        "}" +
+        "var jobPath=extractJobPath(window.location.pathname);" +
+        "if(!jobPath)return;" +
+        "var base=window.location.href.split('/job/')[0];" +
+        "function fetchStatus(){" +
+          "fetch(base+'/omniauth-jit/status?job='+encodeURIComponent(jobPath),{credentials:'same-origin'})" +
+          ".then(function(r){return r.json();})" +
+          ".then(function(d){renderBanner(d);})" +
+          ".catch(function(){});" +
+        "}" +
+        "function renderBanner(d){" +
+          "if(!d||!d.hasJit)return;" +
+          "removeBanner();" +
+          "var banner=document.createElement('div');" +
+          "banner.id='oau-jit-banner';" +
+          "var color,icon,msg,actions;" +
+          "if(d.status==='ACTIVE'){" +
+            "var mins=Math.ceil(d.secondsRemaining/60);" +
+            "color='#16a34a';icon='&#10003;';" +
+            "msg='<strong>JIT Access active</strong> &mdash; approved by <strong>'+escHtml(d.approverId)+'</strong> &middot; expires in <strong id=\"oau-jit-countdown\">'+fmtTime(d.secondsRemaining)+'</strong>';" +
+            "actions='<button type=\"button\" onclick=\"oauJitRevoke(\\''+escHtml(d.requestId)+'\\')\" style=\"padding:4px 12px;border:1px solid #16a34a;border-radius:4px;background:#fff;color:#16a34a;cursor:pointer;font-size:12px;font-weight:600;\">Revoke Early</button>';" +
+            "startCountdown(d.secondsRemaining);" +
+          "}else if(d.status==='PENDING'){" +
+            "color='#d97706';icon='&#8987;';" +
+            "msg='<strong>JIT request pending</strong> &mdash; waiting for approval &middot; requested '+escHtml(d.timeAgo);" +
+            "actions='<button type=\"button\" onclick=\"oauJitCancel(\\''+escHtml(d.requestId)+'\\')\" style=\"padding:4px 12px;border:1px solid #d97706;border-radius:4px;background:#fff;color:#d97706;cursor:pointer;font-size:12px;font-weight:600;\">Cancel Request</button>';" +
+          "}else{" +
+            "color='#6366f1';icon='&#9889;';" +
+            "var durOpts='';" +
+            "for(var h=1;h<=d.maxDurationHours;h++){durOpts+='<option value=\"'+h+'\"'+(h===1?' selected':'')+'>'+h+' hour'+(h>1?'s':'')+'</option>';}" +
+            "if(d.status==='DENIED'||d.status==='EXPIRED'||d.status==='TIMED_OUT'){" +
+              "msg='<strong>JIT access required</strong> &mdash; previous request was <strong>'+d.status.toLowerCase()+'</strong>. Request again to build.';" +
+            "}else{" +
+              "msg='<strong>JIT access required</strong> &mdash; building this pipeline requires approval from '+escHtml(d.approverGroup||'an admin')+'.';" +
+            "}" +
+            "actions='<button type=\"button\" onclick=\"oauJitOpen()\" style=\"padding:4px 12px;border:none;border-radius:4px;background:#6366f1;color:#fff;cursor:pointer;font-size:12px;font-weight:600;\">&#9889; Request JIT Access</button>';" +
+          "}" +
+          "banner.style.cssText='margin:8px 16px;padding:10px 14px;border-radius:6px;background:#fff;border:1px solid '+color+';display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;';" +
+          "banner.innerHTML='<div style=\"display:flex;align-items:center;gap:8px;font-size:13px;\"><span style=\"font-size:16px;color:'+color+';\">'+icon+'</span><span style=\"color:#333;\">'+msg+'</span></div><div style=\"display:flex;align-items:center;gap:8px;\">'+actions+'</div>';" +
+          "var main=document.getElementById('main-panel')||document.querySelector('.jenkins-main-panel')||document.querySelector('[id*=\"main\"]');" +
+          "if(main){main.insertBefore(banner,main.firstChild);}else{document.body.insertBefore(banner,document.body.firstChild);}" +
+        "}" +
+        "function removeBanner(){var b=document.getElementById('oau-jit-banner');if(b)b.remove();}" +
+        "function fmtTime(s){var m=Math.floor(s/60);var ss=s%60;return m+'m '+(ss<10?'0':'')+ss+'s';}" +
+        "function escHtml(s){if(!s)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;');}" +
+        "var _cdInterval=null;" +
+        "function startCountdown(secs){" +
+          "if(_cdInterval)clearInterval(_cdInterval);" +
+          "var rem=secs;" +
+          "_cdInterval=setInterval(function(){" +
+            "rem--;" +
+            "var el=document.getElementById('oau-jit-countdown');" +
+            "if(el)el.textContent=fmtTime(rem);" +
+            "if(rem<=0){clearInterval(_cdInterval);fetchStatus();}" +
+          "},1000);" +
+        "}" +
+        // Request modal
+        "var _jitModal=null;" +
+        "window.oauJitOpen=function(){" +
+          "if(_jitModal){_jitModal.style.display='flex';return;}" +
+          "var m=document.createElement('div');" +
+          "_jitModal=m;" +
+          "m.style.cssText='display:flex;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.45);z-index:9999;align-items:center;justify-content:center;';" +
+          "var durOpts='';" +
+          "fetch(base+'/omniauth-jit/status?job='+encodeURIComponent(jobPath),{credentials:'same-origin'})" +
+          ".then(function(r){return r.json();})" +
+          ".then(function(d){" +
+            "for(var h=1;h<=d.maxDurationHours;h++){durOpts+='<option value=\"'+h+'\"'+(h===1?' selected':'')+'>'+h+' hour'+(h>1?'s':'')+'</option>';}" +
+            "m.innerHTML='<div style=\"background:#fff;border-radius:8px;padding:24px;max-width:460px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.18);\">'+" +
+              "'<div style=\"font-size:15px;font-weight:700;margin-bottom:16px;\">&#9889; Request JIT Access</div>'+" +
+              "'<div style=\"font-size:12px;color:#888;margin-bottom:16px;padding:8px 12px;background:#f5f5f5;border-radius:4px;\">'+" +
+              "'<strong>Pipeline:</strong> '+escHtml(jobPath)+'<br/>'+" +
+              "'<strong>Approver:</strong> '+escHtml(d.approverGroup||'Any admin')+'<br/>'+" +
+              "'<strong>Auto-deny after:</strong> '+d.approvalTimeoutHours+' hour(s)'+" +
+              "'</div>'+" +
+              "'<div style=\"margin-bottom:12px;\"><label style=\"display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:#888;margin-bottom:4px;\">Reason *</label>'+" +
+              "'<textarea id=\"oau-jit-reason\" placeholder=\"Why do you need access? (e.g. Deploy v2.3.1, hotfix for JIRA-441)\" style=\"width:100%;height:72px;padding:8px;border:1px solid #ccc;border-radius:4px;font-size:13px;resize:none;box-sizing:border-box;\"></textarea></div>'+" +
+              "'<div style=\"margin-bottom:16px;\"><label style=\"display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:#888;margin-bottom:4px;\">Duration</label>'+" +
+              "'<select id=\"oau-jit-dur\" style=\"width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;font-size:13px;\">'+durOpts+'</select></div>'+" +
+              "'<div id=\"oau-jit-err\" style=\"display:none;padding:8px 12px;background:#fee;border:1px solid #fca;border-radius:4px;font-size:12px;color:#c00;margin-bottom:12px;\"></div>'+" +
+              "'<div style=\"display:flex;gap:8px;justify-content:flex-end;\">'+" +
+              "'<button type=\"button\" onclick=\"oauJitClose()\" style=\"padding:8px 16px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer;font-size:13px;\">Cancel</button>'+" +
+              "'<button type=\"button\" id=\"oau-jit-submit\" onclick=\"oauJitSubmit()\" style=\"padding:8px 16px;border:none;border-radius:4px;background:#6366f1;color:#fff;cursor:pointer;font-size:13px;font-weight:600;\">Submit Request</button>'+" +
+              "'</div></div>';" +
+          "});" +
+          "document.body.appendChild(m);" +
+        "};" +
+        "window.oauJitClose=function(){if(_jitModal)_jitModal.style.display='none';};" +
+        "window.oauJitSubmit=function(){" +
+          "var reason=document.getElementById('oau-jit-reason').value.trim();" +
+          "var dur=document.getElementById('oau-jit-dur').value;" +
+          "var err=document.getElementById('oau-jit-err');" +
+          "if(!reason){err.textContent='Reason is required.';err.style.display='block';return;}" +
+          "var btn=document.getElementById('oau-jit-submit');" +
+          "btn.disabled=true;btn.textContent='Submitting...';" +
+          "fetch(base+'/crumbIssuer/api/json',{credentials:'same-origin'})" +
+          ".then(function(r){return r.json();})" +
+          ".then(function(cd){" +
+            "var body='job='+encodeURIComponent(jobPath)+'&reason='+encodeURIComponent(reason)+'&durationHours='+encodeURIComponent(dur);" +
+            "var headers={'Content-Type':'application/x-www-form-urlencoded'};" +
+            "headers[cd.crumbRequestField]=cd.crumb;" +
+            "return fetch(base+'/omniauth-jit/request',{method:'POST',headers:headers,body:body,credentials:'same-origin'});" +
+          "})" +
+          ".then(function(r){return r.json();})" +
+          ".then(function(data){" +
+            "btn.disabled=false;btn.textContent='Submit Request';" +
+            "if(data.ok){oauJitClose();fetchStatus();}else{err.textContent=data.error||'Request failed.';err.style.display='block';}" +
+          "})" +
+          ".catch(function(){btn.disabled=false;btn.textContent='Submit Request';err.textContent='Network error.';err.style.display='block';});" +
+        "};" +
+        "window.oauJitCancel=function(requestId){" +
+          "if(!confirm('Cancel your pending JIT request?'))return;" +
+          "fetch(base+'/crumbIssuer/api/json',{credentials:'same-origin'})" +
+          ".then(function(r){return r.json();})" +
+          ".then(function(cd){" +
+            "var headers={'Content-Type':'application/x-www-form-urlencoded'};" +
+            "headers[cd.crumbRequestField]=cd.crumb;" +
+            "return fetch(base+'/omniauth-jit/cancel',{method:'POST',headers:headers,body:'requestId='+encodeURIComponent(requestId),credentials:'same-origin'});" +
+          "})" +
+          ".then(function(){fetchStatus();})" +
+          ".catch(function(){});" +
+        "};" +
+        "window.oauJitRevoke=function(requestId){" +
+          "if(!confirm('Revoke your active JIT access?'))return;" +
+          "fetch(base+'/crumbIssuer/api/json',{credentials:'same-origin'})" +
+          ".then(function(r){return r.json();})" +
+          ".then(function(cd){" +
+            "var headers={'Content-Type':'application/x-www-form-urlencoded'};" +
+            "headers[cd.crumbRequestField]=cd.crumb;" +
+            "return fetch(base+'/omniauth-jit/cancel',{method:'POST',headers:headers,body:'requestId='+encodeURIComponent(requestId),credentials:'same-origin'});" +
+          "})" +
+          ".then(function(){fetchStatus();})" +
+          ".catch(function(){});" +
+        "};" +
+        "if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',fetchStatus);}else{fetchStatus();}" +
+        "}catch(e){}" +
+        "})();</script>";
+
     @Initializer(after = InitMilestone.EXTENSIONS_AUGMENTED)
     public static void registerFilter() throws Exception {
         PluginServletFilter.addFilter(new MatrixDisableFilter());
         PluginServletFilter.addFilter(new TotpReminderFilter());
+        PluginServletFilter.addFilter(new JitBannerFilter());
     }
 
     private static class MatrixDisableFilter implements Filter {
@@ -453,6 +608,80 @@ public class OmniAuthPageDecorator {
                    path.endsWith(".gif")            ||
                    path.endsWith(".woff2")          ||
                    path.endsWith(".ttf");
+        }
+    }
+
+    private static class JitBannerFilter implements Filter {
+
+        @Override public void init(FilterConfig c) {}
+        @Override public void destroy() {}
+
+        @Override
+        public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain)
+                throws IOException, ServletException {
+
+            if (!(req instanceof HttpServletRequest)) { chain.doFilter(req, res); return; }
+            HttpServletRequest  httpReq = (HttpServletRequest)  req;
+            HttpServletResponse httpRes = (HttpServletResponse) res;
+
+            if (!"GET".equalsIgnoreCase(httpReq.getMethod()))                        { chain.doFilter(req, res); return; }
+            if ("XMLHttpRequest".equals(httpReq.getHeader("X-Requested-With")))      { chain.doFilter(req, res); return; }
+
+            String path = httpReq.getRequestURI();
+            if (!path.contains("/job/"))                                              { chain.doFilter(req, res); return; }
+            if (isJitExcluded(path))                                                  { chain.doFilter(req, res); return; }
+
+            try {
+                Jenkins jenkins = Jenkins.getInstanceOrNull();
+                if (jenkins == null)                                                  { chain.doFilter(req, res); return; }
+                if (!(jenkins.getAuthorizationStrategy() instanceof OmniAuthAuthorizationStrategy)) { chain.doFilter(req, res); return; }
+            } catch (Exception ignored) { chain.doFilter(req, res); return; }
+
+            HttpServletRequest noGzipReq = new HttpServletRequestWrapper(httpReq) {
+                @Override public String getHeader(String name) {
+                    if ("Accept-Encoding".equalsIgnoreCase(name)) return null;
+                    return super.getHeader(name);
+                }
+                @Override public java.util.Enumeration<String> getHeaders(String name) {
+                    if ("Accept-Encoding".equalsIgnoreCase(name)) return java.util.Collections.emptyEnumeration();
+                    return super.getHeaders(name);
+                }
+            };
+
+            StreamCapture capture = new StreamCapture(httpRes);
+            chain.doFilter(noGzipReq, capture);
+
+            String contentType = capture.getContentType();
+            byte[] body = capture.toByteArray();
+
+            if (contentType != null && contentType.contains("text/html")) {
+                String charset = "UTF-8";
+                if (contentType.contains("charset=")) {
+                    charset = contentType.replaceAll(".*charset=([^;]+).*", "$1").trim();
+                }
+                String html = new String(body, charset);
+                if (html.contains("</body>")) {
+                    html = html.replace("</body>", JIT_BANNER_SCRIPT + "</body>");
+                    body = html.getBytes(charset);
+                }
+            }
+
+            httpRes.setContentLength(body.length);
+            httpRes.getOutputStream().write(body);
+        }
+
+        private static boolean isJitExcluded(String path) {
+            return path.endsWith("/configure")     ||
+                   path.endsWith("/configure/")    ||
+                   path.contains("/configSubmit")  ||
+                   path.contains("/api/")          ||
+                   path.contains("/adjuncts/")     ||
+                   path.contains("/static/")       ||
+                   path.contains("/plugin/")       ||
+                   path.endsWith(".js")            ||
+                   path.endsWith(".css")           ||
+                   path.endsWith(".ico")           ||
+                   path.endsWith(".png");
         }
     }
 

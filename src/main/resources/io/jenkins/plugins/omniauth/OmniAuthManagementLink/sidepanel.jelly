@@ -19,6 +19,9 @@
     <l:task icon="symbol-checkmark-done-outline plugin-ionicons-api"
             href="${rootURL}/manage/omniauth-management/accessReview"
             title="Access Review"/>
+    <l:task icon="symbol-flash-outline plugin-ionicons-api"
+            href="${rootURL}/manage/omniauth-management/jitRequests"
+            title="JIT Requests"/>
     <l:task icon="symbol-person"
             href="${rootURL}/manage/omniauth-management/sessions"
             title="Active Sessions"/>

@@ -382,6 +382,86 @@ public class SmtpHelper {
                 "Automated Security Alert", footerNote(cfg));
     }
 
+    public static String buildJitRequestedHtml(OmniAuthGlobalConfig cfg,
+                                                OmniAuthJitRequest req, String approverGroup) {
+        String ts = now();
+        String content = kvTable(new String[][]{
+                {"Requested by", code(esc(req.getRequesterId()))},
+                {"Pipeline",     code(esc(req.getScope()))},
+                {"Duration",     req.getRequestedDurationHours() + " hour(s)"},
+                {"Approver",     approverGroup.isEmpty() ? "(any admin)" : esc(approverGroup)},
+                {"Requested at", ts}
+        }) + gap(12)
+        + notice("#fffbeb", "#fde68a", "#92400e",
+                "<strong>Action required:</strong> Approve or deny this request from "
+                + "<strong>OmniAuth Management &rarr; JIT Requests</strong>.<br/>"
+                + "Reason: <em>" + esc(req.getReason()) + "</em>");
+
+        return card(logoSrc(cfg), ts,
+                "#d97706", "#fffbeb", "&#9889;", "#d97706",
+                "#fffbeb", "#92400e", "#d97706",
+                "Action Required &nbsp;&middot;&nbsp; JIT Access Request",
+                "JIT Request — " + esc(req.getScope()),
+                esc(req.getRequesterId()) + " is requesting temporary build access to this pipeline.",
+                content,
+                "#d97706", rootUrl() + "/manage/omniauth-management/jitRequests",
+                "Review JIT Requests &rarr;",
+                "JIT Access Request", footerNote(cfg));
+    }
+
+    public static String buildJitApprovedHtml(OmniAuthGlobalConfig cfg, OmniAuthJitRequest req) {
+        String ts = now();
+        String content = kvTable(new String[][]{
+                {"Pipeline",     code(esc(req.getScope()))},
+                {"Approved by",  code(esc(req.getApproverId()))},
+                {"Duration",     req.getRequestedDurationHours() + " hour(s)"},
+                {"Expires at",   req.getExpiresAt() != null ? esc(req.getExpiresAt()) : "—"},
+                {"Approved at",  ts}
+        }) + gap(12)
+        + notice("#f0fdf4", "#bbf7d0", "#166534",
+                "Go to the pipeline now. Your Build button is active for the approved duration.");
+
+        return card(logoSrc(cfg), ts,
+                "#16a34a", "#f0fdf4", "&#10003;", "#16a34a",
+                "#f0fdf4", "#166534", "#16a34a",
+                "Approved &nbsp;&middot;&nbsp; JIT Access Active",
+                "JIT Access Approved — " + esc(req.getScope()),
+                "Your request to build this pipeline has been approved. Access is now active.",
+                content,
+                "#16a34a", rootUrl() + "/job/" + req.getScope().replace("/", "/job/"),
+                "Go to Pipeline &rarr;",
+                "JIT Access Notification", footerNote(cfg));
+    }
+
+    public static String buildJitDeniedHtml(OmniAuthGlobalConfig cfg, OmniAuthJitRequest req) {
+        String ts = now();
+        String[][] rows = req.getApproverComment().isBlank()
+                ? new String[][]{
+                        {"Pipeline",    code(esc(req.getScope()))},
+                        {"Denied by",   code(esc(req.getApproverId()))},
+                        {"Denied at",   ts}}
+                : new String[][]{
+                        {"Pipeline",    code(esc(req.getScope()))},
+                        {"Denied by",   code(esc(req.getApproverId()))},
+                        {"Reason",      "<em>" + esc(req.getApproverComment()) + "</em>"},
+                        {"Denied at",   ts}};
+
+        String content = kvTable(rows) + gap(12)
+                + notice("#fef2f2", "#fecaca", "#991b1b",
+                        "Your JIT request was denied. Contact the approver if you believe this is in error.");
+
+        return card(logoSrc(cfg), ts,
+                "#dc2626", "#fef2f2", "&#10007;", "#dc2626",
+                "#fef2f2", "#991b1b", "#dc2626",
+                "Denied &nbsp;&middot;&nbsp; JIT Request",
+                "JIT Request Denied — " + esc(req.getScope()),
+                "Your request for temporary build access to this pipeline was not approved.",
+                content,
+                "#6b7280", rootUrl() + "/manage/omniauth-management/",
+                "OmniAuth Dashboard &rarr;",
+                "JIT Access Notification", footerNote(cfg));
+    }
+
     public static String buildSmtpTestHtml(String host, int port, String fromAddress, String to) {
         String ts = now();
         String content = kvTable(new String[][]{
