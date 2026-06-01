@@ -2625,6 +2625,38 @@ public class OmniAuthManagementLink extends ManagementLink {
         }
     }
 
+    /** Typeahead endpoint — returns up to 10 users whose id or display name contains the query. */
+    public void doSuggestApprovers(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String q = req.getParameter("q");
+        if (q == null) q = "";
+        String lq = q.toLowerCase().trim();
+        StringBuilder sb = new StringBuilder("[");
+        int count = 0;
+        for (User user : User.getAll()) {
+            if (count >= 10) break;
+            if (isInternalUser(user)) continue;
+            String id   = user.getId();
+            String full = user.getFullName();
+            String display = (full != null && !full.equals(id)) ? full : null;
+            String combined = (id + " " + (display != null ? display : "")).toLowerCase();
+            if (!lq.isEmpty() && !combined.contains(lq)) continue;
+            if (count > 0) sb.append(",");
+            sb.append("{\"id\":\"").append(jsonEsc(id)).append("\"");
+            if (display != null) sb.append(",\"displayName\":\"").append(jsonEsc(display)).append("\"");
+            sb.append("}");
+            count++;
+        }
+        sb.append("]");
+        rsp.setContentType("application/json;charset=UTF-8");
+        rsp.getWriter().write(sb.toString());
+    }
+
+    private static String jsonEsc(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "");
+    }
+
     private static void applyJitFieldsFromRequest(StaplerRequest req, OmniAuthAssignment assignment) {
         String accessType = req.getParameter("accessType");
         if ("JIT".equalsIgnoreCase(accessType)) {
