@@ -217,6 +217,13 @@
                       <!-- Role -->
                       <td style="padding:12px 16px;">
                         <span class="udx-role-badge">${a.roleName}</span>
+                        <j:if test="${a.jit}">
+                          <span style="display:inline-flex;align-items:center;gap:3px;margin-left:5px;
+                                       font-size:0.72em;font-weight:700;padding:2px 7px;border-radius:10px;
+                                       background:#fffbeb;border:1px solid #f59e0b;color:#b45309;white-space:nowrap;">
+                            &#9889; JIT
+                          </span>
+                        </j:if>
                         <j:if test="${userIsGlobalAdmin and !a.global}">
                           <span title="This assignment has no effect — the user's global Admin role supersedes all scoped restrictions."
                                 style="display:inline-flex;align-items:center;gap:4px;margin-left:6px;
@@ -252,7 +259,7 @@
                           <div style="display:flex;gap:6px;justify-content:flex-end;align-items:center;">
                             <j:if test="${!a.global and (header == null or !header.groupManaged)}">
                               <button type="button"
-                                      onclick="udxShowEdit('${a.scope}','${a.displayScope}','${a.roleName}',${a.customPermissionsJson},'${a.expiresAt != null ? a.expiresAt : ''}')"
+                                      onclick="udxShowEdit('${a.scope}','${a.displayScope}','${a.roleName}',${a.customPermissionsJson},'${a.expiresAt != null ? a.expiresAt : ''}','${a.accessType}','${a.approverGroup}',${a.maxDurationHours},${a.approvalTimeoutHours})"
                                       class="jenkins-button"
                                       style="font-size:0.78em;padding:3px 10px;">
                                 Edit
@@ -396,6 +403,53 @@
               <div id="udxExpiryHint" style="font-size:0.78em;color:#999;margin-top:4px;">Access will be automatically revoked at end of this day.</div>
             </div>
 
+            <!-- Access Type (only for scoped item assignments) -->
+            <div id="udxAccessTypeSection" style="display:none;margin-bottom:16px;padding:14px 16px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;">
+              <div class="udx-label" style="margin-bottom:10px;">Access Type</div>
+              <div style="display:flex;flex-direction:column;gap:10px;">
+                <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
+                  <input type="radio" name="accessType" value="STANDING" checked="checked"
+                         style="margin-top:3px;" onchange="udxAccessTypeChange('STANDING')"/>
+                  <div>
+                    <div style="font-size:0.9em;font-weight:600;">Standing</div>
+                    <div style="font-size:0.8em;color:#6c757d;margin-top:1px;">Permanent access while the assignment is active.</div>
+                  </div>
+                </label>
+                <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
+                  <input type="radio" name="accessType" value="JIT"
+                         style="margin-top:3px;" onchange="udxAccessTypeChange('JIT')"/>
+                  <div>
+                    <div style="font-size:0.9em;font-weight:600;">JIT (Just-in-Time) &#9889;</div>
+                    <div style="font-size:0.8em;color:#6c757d;margin-top:1px;">User sees the pipeline but cannot build. Must request activation; an approver must approve before access is granted.</div>
+                  </div>
+                </label>
+              </div>
+              <!-- JIT-specific fields -->
+              <div id="udxJitFields" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid #e5e7eb;">
+                <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                  <div style="flex:2;min-width:180px;">
+                    <div class="udx-label">Approver Group / User</div>
+                    <input type="text" name="approverGroup" id="udxApproverGroup"
+                           class="jenkins-input" style="width:100%;"
+                           placeholder="e.g. devops-team or specific-user"/>
+                    <div style="font-size:0.76em;color:#999;margin-top:3px;">Notifications go to all configured channels. This label identifies who is responsible.</div>
+                  </div>
+                  <div style="flex:1;min-width:110px;">
+                    <div class="udx-label">Max Duration (h)</div>
+                    <input type="number" onwheel="this.blur()" name="maxDurationHours" id="udxMaxDuration"
+                           class="jenkins-input" style="width:100%;" value="4" min="1" max="168"/>
+                    <div style="font-size:0.76em;color:#999;margin-top:3px;">Max hours a user can request.</div>
+                  </div>
+                  <div style="flex:1;min-width:110px;">
+                    <div class="udx-label">Approval Timeout (h)</div>
+                    <input type="number" onwheel="this.blur()" name="approvalTimeoutHours" id="udxApprovalTimeout"
+                           class="jenkins-input" style="width:100%;" value="4" min="1" max="48"/>
+                    <div style="font-size:0.76em;color:#999;margin-top:3px;">Hours before pending request auto-denies.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div style="display:flex;gap:10px;">
               <button type="submit" class="jenkins-button jenkins-button--primary"
                       style="font-size:0.85em;">Grant Access</button>
@@ -474,6 +528,48 @@
                      style="padding:7px 10px;border:1.5px solid var(--input-border,#d0d0d0);border-radius:6px;font-size:0.88em;background:var(--input-color,#fff);color:inherit;"
                      onchange="udxUpdateExpiryHint(this.value,'udxEditExpiryHint')"/>
               <div id="udxEditExpiryHint" style="font-size:0.78em;color:#999;margin-top:4px;">Access will be automatically revoked at end of this day.</div>
+            </div>
+
+            <!-- Access Type -->
+            <div style="margin-bottom:16px;padding:14px 16px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;">
+              <div class="udx-label" style="margin-bottom:10px;">Access Type</div>
+              <div style="display:flex;flex-direction:column;gap:10px;">
+                <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
+                  <input type="radio" name="accessType" value="STANDING" id="udxEditAccessTypeStanding"
+                         style="margin-top:3px;" onchange="udxEditAccessTypeChange('STANDING')"/>
+                  <div>
+                    <div style="font-size:0.9em;font-weight:600;">Standing</div>
+                    <div style="font-size:0.8em;color:#6c757d;margin-top:1px;">Permanent access while the assignment is active.</div>
+                  </div>
+                </label>
+                <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
+                  <input type="radio" name="accessType" value="JIT" id="udxEditAccessTypeJit"
+                         style="margin-top:3px;" onchange="udxEditAccessTypeChange('JIT')"/>
+                  <div>
+                    <div style="font-size:0.9em;font-weight:600;">JIT (Just-in-Time) &#9889;</div>
+                    <div style="font-size:0.8em;color:#6c757d;margin-top:1px;">User must request activation and get approved before access is granted.</div>
+                  </div>
+                </label>
+              </div>
+              <div id="udxEditJitFields" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid #e5e7eb;">
+                <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                  <div style="flex:2;min-width:180px;">
+                    <div class="udx-label">Approver Group / User</div>
+                    <input type="text" name="approverGroup" id="udxEditApproverGroup"
+                           class="jenkins-input" style="width:100%;" placeholder="e.g. devops-team"/>
+                  </div>
+                  <div style="flex:1;min-width:110px;">
+                    <div class="udx-label">Max Duration (h)</div>
+                    <input type="number" onwheel="this.blur()" name="maxDurationHours" id="udxEditMaxDuration"
+                           class="jenkins-input" style="width:100%;" value="4" min="1" max="168"/>
+                  </div>
+                  <div style="flex:1;min-width:110px;">
+                    <div class="udx-label">Approval Timeout (h)</div>
+                    <input type="number" onwheel="this.blur()" name="approvalTimeoutHours" id="udxEditApprovalTimeout"
+                           class="jenkins-input" style="width:100%;" value="4" min="1" max="48"/>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div style="display:flex;gap:10px;">
@@ -561,11 +657,16 @@
           document.getElementById('udxAddPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           var sel = document.getElementById('udxRoleSelect');
           if (sel) udxRoleChange(sel.value);
+          // Reset access type to STANDING
+          document.querySelectorAll('input[name="accessType"]').forEach(function(r) {
+            r.checked = r.value === 'STANDING';
+          });
+          udxAccessTypeChange('STANDING');
         }
         function udxHideAdd() {
           document.getElementById('udxAddPanel').style.display = 'none';
         }
-        function udxShowEdit(scope, scopeDisplay, roleId, customPermsArr, expiresAt) {
+        function udxShowEdit(scope, scopeDisplay, roleId, customPermsArr, expiresAt, accessType, approverGroup, maxDuration, approvalTimeout) {
           document.getElementById('udxAddPanel').style.display = 'none';
           document.getElementById('udxEditScope').value = scope;
           document.getElementById('udxEditScopeDisplay').textContent = scopeDisplay || scope;
@@ -587,11 +688,26 @@
           dateInput.value = expiresAt ? expiresAt.substring(0, 10) : '';
           udxUpdateExpiryHint(dateInput.value, 'udxEditExpiryHint');
 
+          // Pre-fill JIT fields
+          var isJit = accessType === 'JIT';
+          document.getElementById('udxEditAccessTypeJit').checked = isJit;
+          document.getElementById('udxEditAccessTypeStanding').checked = !isJit;
+          udxEditAccessTypeChange(accessType || 'STANDING');
+          document.getElementById('udxEditApproverGroup').value = approverGroup || '';
+          document.getElementById('udxEditMaxDuration').value = maxDuration || 4;
+          document.getElementById('udxEditApprovalTimeout').value = approvalTimeout || 4;
+
           document.getElementById('udxEditPanel').style.display = '';
           document.getElementById('udxEditPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
         function udxHideEdit() {
           document.getElementById('udxEditPanel').style.display = 'none';
+        }
+        function udxAccessTypeChange(val) {
+          document.getElementById('udxJitFields').style.display = val === 'JIT' ? '' : 'none';
+        }
+        function udxEditAccessTypeChange(val) {
+          document.getElementById('udxEditJitFields').style.display = val === 'JIT' ? '' : 'none';
         }
         function udxEditRoleChange(val) {
           var picker = document.getElementById('udxEditCustomPerms');
@@ -641,14 +757,20 @@
           var itemDiv    = document.getElementById('udxItemInput');
           var scopeVal   = document.getElementById('udxScopeValue');
           var globalHid  = document.getElementById('udxScopeGlobal');
+          var atSection  = document.getElementById('udxAccessTypeSection');
           if (val === 'item') {
             itemDiv.style.display = '';
             scopeVal.setAttribute('name', 'scope');
             globalHid.removeAttribute('name');
+            if (atSection) atSection.style.display = '';
           } else {
             itemDiv.style.display = 'none';
             globalHid.setAttribute('name', 'scope');
             scopeVal.removeAttribute('name');
+            if (atSection) atSection.style.display = 'none';
+            // Reset to STANDING when switching to global
+            document.querySelectorAll('input[name="accessType"]').forEach(function(r) { r.checked = r.value === 'STANDING'; });
+            udxAccessTypeChange('STANDING');
           }
         }
 

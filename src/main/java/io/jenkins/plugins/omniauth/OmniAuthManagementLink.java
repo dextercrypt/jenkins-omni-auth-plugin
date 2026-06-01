@@ -2552,6 +2552,10 @@ public class OmniAuthManagementLink extends ManagementLink {
                         a.getRoleId(), new ArrayList<>(perms),
                         a.getExpiresAt(), new ArrayList<>(customPerms));
                 if (reviewThreshold > 0) info.setReviewDue(a.isReviewDue(reviewThreshold));
+                info.setAccessType(a.getAccessType());
+                info.setApproverGroup(a.getApproverGroup());
+                info.setMaxDurationHours(a.getMaxDurationHours());
+                info.setApprovalTimeoutHours(a.getApprovalTimeoutHours());
                 result.add(info);
             }
         }
@@ -2610,6 +2614,7 @@ public class OmniAuthManagementLink extends ManagementLink {
             OmniAuthAssignment assignment = new OmniAuthAssignment(
                     sid, authTypeStr, roleName, scope, scopeType, customPerms, grantedAt, grantedBy);
             assignment.setExpiresAt(expiresAt);
+            applyJitFieldsFromRequest(req, assignment);
             OmniAuthAssignmentConfig config = OmniAuthAssignmentConfig.get();
             if (config != null) config.addAssignment(assignment);
             // Ensure user can log in — Hudson.Read at global is required for any access
@@ -2617,6 +2622,19 @@ public class OmniAuthManagementLink extends ManagementLink {
             OmniAuthAuditLog audit = OmniAuthAuditLog.get();
             if (audit != null) audit.logGrant(Jenkins.getAuthentication2().getName(), sid, roleName, scope, expiresAt);
             rsp.sendRedirect(detailUrl(sid, atype, "saved=true"));
+        }
+    }
+
+    private static void applyJitFieldsFromRequest(StaplerRequest req, OmniAuthAssignment assignment) {
+        String accessType = req.getParameter("accessType");
+        if ("JIT".equalsIgnoreCase(accessType)) {
+            assignment.setAccessType("JIT");
+            String approverGroup = req.getParameter("approverGroup");
+            if (approverGroup != null) assignment.setApproverGroup(approverGroup.trim());
+            try { assignment.setMaxDurationHours(Integer.parseInt(req.getParameter("maxDurationHours"))); } catch (Exception ignore) {}
+            try { assignment.setApprovalTimeoutHours(Integer.parseInt(req.getParameter("approvalTimeoutHours"))); } catch (Exception ignore) {}
+        } else {
+            assignment.setAccessType("STANDING");
         }
     }
 
@@ -2673,6 +2691,7 @@ public class OmniAuthManagementLink extends ManagementLink {
                 java.time.Instant.now().toString(),
                 Jenkins.getAuthentication2().getName());
         updated.setExpiresAt(expiresAt);
+        applyJitFieldsFromRequest(req, updated);
 
         OmniAuthAssignmentConfig config = OmniAuthAssignmentConfig.get();
         String oldRole = null;
@@ -4376,10 +4395,24 @@ public class OmniAuthManagementLink extends ManagementLink {
         public String getExpiresAt()                 { return expiresAt; }
         public List<String> getCustomPermissions()   { return customPermissions; }
         private boolean reviewDue = false;
+        private String accessType;
+        private String approverGroup;
+        private int maxDurationHours;
+        private int approvalTimeoutHours;
+
         public boolean isGlobal()                    { return scope == null || scope.isEmpty(); }
         public int getPermissionCount()              { return permissionIds != null ? permissionIds.size() : 0; }
         public boolean isReviewDue()                 { return reviewDue; }
         public void setReviewDue(boolean v)          { this.reviewDue = v; }
+        public String getAccessType()                { return accessType != null ? accessType : "STANDING"; }
+        public void setAccessType(String v)          { this.accessType = v; }
+        public boolean isJit()                       { return "JIT".equalsIgnoreCase(accessType); }
+        public String getApproverGroup()             { return approverGroup != null ? approverGroup : ""; }
+        public void setApproverGroup(String v)       { this.approverGroup = v; }
+        public int getMaxDurationHours()             { return maxDurationHours > 0 ? maxDurationHours : 4; }
+        public void setMaxDurationHours(int v)       { this.maxDurationHours = v; }
+        public int getApprovalTimeoutHours()         { return approvalTimeoutHours > 0 ? approvalTimeoutHours : 4; }
+        public void setApprovalTimeoutHours(int v)   { this.approvalTimeoutHours = v; }
 
         public String getCustomPermissionsJson() {
             if (customPermissions == null || customPermissions.isEmpty()) return "[]";
