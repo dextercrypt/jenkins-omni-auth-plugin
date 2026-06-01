@@ -427,16 +427,18 @@
               <!-- JIT-specific fields -->
               <div id="udxJitFields" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid #e5e7eb;">
                 <div style="display:flex;gap:16px;flex-wrap:wrap;">
-                  <div style="flex:2;min-width:180px;position:relative;">
+                  <div style="flex:2;min-width:180px;">
                     <div class="udx-label">Approver Group / User</div>
-                    <input type="text" id="udxApproverGroupDisplay"
-                           class="jenkins-input" style="width:100%;"
-                           placeholder="Search users or type a group name…"
-                           autocomplete="off"
-                           oninput="udxApproverSearch(this.value,'udxApproverGroup','udxApproverDrop')"
-                           onblur="setTimeout(function(){document.getElementById('udxApproverDrop').style.display='none'},150)"/>
+                    <div style="position:relative;">
+                      <input type="text" id="udxApproverGroupDisplay"
+                             class="jenkins-input" style="width:100%;box-sizing:border-box;"
+                             placeholder="Search users or type a group name…"
+                             autocomplete="off"
+                             oninput="udxApproverSearch(this.value,'udxApproverGroup','udxApproverDrop')"
+                             onblur="setTimeout(function(){document.getElementById('udxApproverDrop').style.display='none'},150)"/>
+                      <div id="udxApproverDrop" class="udx-suggest-drop" style="display:none;"></div>
+                    </div>
                     <input type="hidden" name="approverGroup" id="udxApproverGroup" value=""/>
-                    <div id="udxApproverDrop" class="udx-suggest-drop" style="display:none;"></div>
                     <div style="font-size:0.76em;color:#999;margin-top:3px;">Notifications go to all configured channels. This label identifies who is responsible.</div>
                   </div>
                   <div style="flex:1;min-width:110px;">
@@ -558,16 +560,18 @@
               </div>
               <div id="udxEditJitFields" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid #e5e7eb;">
                 <div style="display:flex;gap:16px;flex-wrap:wrap;">
-                  <div style="flex:2;min-width:180px;position:relative;">
+                  <div style="flex:2;min-width:180px;">
                     <div class="udx-label">Approver Group / User</div>
-                    <input type="text" id="udxEditApproverGroupDisplay"
-                           class="jenkins-input" style="width:100%;"
-                           placeholder="Search users or type a group name…"
-                           autocomplete="off"
-                           oninput="udxApproverSearch(this.value,'udxEditApproverGroup','udxEditApproverDrop')"
-                           onblur="setTimeout(function(){document.getElementById('udxEditApproverDrop').style.display='none'},150)"/>
+                    <div style="position:relative;">
+                      <input type="text" id="udxEditApproverGroupDisplay"
+                             class="jenkins-input" style="width:100%;box-sizing:border-box;"
+                             placeholder="Search users or type a group name…"
+                             autocomplete="off"
+                             oninput="udxApproverSearch(this.value,'udxEditApproverGroup','udxEditApproverDrop')"
+                             onblur="setTimeout(function(){document.getElementById('udxEditApproverDrop').style.display='none'},150)"/>
+                      <div id="udxEditApproverDrop" class="udx-suggest-drop" style="display:none;"></div>
+                    </div>
                     <input type="hidden" name="approverGroup" id="udxEditApproverGroup" value=""/>
-                    <div id="udxEditApproverDrop" class="udx-suggest-drop" style="display:none;"></div>
                   </div>
                   <div style="flex:1;min-width:110px;">
                     <div class="udx-label">Max Duration (h)</div>
@@ -617,9 +621,9 @@
           background:#fff3cd; color:#856404; border:1px solid #ffc107; white-space:nowrap;
         }
         .udx-suggest-drop {
-          position:absolute; top:calc(100% - 18px); left:0; right:0; z-index:999;
+          position:absolute; top:100%; left:0; right:0; z-index:9990;
           background:#fff; border:1.5px solid #1a73e8; border-top:none;
-          border-radius:0 0 8px 8px; box-shadow:0 6px 20px rgba(0,0,0,0.12);
+          border-radius:0 0 8px 8px; box-shadow:0 6px 20px rgba(0,0,0,0.14);
           max-height:220px; overflow-y:auto;
         }
         .udx-suggest-row {
@@ -737,6 +741,7 @@
 
         // ── Approver typeahead ───────────────────────────────────────────────
         var udxApproverXhr = null;
+        var udxSuggestBase = '${rootURL}/manage/omniauth-management/suggestApprovers';
         function udxApproverSearch(q, hiddenId, dropId) {
           var hidden = document.getElementById(hiddenId);
           var drop   = document.getElementById(dropId);
@@ -745,7 +750,7 @@
           if (!q.trim()) { drop.style.display = 'none'; return; }
           if (udxApproverXhr) udxApproverXhr.abort();
           udxApproverXhr = new XMLHttpRequest();
-          var url = window.location.pathname.replace(/\/userDetail.*/, '/suggestApprovers') + '?q=' + encodeURIComponent(q);
+          var url = udxSuggestBase + '?q=' + encodeURIComponent(q);
           udxApproverXhr.open('GET', url, true);
           udxApproverXhr.onload = function() {
             if (udxApproverXhr.status !== 200) { drop.style.display = 'none'; return; }
