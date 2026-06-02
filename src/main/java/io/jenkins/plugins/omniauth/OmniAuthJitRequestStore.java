@@ -80,30 +80,6 @@ public class OmniAuthJitRequestStore extends GlobalConfiguration {
         return sorted.stream().limit(limit).collect(Collectors.toList());
     }
 
-    public synchronized boolean approve(String requestId, String approverId) {
-        OmniAuthJitRequest r = findById(requestId);
-        if (r == null || !r.isPending()) return false;
-        r.setStatus(OmniAuthJitRequest.STATUS_ACTIVE);
-        r.setApproverId(approverId);
-        r.setApprovedAt(java.time.Instant.now().toString());
-        r.setExpiresAt(java.time.Instant.now()
-                .plus(r.getRequestedDurationHours(), java.time.temporal.ChronoUnit.HOURS)
-                .toString());
-        save();
-        OmniAuthAuthorizationStrategy.invalidateCache();
-        return true;
-    }
-
-    public synchronized boolean deny(String requestId, String approverId, String comment) {
-        OmniAuthJitRequest r = findById(requestId);
-        if (r == null || !r.isPending()) return false;
-        r.setStatus(OmniAuthJitRequest.STATUS_DENIED);
-        r.setApproverId(approverId);
-        if (comment != null && !comment.isBlank()) r.setApproverComment(comment);
-        save();
-        return true;
-    }
-
     public synchronized boolean cancel(String requestId, String requesterId) {
         OmniAuthJitRequest r = findById(requestId);
         if (r == null || !r.isPending()) return false;
@@ -123,22 +99,147 @@ public class OmniAuthJitRequestStore extends GlobalConfiguration {
         return true;
     }
 
-    /** Transitions timed-out PENDING and expired ACTIVE requests. Returns count changed. */
-    public synchronized int processExpiredAndTimedOut() {
-        int count = 0;
+    /** Removes terminal requests older than retentionDays. Returns count purged. */
+    public synchronized int purgeOldRecords(int retentionDays) {
+        if (retentionDays <= 0) return 0;
+        java.time.Instant cutoff = java.time.Instant.now()
+                .minus(retentionDays, java.time.temporal.ChronoUnit.DAYS);
+        List<OmniAuthJitRequest> toRemove = requests.stream()
+                .filter(r -> isTerminalStatus(r.getStatus()) && isOlderThan(r.getRequestedAt(), cutoff))
+                .collect(Collectors.toList());
+        if (toRemove.isEmpty()) return 0;
+        requests.removeAll(toRemove);
+        save();
+        return toRemove.size();
+    }
+
+    private static boolean isTerminalStatus(String status) {
+        return OmniAuthJitRequest.STATUS_EXPIRED.equals(status)
+                || OmniAuthJitRequest.STATUS_REVOKED.equals(status)
+                || OmniAuthJitRequest.STATUS_DENIED.equals(status)
+                || OmniAuthJitRequest.STATUS_TIMED_OUT.equals(status)
+                || OmniAuthJitRequest.STATUS_CANCELLED.equals(status);
+    }
+
+    private static boolean isOlderThan(String requestedAt, java.time.Instant cutoff) {
+        if (requestedAt == null || requestedAt.isBlank()) return false;
+        try { return java.time.Instant.parse(requestedAt).isBefore(cutoff); }
+        catch (Exception e) { return false; }
+    }
+
+    /** Transitions timed-out PENDING and expired ACTIVE requests. Returns the transitioned requests. */
+    public synchronized List<OmniAuthJitRequest> processExpiredAndTimedOut() {
+        List<OmniAuthJitRequest> transitioned = new ArrayList<>();
         for (OmniAuthJitRequest r : requests) {
             if (r.isTimedOut()) {
                 r.setStatus(OmniAuthJitRequest.STATUS_TIMED_OUT);
-                count++;
+                transitioned.add(r);
             } else if (r.isExpiredActive()) {
                 r.setStatus(OmniAuthJitRequest.STATUS_EXPIRED);
-                count++;
+                transitioned.add(r);
             }
         }
-        if (count > 0) {
+        if (!transitioned.isEmpty()) {
             save();
             OmniAuthAuthorizationStrategy.invalidateCache();
         }
-        return count;
+        return transitioned;
+    }
+
+    // ── Per-approver action methods ──────────────────────────────────────────
+
+    /** Returns the most recent request for this user+scope regardless of status, or null. */
+    public OmniAuthJitRequest findLastRequestForUser(String userId, String scope) {
+        return requests.stream()
+                .filter(r -> r.getRequesterId().equals(userId) && r.getScope().equals(scope))
+                .max(java.util.Comparator.comparing(r -> r.getRequestedAt() != null ? r.getRequestedAt() : ""))
+                .orElse(null);
+    }
+
+    public OmniAuthJitRequest findByToken(String token) {
+        if (token == null) return null;
+        return requests.stream()
+                .filter(r -> r.findEntryByToken(token) != null)
+                .findFirst().orElse(null);
+    }
+
+    public enum ActionResult { TOKEN_NOT_FOUND, ALREADY_PROCESSED, PARTIAL_APPROVED, ALL_APPROVED, DENIED }
+
+    public synchronized ActionResult processApproverAction(String token, String decision, String remarks) {
+        OmniAuthJitRequest r = findByToken(token);
+        if (r == null) return ActionResult.TOKEN_NOT_FOUND;
+        if (!r.isPending()) return ActionResult.ALREADY_PROCESSED;
+
+        OmniAuthJitRequest.ApprovalEntry entry = r.findEntryByToken(token);
+        if (entry == null || !entry.isPending()) return ActionResult.ALREADY_PROCESSED;
+
+        entry.setDecision(decision);
+        entry.setRemarks(remarks != null ? remarks : "");
+        entry.setDecidedAt(java.time.Instant.now().toString());
+
+        if ("DENIED".equals(decision)) {
+            r.setStatus(OmniAuthJitRequest.STATUS_DENIED);
+            r.setApproverId(entry.getApproverIdentity());
+            if (remarks != null && !remarks.isBlank()) r.setApproverComment(remarks);
+            save();
+            OmniAuthAuthorizationStrategy.invalidateCache();
+            return ActionResult.DENIED;
+        }
+
+        if (r.isFullyApproved()) {
+            r.setStatus(OmniAuthJitRequest.STATUS_ACTIVE);
+            r.setApprovedAt(java.time.Instant.now().toString());
+            r.setExpiresAt(java.time.Instant.now()
+                    .plus(r.getRequestedDurationHours(), java.time.temporal.ChronoUnit.HOURS).toString());
+            r.setApproverId(entry.getApproverIdentity());
+            save();
+            OmniAuthAuthorizationStrategy.invalidateCache();
+            return ActionResult.ALL_APPROVED;
+        }
+
+        save();
+        return ActionResult.PARTIAL_APPROVED;
+    }
+
+    /** Admin approves via Jenkins page — only works if approverId is a listed approver. Returns true if went ACTIVE. */
+    public synchronized boolean approveAsApprover(String requestId, String approverId) {
+        OmniAuthJitRequest r = findById(requestId);
+        if (r == null || !r.isPending()) return false;
+        OmniAuthJitRequest.ApprovalEntry entry = r.findPendingEntryByIdentity(approverId);
+        if (entry == null) return false;
+
+        entry.setDecision("APPROVED");
+        entry.setDecidedAt(java.time.Instant.now().toString());
+
+        if (r.isFullyApproved()) {
+            r.setStatus(OmniAuthJitRequest.STATUS_ACTIVE);
+            r.setApprovedAt(java.time.Instant.now().toString());
+            r.setExpiresAt(java.time.Instant.now()
+                    .plus(r.getRequestedDurationHours(), java.time.temporal.ChronoUnit.HOURS).toString());
+            r.setApproverId(approverId);
+            save();
+            OmniAuthAuthorizationStrategy.invalidateCache();
+            return true;
+        }
+        save();
+        return false;
+    }
+
+    /** Admin denies via Jenkins page — only works if approverId is a listed approver. */
+    public synchronized boolean denyAsApprover(String requestId, String approverId, String comment) {
+        OmniAuthJitRequest r = findById(requestId);
+        if (r == null || !r.isPending()) return false;
+        OmniAuthJitRequest.ApprovalEntry entry = r.findPendingEntryByIdentity(approverId);
+        if (entry == null) return false;
+
+        entry.setDecision("DENIED");
+        entry.setRemarks(comment != null ? comment : "");
+        entry.setDecidedAt(java.time.Instant.now().toString());
+        r.setStatus(OmniAuthJitRequest.STATUS_DENIED);
+        r.setApproverId(approverId);
+        if (comment != null && !comment.isBlank()) r.setApproverComment(comment);
+        save();
+        OmniAuthAuthorizationStrategy.invalidateCache();
+        return true;
     }
 }

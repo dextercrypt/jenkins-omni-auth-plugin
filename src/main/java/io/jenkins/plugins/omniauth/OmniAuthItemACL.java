@@ -71,7 +71,6 @@ public class OmniAuthItemACL extends ACL {
                         config.getAssignmentsForUser(group.getObjectId(), "GROUP");
                 for (OmniAuthAssignment assignment : groupAssignments) {
                     if (assignment.isExpired()) continue;
-                    // GROUP assignments always use standing behavior — JIT is USER-only
                     Set<String> granted = computeGrantedPermissions(assignment, roleConfig, userId);
                     if (impliedBy(granted, permission)) return true;
                 }
@@ -115,7 +114,11 @@ public class OmniAuthItemACL extends ACL {
                 return resolvePermissions(assignment, roleConfig, userId, scope);
             }
             if (scope.startsWith(itemFullName + "/")) {
-                return NAV_PERMISSIONS;
+                // Jenkins delegates WorkflowJob ACL to its parent folder — so permission checks
+                // for the pipeline itself arrive here as a check on the parent folder.
+                // For STANDING: grant full permissions so the pipeline's Build button works.
+                // For JIT: grant full permissions only when there's an active request.
+                return resolvePermissions(assignment, roleConfig, userId, scope);
             }
         }
 

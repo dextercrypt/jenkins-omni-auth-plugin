@@ -62,6 +62,9 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     private boolean accessReviewEnabled       = false;
     private int     accessReviewThresholdDays = 90;
 
+    // ── JIT history retention ─────────────────────────────────────────────────
+    private int jitHistoryRetentionDays = 90;
+
     // ── Notification branding ─────────────────────────────────────────────────
     private String notificationLogoUrl  = "";
     private String notificationFooterNote = "";
@@ -130,6 +133,10 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     public String  getSlackWebhookUrl()     { return slackWebhookUrl; }
     public boolean isTeamsEnabled()         { return teamsEnabled; }
     public String  getTeamsWebhookUrl()     { return teamsWebhookUrl; }
+
+    // JIT history retention
+    public int getJitHistoryRetentionDays() { return jitHistoryRetentionDays > 0 ? jitHistoryRetentionDays : 90; }
+    public void setJitHistoryRetentionDays(int v) { this.jitHistoryRetentionDays = v > 0 ? v : 90; }
 
     // Brute force
     public int getBruteForceThreshold() { return bruteForceThreshold; }

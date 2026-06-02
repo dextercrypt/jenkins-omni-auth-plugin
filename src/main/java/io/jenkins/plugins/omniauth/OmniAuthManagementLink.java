@@ -1152,14 +1152,19 @@ public class OmniAuthManagementLink extends ManagementLink {
         String approver = Jenkins.getAuthentication2().getName();
         OmniAuthJitRequestStore store = OmniAuthJitRequestStore.get();
         OmniAuthJitRequest jitReq = store != null ? store.findById(requestId) : null;
-        if (jitReq != null && store.approve(requestId, approver)) {
-            OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+        if (jitReq == null) { rsp.sendRedirect("jitRequests"); return; }
+
+        boolean wentActive = store.approveAsApprover(requestId, approver);
+        OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        if (wentActive) {
             if (audit != null) audit.logJitApproved(approver, jitReq.getRequesterId(),
                     jitReq.getScope(), jitReq.getRequestedDurationHours());
-            OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
             NotificationService.sendJitApproved(cfg, jitReq);
+            rsp.sendRedirect("jitRequests?approved=true");
+        } else {
+            rsp.sendRedirect("jitRequests?partialApproved=true");
         }
-        rsp.sendRedirect("jitRequests?approved=true");
     }
 
     @POST
@@ -1171,7 +1176,9 @@ public class OmniAuthManagementLink extends ManagementLink {
         String approver = Jenkins.getAuthentication2().getName();
         OmniAuthJitRequestStore store = OmniAuthJitRequestStore.get();
         OmniAuthJitRequest jitReq = store != null ? store.findById(requestId) : null;
-        if (jitReq != null && store.deny(requestId, approver, comment)) {
+        if (jitReq == null) { rsp.sendRedirect("jitRequests"); return; }
+
+        if (store.denyAsApprover(requestId, approver, comment)) {
             OmniAuthAuditLog audit = OmniAuthAuditLog.get();
             if (audit != null) audit.logJitDenied(approver, jitReq.getRequesterId(),
                     jitReq.getScope(), comment);
@@ -1179,6 +1186,10 @@ public class OmniAuthManagementLink extends ManagementLink {
             NotificationService.sendJitDenied(cfg, jitReq);
         }
         rsp.sendRedirect("jitRequests?denied=true");
+    }
+
+    public String getCurrentUserId() {
+        try { return Jenkins.getAuthentication2().getName(); } catch (Exception e) { return ""; }
     }
 
     @POST
@@ -2615,6 +2626,9 @@ public class OmniAuthManagementLink extends ManagementLink {
                     sid, authTypeStr, roleName, scope, scopeType, customPerms, grantedAt, grantedBy);
             assignment.setExpiresAt(expiresAt);
             applyJitFieldsFromRequest(req, assignment);
+            if (assignment.isJit() && assignment.getApprovers().size() < 2) {
+                rsp.sendRedirect(detailUrl(sid, atype, "error=jitMinApprovers")); return;
+            }
             OmniAuthAssignmentConfig config = OmniAuthAssignmentConfig.get();
             if (config != null) config.addAssignment(assignment);
             // Ensure user can log in — Hudson.Read at global is required for any access
@@ -2679,8 +2693,13 @@ public class OmniAuthManagementLink extends ManagementLink {
         String accessType = req.getParameter("accessType");
         if ("JIT".equalsIgnoreCase(accessType)) {
             assignment.setAccessType("JIT");
-            String approverGroup = req.getParameter("approverGroup");
-            if (approverGroup != null) assignment.setApproverGroup(approverGroup.trim());
+            String approversParam = req.getParameter("approvers");
+            if (approversParam != null && !approversParam.isBlank()) {
+                java.util.List<String> approvers = java.util.Arrays.stream(approversParam.split(","))
+                        .map(String::trim).filter(s -> !s.isEmpty())
+                        .collect(java.util.stream.Collectors.toList());
+                assignment.setApprovers(approvers);
+            }
             try { assignment.setMaxDurationHours(Integer.parseInt(req.getParameter("maxDurationHours"))); } catch (Exception ignore) {}
             try { assignment.setApprovalTimeoutHours(Integer.parseInt(req.getParameter("approvalTimeoutHours"))); } catch (Exception ignore) {}
         } else {
@@ -2742,6 +2761,9 @@ public class OmniAuthManagementLink extends ManagementLink {
                 Jenkins.getAuthentication2().getName());
         updated.setExpiresAt(expiresAt);
         applyJitFieldsFromRequest(req, updated);
+        if (updated.isJit() && updated.getApprovers().size() < 2) {
+            rsp.sendRedirect(detailUrl(sid, atype, "error=jitMinApprovers")); return;
+        }
 
         OmniAuthAssignmentConfig config = OmniAuthAssignmentConfig.get();
         String oldRole = null;

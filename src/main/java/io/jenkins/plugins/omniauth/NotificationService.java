@@ -246,24 +246,64 @@ public class NotificationService {
 
     public static void sendJitRequested(OmniAuthGlobalConfig cfg,
                                          OmniAuthJitRequest req, String approverGroup) {
+        // Slack / Teams broadcast — single message to webhook
         if (cfg == null) return;
         String subject = "[Jenkins OmniAuth] JIT Request — " + req.getRequesterId()
                 + " wants access to " + req.getScope();
+        String plain = "OmniAuth JIT Access Request\n"
+                + "===========================\n\n"
+                + "Requested by:  " + req.getRequesterId() + "\n"
+                + "Pipeline:      " + req.getScope() + "\n"
+                + "Duration:      " + req.getRequestedDurationHours() + " hour(s)\n"
+                + "Reason: " + req.getReason() + "\n\n"
+                + "Waiting for " + req.getTotalApprovers() + " approver(s).\n"
+                + ctaLine("Open JIT Requests", "jitRequests")
+                + "\n---\nJenkins OmniAuth Plugin";
+        if (cfg.isNotificationsEnabled()) {
+            if (cfg.isSlackEvent("jitRequest")) SlackHelper.send(cfg, subject, plain);
+            if (cfg.isTeamsEvent("jitRequest")) TeamsHelper.send(cfg, subject, plain);
+        }
+    }
 
+    /** Sends a per-approver action email with their unique Take Action link. */
+    public static void sendJitApproverRequest(OmniAuthGlobalConfig cfg,
+                                               OmniAuthJitRequest req,
+                                               OmniAuthJitRequest.ApprovalEntry entry) {
+        if (cfg == null || !cfg.isNotificationsEnabled() || !cfg.isSmtpEnabled()) return;
+        String actionUrl = rootUrl() + "/omniauth-jit/action?token=" + entry.getToken();
+        String subject = "[Action Required] JIT Access Request — " + req.getRequesterId()
+                + " → " + req.getScope();
+        String plain = "JIT Access Request\n"
+                + "==================\n\n"
+                + "Requested by: " + req.getRequesterId() + "\n"
+                + "Pipeline:     " + req.getScope() + "\n"
+                + "Duration:     " + req.getRequestedDurationHours() + " hour(s)\n"
+                + "Reason:       " + req.getReason() + "\n\n"
+                + "Take action: " + actionUrl + "\n"
+                + "This link is unique to you and expires when the approval window closes.\n"
+                + "\n---\nJenkins OmniAuth Plugin";
+        SmtpHelper.sendTo(cfg, entry.getApproverIdentity(), subject,
+                SmtpHelper.buildJitApproverRequestHtml(cfg, req, entry.getApproverIdentity(), actionUrl),
+                plain);
+    }
+
+    /** Sent to requester when their JIT request timed out but had partial approvals. */
+    public static void sendJitTimedOutPartial(OmniAuthGlobalConfig cfg, OmniAuthJitRequest req) {
+        if (cfg == null) return;
+        String subject = "[Jenkins OmniAuth] JIT Request Timed Out — " + req.getScope();
         StringBuilder plain = new StringBuilder();
-        plain.append("OmniAuth JIT Access Request\n")
-             .append("===========================\n\n")
-             .append("Requested by:  ").append(req.getRequesterId()).append("\n")
-             .append("Pipeline:      ").append(req.getScope()).append("\n")
-             .append("Duration:      ").append(req.getRequestedDurationHours()).append(" hour(s)\n")
-             .append("Approver:      ").append(approverGroup.isEmpty() ? "(any admin)" : approverGroup).append("\n\n")
-             .append("Reason\n------\n").append(req.getReason()).append("\n\n")
-             .append("Approve or deny from OmniAuth Management → JIT Requests.\n")
-             .append(ctaLine("Open JIT Requests", "jitRequests"))
+        plain.append("OmniAuth JIT Request Timed Out\n")
+             .append("==============================\n\n")
+             .append("Your JIT request for ").append(req.getScope()).append(" has timed out.\n\n")
+             .append("Approval status:\n");
+        for (OmniAuthJitRequest.ApprovalEntry e : req.getApprovalEntries()) {
+            plain.append("  ").append(e.getApproverIdentity())
+                 .append(": ").append(e.isApproved() ? "Approved" : "Did not respond").append("\n");
+        }
+        plain.append("\nSubmit a new request if you still need access.\n")
              .append("\n---\nJenkins OmniAuth Plugin");
-
-        dispatch(cfg, "jitRequest", subject, plain.toString(),
-                SmtpHelper.buildJitRequestedHtml(cfg, req, approverGroup));
+        dispatch(cfg, "jitDenied", subject, plain.toString(),
+                SmtpHelper.buildJitTimedOutPartialHtml(cfg, req));
     }
 
     // -------------------------------------------------------------------------

@@ -1,8 +1,44 @@
 package io.jenkins.plugins.omniauth;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 public class OmniAuthJitRequest {
+
+    // ── Approval entry — one per named approver, XStream-serializable ────────
+
+    public static class ApprovalEntry {
+        private String approverIdentity; // email or Jenkins username
+        private String token;            // unique UUID — used in the email action link
+        private String decision;         // null = pending, "APPROVED", "DENIED"
+        private String remarks;
+        private String decidedAt;        // ISO-8601 UTC
+
+        public ApprovalEntry() {}
+
+        public static ApprovalEntry create(String approverIdentity) {
+            ApprovalEntry e = new ApprovalEntry();
+            e.approverIdentity = approverIdentity != null ? approverIdentity.trim() : "";
+            e.token = UUID.randomUUID().toString();
+            return e;
+        }
+
+        public String getApproverIdentity() { return approverIdentity != null ? approverIdentity : ""; }
+        public void   setApproverIdentity(String v) { this.approverIdentity = v; }
+        public String getToken()            { return token != null ? token : ""; }
+        public void   setToken(String v)    { this.token = v; }
+        public String getDecision()         { return decision; }
+        public void   setDecision(String v) { this.decision = v; }
+        public String getRemarks()          { return remarks != null ? remarks : ""; }
+        public void   setRemarks(String v)  { this.remarks = v; }
+        public String getDecidedAt()        { return decidedAt != null ? decidedAt : ""; }
+        public void   setDecidedAt(String v){ this.decidedAt = v; }
+
+        public boolean isPending()  { return decision == null; }
+        public boolean isApproved() { return "APPROVED".equals(decision); }
+        public boolean isDenied()   { return "DENIED".equals(decision); }
+    }
 
     public static final String STATUS_PENDING   = "PENDING";
     public static final String STATUS_ACTIVE    = "ACTIVE";
@@ -14,6 +50,7 @@ public class OmniAuthJitRequest {
 
     private String requestId;
     private String requesterId;
+
     private String scope;
     private String reason;
     private int    requestedDurationHours;
@@ -24,6 +61,7 @@ public class OmniAuthJitRequest {
     private String approverComment;
     private String expiresAt;
     private String approvalDeadline;
+    private List<ApprovalEntry> approvalEntries = new ArrayList<>();
 
     public OmniAuthJitRequest() {}
 
@@ -80,6 +118,57 @@ public class OmniAuthJitRequest {
 
     public String getApprovalDeadline()      { return approvalDeadline; }
     public void   setApprovalDeadline(String v) { this.approvalDeadline = v; }
+
+    // ── Approval entries ─────────────────────────────────────────────────────
+
+    public List<ApprovalEntry> getApprovalEntries() {
+        return approvalEntries != null ? approvalEntries : new ArrayList<>();
+    }
+    public void setApprovalEntries(List<ApprovalEntry> v) {
+        this.approvalEntries = v != null ? v : new ArrayList<>();
+    }
+
+    public void initApprovalEntries(List<String> approvers) {
+        this.approvalEntries = new ArrayList<>();
+        for (String a : approvers) {
+            approvalEntries.add(ApprovalEntry.create(a));
+        }
+    }
+
+    public ApprovalEntry findEntryByToken(String token) {
+        if (token == null) return null;
+        for (ApprovalEntry e : getApprovalEntries()) {
+            if (token.equals(e.getToken())) return e;
+        }
+        return null;
+    }
+
+    public ApprovalEntry findPendingEntryByIdentity(String identity) {
+        if (identity == null) return null;
+        for (ApprovalEntry e : getApprovalEntries()) {
+            if (identity.equals(e.getApproverIdentity()) && e.isPending()) return e;
+        }
+        return null;
+    }
+
+    public boolean isFullyApproved() {
+        List<ApprovalEntry> entries = getApprovalEntries();
+        if (entries.isEmpty()) return false;
+        return entries.stream().allMatch(ApprovalEntry::isApproved);
+    }
+
+    public int getApprovedCount() {
+        return (int) getApprovalEntries().stream().filter(ApprovalEntry::isApproved).count();
+    }
+
+    public int getTotalApprovers() { return getApprovalEntries().size(); }
+
+    /** True if userId has a pending (not yet decided) entry in the approvers list. */
+    public boolean isCurrentUserApprover(String userId) {
+        if (userId == null) return false;
+        return getApprovalEntries().stream()
+                .anyMatch(e -> e.isPending() && e.getApproverIdentity().equals(userId));
+    }
 
     // ── State checks ────────────────────────────────────────────────────────
 

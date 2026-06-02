@@ -30,6 +30,49 @@ import java.util.Enumeration;
 @Extension
 public class OmniAuthPageDecorator {
 
+    // ── SVG icon constants (currentColor, used in injected scripts and action page) ────────────
+    // All use double-quoted attributes — safe to embed in JS single-quoted strings.
+
+    private static final String SVG_BOLT =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 20 20\" fill=\"currentColor\""
+        + " width=\"16\" height=\"16\" style=\"vertical-align:middle;flex-shrink:0;\">"
+        + "<path fill-rule=\"evenodd\" d=\"M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10"
+        + "A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z\" clip-rule=\"evenodd\"/></svg>";
+
+    private static final String SVG_CHECK =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 20 20\" fill=\"currentColor\""
+        + " width=\"16\" height=\"16\" style=\"vertical-align:middle;flex-shrink:0;\">"
+        + "<path fill-rule=\"evenodd\" d=\"M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0"
+        + "l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z\" clip-rule=\"evenodd\"/></svg>";
+
+    private static final String SVG_CLOCK =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 20 20\" fill=\"currentColor\""
+        + " width=\"16\" height=\"16\" style=\"vertical-align:middle;flex-shrink:0;\">"
+        + "<path fill-rule=\"evenodd\" d=\"M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4"
+        + "a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z\" clip-rule=\"evenodd\"/></svg>";
+
+    // Smaller variants for table cells
+    private static final String SVG_CHECK_CIRCLE_SM =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 20 20\" fill=\"currentColor\""
+        + " width=\"14\" height=\"14\" style=\"vertical-align:middle;flex-shrink:0;\">"
+        + "<path fill-rule=\"evenodd\" d=\"M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0"
+        + " 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z\""
+        + " clip-rule=\"evenodd\"/></svg>";
+
+    private static final String SVG_X_CIRCLE_SM =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 20 20\" fill=\"currentColor\""
+        + " width=\"14\" height=\"14\" style=\"vertical-align:middle;flex-shrink:0;\">"
+        + "<path fill-rule=\"evenodd\" d=\"M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0"
+        + " 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0"
+        + " 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z\""
+        + " clip-rule=\"evenodd\"/></svg>";
+
+    private static final String SVG_CLOCK_SM =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 20 20\" fill=\"currentColor\""
+        + " width=\"14\" height=\"14\" style=\"vertical-align:middle;flex-shrink:0;\">"
+        + "<path fill-rule=\"evenodd\" d=\"M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4"
+        + "a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z\" clip-rule=\"evenodd\"/></svg>";
+
     // Injected on job/folder Configure pages — grays out the per-item matrix section
     private static final String JOB_CONFIGURE_SCRIPT =
         "<script>(function(){" +
@@ -234,6 +277,8 @@ public class OmniAuthPageDecorator {
         "var jobPath=extractJobPath(window.location.pathname);" +
         "if(!jobPath)return;" +
         "var base=window.location.href.split('/job/')[0];" +
+        "var _prevJitStatus=null;" +
+        "var _pendingPoll=null;" +
         "function fetchStatus(){" +
           "fetch(base+'/omniauth-jit/status?job='+encodeURIComponent(jobPath),{credentials:'same-origin'})" +
           ".then(function(r){return r.json();})" +
@@ -242,22 +287,32 @@ public class OmniAuthPageDecorator {
         "}" +
         "function renderBanner(d){" +
           "if(!d||!d.hasJit)return;" +
+          // Transition PENDING → ACTIVE: reload so server re-renders the Build Now button
+          "if(d.status==='ACTIVE'&&_prevJitStatus==='PENDING'){window.location.reload();return;}" +
+          // Poll every 5s while pending so we catch approval quickly
+          "if(d.status==='PENDING'&&!_pendingPoll){_pendingPoll=setInterval(fetchStatus,5000);}" +
+          "if(d.status!=='PENDING'&&_pendingPoll){clearInterval(_pendingPoll);_pendingPoll=null;}" +
+          "_prevJitStatus=d.status;" +
           "removeBanner();" +
           "var banner=document.createElement('div');" +
           "banner.id='oau-jit-banner';" +
           "var color,icon,msg,actions;" +
           "if(d.status==='ACTIVE'){" +
+            "removeGrayBuildNow();" +
             "var mins=Math.ceil(d.secondsRemaining/60);" +
-            "color='#16a34a';icon='&#10003;';" +
+            "color='#16a34a';icon='" + SVG_CHECK + "';" +
             "msg='<strong>JIT Access active</strong> &mdash; approved by <strong>'+escHtml(d.approverId)+'</strong> &middot; expires in <strong id=\"oau-jit-countdown\">'+fmtTime(d.secondsRemaining)+'</strong>';" +
-            "actions='<button type=\"button\" onclick=\"oauJitRevoke(\\''+escHtml(d.requestId)+'\\')\" style=\"padding:4px 12px;border:1px solid #16a34a;border-radius:4px;background:#fff;color:#16a34a;cursor:pointer;font-size:12px;font-weight:600;\">Revoke Early</button>';" +
+            "actions='<button type=\"button\" onclick=\"oauJitRevoke(\\''+escHtml(d.requestId)+'\\')\" style=\"padding:4px 12px;border:1px solid #16a34a;border-radius:4px;background:#fff;color:#16a34a;cursor:pointer;font-size:12px;font-weight:600;\">End Access</button>';" +
             "startCountdown(d.secondsRemaining);" +
           "}else if(d.status==='PENDING'){" +
-            "color='#d97706';icon='&#8987;';" +
-            "msg='<strong>JIT request pending</strong> &mdash; waiting for approval &middot; requested '+escHtml(d.timeAgo);" +
+            "injectGrayBuildNow();" +
+            "color='#d97706';icon='" + SVG_CLOCK + "';" +
+            "var approvalInfo=d.totalApprovers>0?' &middot; <strong>'+d.approvedCount+' of '+d.totalApprovers+'</strong> approved':'';" +
+            "msg='<strong>JIT request pending</strong>'+approvalInfo+' &middot; requested '+escHtml(d.timeAgo);" +
             "actions='<button type=\"button\" onclick=\"oauJitCancel(\\''+escHtml(d.requestId)+'\\')\" style=\"padding:4px 12px;border:1px solid #d97706;border-radius:4px;background:#fff;color:#d97706;cursor:pointer;font-size:12px;font-weight:600;\">Cancel Request</button>';" +
           "}else{" +
-            "color='#6366f1';icon='&#9889;';" +
+            "injectGrayBuildNow();" +
+            "color='#6366f1';icon='" + SVG_BOLT + "';" +
             "var durOpts='';" +
             "for(var h=1;h<=d.maxDurationHours;h++){durOpts+='<option value=\"'+h+'\"'+(h===1?' selected':'')+'>'+h+' hour'+(h>1?'s':'')+'</option>';}" +
             "if(d.status==='DENIED'||d.status==='EXPIRED'||d.status==='TIMED_OUT'){" +
@@ -265,14 +320,27 @@ public class OmniAuthPageDecorator {
             "}else{" +
               "msg='<strong>JIT access required</strong> &mdash; building this pipeline requires approval from '+escHtml(d.approverGroup||'an admin')+'.';" +
             "}" +
-            "actions='<button type=\"button\" onclick=\"oauJitOpen()\" style=\"padding:4px 12px;border:none;border-radius:4px;background:#6366f1;color:#fff;cursor:pointer;font-size:12px;font-weight:600;\">&#9889; Request JIT Access</button>';" +
+            "actions='<button type=\"button\" onclick=\"oauJitOpen()\" style=\"display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border:none;border-radius:4px;background:#6366f1;color:#fff;cursor:pointer;font-size:12px;font-weight:600;\">" + SVG_BOLT + " Request JIT Access</button>';" +
           "}" +
           "banner.style.cssText='margin:8px 16px;padding:10px 14px;border-radius:6px;background:#fff;border:1px solid '+color+';display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;';" +
-          "banner.innerHTML='<div style=\"display:flex;align-items:center;gap:8px;font-size:13px;\"><span style=\"font-size:16px;color:'+color+';\">'+icon+'</span><span style=\"color:#333;\">'+msg+'</span></div><div style=\"display:flex;align-items:center;gap:8px;\">'+actions+'</div>';" +
+          "banner.innerHTML='<div style=\"display:flex;align-items:center;gap:8px;font-size:13px;\"><span style=\"display:inline-flex;align-items:center;color:'+color+';\">'+icon+'</span><span style=\"color:#333;\">'+msg+'</span></div><div style=\"display:flex;align-items:center;gap:8px;\">'+actions+'</div>';" +
           "var main=document.getElementById('main-panel')||document.querySelector('.jenkins-main-panel')||document.querySelector('[id*=\"main\"]');" +
           "if(main){main.insertBefore(banner,main.firstChild);}else{document.body.insertBefore(banner,document.body.firstChild);}" +
         "}" +
         "function removeBanner(){var b=document.getElementById('oau-jit-banner');if(b)b.remove();}" +
+        "function injectGrayBuildNow(){" +
+          "if(document.getElementById('oau-gray-build'))return;" +
+          "var tasks=document.getElementById('tasks');if(!tasks)return;" +
+          // Don't inject if real Build Now already exists
+          "var links=tasks.querySelectorAll('a');for(var i=0;i<links.length;i++){if(/build now/i.test(links[i].textContent.trim()))return;}" +
+          "var d=document.createElement('div');" +
+          "d.id='oau-gray-build';d.className='task';" +
+          "d.innerHTML='<a class=\"task-link\" href=\"#\" onclick=\"return false;\" style=\"opacity:0.38;cursor:default;pointer-events:none;\">'+" +
+            "'<span class=\"task-icon-link\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"currentColor\"><polygon points=\"5,3 19,12 5,21\"/></svg></span>'+" +
+            "'Build Now</a>';" +
+          "tasks.insertBefore(d,tasks.firstChild);" +
+        "}" +
+        "function removeGrayBuildNow(){var el=document.getElementById('oau-gray-build');if(el)el.remove();}" +
         "function fmtTime(s){var m=Math.floor(s/60);var ss=s%60;return m+'m '+(ss<10?'0':'')+ss+'s';}" +
         "function escHtml(s){if(!s)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;');}" +
         "var _cdInterval=null;" +
@@ -298,10 +366,13 @@ public class OmniAuthPageDecorator {
           ".then(function(r){return r.json();})" +
           ".then(function(d){" +
             "for(var h=1;h<=d.maxDurationHours;h++){durOpts+='<option value=\"'+h+'\"'+(h===1?' selected':'')+'>'+h+' hour'+(h>1?'s':'')+'</option>';}" +
-            "m.innerHTML='<div style=\"background:#fff;border-radius:8px;padding:24px;max-width:460px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.18);\">'+" +
-              "'<div style=\"font-size:15px;font-weight:700;margin-bottom:16px;\">&#9889; Request JIT Access</div>'+" +
+            "var scopeLabel=d.scope&&d.scope!==jobPath?'Folder':'Pipeline';" +
+          "var scopeVal=d.scope||jobPath;" +
+          "var scopeNote=d.scopeIsFolder?'<br/><small style=\"color:#6b7280;\">Approves access to all pipelines in this folder</small>':'';" +
+          "m.innerHTML='<div style=\"background:#fff;border-radius:8px;padding:24px;max-width:460px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.18);\">'+" +
+              "'<div style=\"font-size:15px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:6px;\">" + SVG_BOLT + " Request JIT Access</div>'+" +
               "'<div style=\"font-size:12px;color:#888;margin-bottom:16px;padding:8px 12px;background:#f5f5f5;border-radius:4px;\">'+" +
-              "'<strong>Pipeline:</strong> '+escHtml(jobPath)+'<br/>'+" +
+              "'<strong>'+escHtml(scopeLabel)+':</strong> '+escHtml(scopeVal)+scopeNote+'<br/>'+" +
               "'<strong>Approver:</strong> '+escHtml(d.approverGroup||'Any admin')+'<br/>'+" +
               "'<strong>Auto-deny after:</strong> '+d.approvalTimeoutHours+' hour(s)'+" +
               "'</div>'+" +
@@ -373,6 +444,7 @@ public class OmniAuthPageDecorator {
         PluginServletFilter.addFilter(new MatrixDisableFilter());
         PluginServletFilter.addFilter(new TotpReminderFilter());
         PluginServletFilter.addFilter(new JitBannerFilter());
+        PluginServletFilter.addFilter(new ApproverActionFilter());
     }
 
     private static class MatrixDisableFilter implements Filter {
@@ -682,6 +754,260 @@ public class OmniAuthPageDecorator {
                    path.endsWith(".css")           ||
                    path.endsWith(".ico")           ||
                    path.endsWith(".png");
+        }
+    }
+
+    // ── No-auth approver action page ─────────────────────────────────────────
+    // Serves GET  /omniauth-jit/action?token=<uuid>   → action form (no Jenkins login)
+    // Serves POST /omniauth-jit/submitAction           → processes decision, shows confirmation
+
+    private static class ApproverActionFilter implements Filter {
+
+        @Override public void init(FilterConfig c) {}
+        @Override public void destroy() {}
+
+        @Override
+        public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain)
+                throws IOException, ServletException {
+            if (!(req instanceof HttpServletRequest)) { chain.doFilter(req, res); return; }
+            HttpServletRequest  httpReq = (HttpServletRequest)  req;
+            HttpServletResponse httpRes = (HttpServletResponse) res;
+
+            String path = httpReq.getRequestURI();
+            boolean isActionGet  = path.endsWith("/omniauth-jit/action")  && "GET".equalsIgnoreCase(httpReq.getMethod());
+            boolean isSubmitPost = path.endsWith("/omniauth-jit/submitAction") && "POST".equalsIgnoreCase(httpReq.getMethod());
+
+            if (!isActionGet && !isSubmitPost) { chain.doFilter(req, res); return; }
+
+            try {
+                if (isActionGet) {
+                    String token = httpReq.getParameter("token");
+                    serveActionPage(token, httpRes);
+                } else {
+                    String body = new String(httpReq.getInputStream().readNBytes(8192), java.nio.charset.StandardCharsets.UTF_8);
+                    java.util.Map<String, String> params = parseFormBody(body);
+                    String token    = params.get("token");
+                    String decision = params.get("decision");
+                    String remarks  = params.get("remarks");
+                    if (remarks != null && remarks.length() > 1000) remarks = remarks.substring(0, 1000);
+                    serveSubmitAction(token, decision, remarks, httpRes);
+                }
+            } catch (Exception e) {
+                httpRes.setStatus(500);
+                httpRes.setContentType("text/plain");
+                httpRes.getWriter().write("Internal error");
+            }
+        }
+
+        private static void serveActionPage(String token, HttpServletResponse rsp) throws IOException {
+            if (token == null || token.isBlank()) {
+                renderSimplePage(rsp, 400, "Invalid Link", "This approval link is invalid.", "#dc2626");
+                return;
+            }
+            OmniAuthJitRequestStore store = OmniAuthJitRequestStore.get();
+            OmniAuthJitRequest jitReq = store != null ? store.findByToken(token) : null;
+            if (jitReq == null) {
+                renderSimplePage(rsp, 404, "Link Not Found", "This approval link is invalid or has expired.", "#dc2626");
+                return;
+            }
+            if (!jitReq.isPending()) {
+                String msg = "ACTIVE".equals(jitReq.getStatus())
+                        ? "This request has already been fully approved — access is now active."
+                        : "This request has already been processed (" + jitReq.statusLabel() + ").";
+                renderSimplePage(rsp, 200, "Already Processed", msg, "#6b7280");
+                return;
+            }
+            OmniAuthJitRequest.ApprovalEntry entry = jitReq.findEntryByToken(token);
+            if (entry == null || !entry.isPending()) {
+                renderSimplePage(rsp, 200, "Already Responded", "You have already submitted your decision for this request.", "#6b7280");
+                return;
+            }
+
+            String submitUrl = getSubmitUrl();
+
+            StringBuilder approversHtml = new StringBuilder();
+            for (OmniAuthJitRequest.ApprovalEntry e : jitReq.getApprovalEntries()) {
+                String statusHtml = e.isPending()
+                        ? "<span style='color:#d97706;font-weight:600;display:inline-flex;align-items:center;gap:4px;'>" + SVG_CLOCK_SM + " Pending</span>"
+                        : (e.isApproved()
+                           ? "<span style='color:#16a34a;font-weight:600;display:inline-flex;align-items:center;gap:4px;'>" + SVG_CHECK_CIRCLE_SM + " Approved</span>"
+                           : "<span style='color:#dc2626;font-weight:600;display:inline-flex;align-items:center;gap:4px;'>" + SVG_X_CIRCLE_SM + " Denied</span>");
+                boolean isYou = token.equals(e.getToken());
+                approversHtml.append("<tr>")
+                        .append("<td style='padding:6px 12px;font-size:13px;'>")
+                        .append(htmlEsc(e.getApproverIdentity()))
+                        .append(isYou ? " <span style='font-size:11px;color:#6b7280;'>(you)</span>" : "")
+                        .append("</td>")
+                        .append("<td style='padding:6px 12px;'>").append(statusHtml).append("</td>")
+                        .append("</tr>");
+            }
+
+            String html = actionPageHtml(jitReq, token, submitUrl, approversHtml.toString());
+            rsp.setStatus(200);
+            rsp.setContentType("text/html;charset=UTF-8");
+            rsp.getWriter().write(html);
+        }
+
+        private static void serveSubmitAction(String token, String decision, String remarks, HttpServletResponse rsp) throws IOException {
+            if (token == null || token.isBlank() || decision == null) {
+                renderSimplePage(rsp, 400, "Invalid Request", "Missing token or decision.", "#dc2626");
+                return;
+            }
+            if (!"APPROVED".equals(decision) && !"DENIED".equals(decision)) {
+                renderSimplePage(rsp, 400, "Invalid Request", "Invalid decision value.", "#dc2626");
+                return;
+            }
+            OmniAuthJitRequestStore store = OmniAuthJitRequestStore.get();
+            if (store == null) { renderSimplePage(rsp, 500, "Error", "Store unavailable.", "#dc2626"); return; }
+
+            OmniAuthJitRequestStore.ActionResult result = store.processApproverAction(token, decision, remarks);
+            OmniAuthJitRequest jitReq = store.findByToken(token);
+
+            switch (result) {
+                case TOKEN_NOT_FOUND:
+                    renderSimplePage(rsp, 404, "Link Not Found", "This approval link is invalid or has expired.", "#dc2626");
+                    break;
+                case ALREADY_PROCESSED:
+                    renderSimplePage(rsp, 200, "Already Processed", "Your decision was already recorded for this request.", "#6b7280");
+                    break;
+                case DENIED:
+                    if (jitReq != null) {
+                        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+                        OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+                        if (audit != null) audit.logJitDenied(jitReq.getApproverId(), jitReq.getRequesterId(), jitReq.getScope(), remarks);
+                        NotificationService.sendJitDenied(cfg, jitReq);
+                    }
+                    renderSimplePage(rsp, 200, "Request Denied", "You have denied this request. The requester will be notified.", "#dc2626");
+                    break;
+                case PARTIAL_APPROVED: {
+                    String msg = jitReq != null
+                            ? "Your approval is recorded (" + jitReq.getApprovedCount() + " of " + jitReq.getTotalApprovers() + " approved). Waiting for remaining approvers."
+                            : "Your approval is recorded. Waiting for remaining approvers.";
+                    renderSimplePage(rsp, 200, "Approval Recorded", msg, "#d97706");
+                    break;
+                }
+                case ALL_APPROVED:
+                    if (jitReq != null) {
+                        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+                        OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+                        if (audit != null) audit.logJitApproved(jitReq.getApproverId(), jitReq.getRequesterId(), jitReq.getScope(), jitReq.getRequestedDurationHours());
+                        NotificationService.sendJitApproved(cfg, jitReq);
+                    }
+                    renderSimplePage(rsp, 200, "Access Granted", "All approvers have approved. " + (jitReq != null ? jitReq.getRequesterId() : "The requester") + " now has access.", "#16a34a");
+                    break;
+            }
+        }
+
+        private static String getSubmitUrl() {
+            try {
+                String root = jenkins.model.Jenkins.get().getRootUrl();
+                if (root != null && !root.isEmpty()) {
+                    root = root.endsWith("/") ? root.substring(0, root.length() - 1) : root;
+                    return root + "/omniauth-jit/submitAction";
+                }
+            } catch (Exception ignore) {}
+            return "/omniauth-jit/submitAction";
+        }
+
+        private static String actionPageHtml(OmniAuthJitRequest req, String token, String submitUrl, String approversHtml) {
+            return "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'>"
+                + "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+                + "<title>JIT Access Request — Take Action</title>"
+                + "<style>*{box-sizing:border-box;}body{margin:0;padding:24px 16px;background:#f3f4f6;"
+                + "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#1f2937;}"
+                + ".card{background:#fff;border-radius:10px;box-shadow:0 2px 16px rgba(0,0,0,0.08);max-width:560px;margin:0 auto;overflow:hidden;}"
+                + ".hdr{background:#d97706;padding:18px 24px;color:#fff;display:flex;align-items:center;gap:10px;}"
+                + ".hdr h1{margin:0;font-size:17px;font-weight:700;}"
+                + ".body{padding:24px;}"
+                + ".kv{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:13px;}"
+                + ".kv td{padding:6px 0;}.kv td:first-child{color:#6b7280;width:120px;font-weight:600;}"
+                + ".reason{background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:10px 14px;"
+                + "font-size:13px;color:#92400e;margin-bottom:16px;}"
+                + ".approvers-table{width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:6px;"
+                + "overflow:hidden;margin-bottom:20px;font-size:13px;}"
+                + ".approvers-table th{background:#f9fafb;padding:6px 12px;text-align:left;font-size:11px;"
+                + "color:#6b7280;text-transform:uppercase;font-weight:700;}"
+                + "section{margin-bottom:20px;padding:16px;border:1px solid #e5e7eb;border-radius:8px;}"
+                + "section h3{margin:0 0 10px;font-size:14px;font-weight:700;}"
+                + "textarea{width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;"
+                + "resize:none;height:72px;font-family:inherit;}"
+                + ".btn{display:inline-block;padding:10px 20px;border:none;border-radius:6px;font-size:13px;"
+                + "font-weight:700;cursor:pointer;margin-top:8px;}"
+                + ".btn-approve{background:#16a34a;color:#fff;}.btn-deny{background:#dc2626;color:#fff;}"
+                + "</style></head><body>"
+                + "<div class='card'>"
+                + "<div class='hdr'><span style='display:inline-flex;align-items:center;'>" + SVG_BOLT + "</span><h1>JIT Access Request — Action Required</h1></div>"
+                + "<div class='body'>"
+                + "<table class='kv'>"
+                + "<tr><td>Requested by</td><td><strong>" + htmlEsc(req.getRequesterId()) + "</strong></td></tr>"
+                + "<tr><td>Pipeline</td><td><code style='background:#f3f4f6;padding:2px 6px;border-radius:3px;'>" + htmlEsc(req.getScope()) + "</code></td></tr>"
+                + "<tr><td>Duration</td><td>" + req.getRequestedDurationHours() + " hour(s)</td></tr>"
+                + "<tr><td>Requested</td><td>" + htmlEsc(req.timeAgo()) + "</td></tr>"
+                + "</table>"
+                + "<div class='reason'><strong>Reason:</strong> " + htmlEsc(req.getReason()) + "</div>"
+                + "<table class='approvers-table'>"
+                + "<thead><tr><th>Approver</th><th>Status</th></tr></thead>"
+                + "<tbody>" + approversHtml + "</tbody></table>"
+                + "<form method='POST' action='" + htmlEsc(submitUrl) + "'>"
+                + "<input type='hidden' name='token' value='" + htmlEsc(token) + "'/>"
+                + "<section>"
+                + "<h3 style='color:#16a34a;display:flex;align-items:center;gap:5px;'>" + SVG_CHECK_CIRCLE_SM + " Approve Access</h3>"
+                + "<textarea name='approveRemarks' placeholder='Remarks (optional)'></textarea>"
+                + "<button type='submit' name='decision' value='APPROVED' class='btn btn-approve' "
+                + "style='display:inline-flex;align-items:center;gap:5px;'"
+                + " onclick='document.querySelector(\"[name=remarks]\").value=this.form.approveRemarks.value'>"
+                + SVG_CHECK_CIRCLE_SM + " Approve Access</button>"
+                + "</section>"
+                + "<section>"
+                + "<h3 style='color:#dc2626;display:flex;align-items:center;gap:5px;'>" + SVG_X_CIRCLE_SM + " Deny Request</h3>"
+                + "<textarea name='denyRemarks' placeholder='Reason for denial (recommended)'></textarea>"
+                + "<button type='submit' name='decision' value='DENIED' class='btn btn-deny' "
+                + "style='display:inline-flex;align-items:center;gap:5px;'"
+                + " onclick='document.querySelector(\"[name=remarks]\").value=this.form.denyRemarks.value'>"
+                + SVG_X_CIRCLE_SM + " Deny Request</button>"
+                + "</section>"
+                + "<input type='hidden' name='remarks' value=''/>"
+                + "</form>"
+                + "</div></div>"
+                + "</body></html>";
+        }
+
+        private static void renderSimplePage(HttpServletResponse rsp, int status,
+                                              String title, String message, String color) throws IOException {
+            rsp.setStatus(status);
+            rsp.setContentType("text/html;charset=UTF-8");
+            rsp.getWriter().write(
+                "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
+                + "<title>" + htmlEsc(title) + "</title>"
+                + "<style>body{margin:0;padding:40px 16px;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}"
+                + ".card{background:#fff;border-radius:10px;max-width:480px;margin:0 auto;padding:32px;text-align:center;box-shadow:0 2px 16px rgba(0,0,0,0.08);}"
+                + ".icon{font-size:40px;margin-bottom:12px;color:" + color + ";}"
+                + "h1{margin:0 0 12px;font-size:18px;color:" + color + ";}"
+                + "p{margin:0;font-size:14px;color:#4b5563;line-height:1.6;}</style></head><body>"
+                + "<div class='card'><div class='icon'>" + SVG_BOLT + "</div>"
+                + "<h1>" + htmlEsc(title) + "</h1>"
+                + "<p>" + htmlEsc(message) + "</p>"
+                + "</div></body></html>"
+            );
+        }
+
+        private static java.util.Map<String, String> parseFormBody(String body) {
+            java.util.Map<String, String> map = new java.util.HashMap<>();
+            for (String pair : body.split("&")) {
+                String[] kv = pair.split("=", 2);
+                try {
+                    String k = java.net.URLDecoder.decode(kv[0], "UTF-8");
+                    String v = kv.length > 1 ? java.net.URLDecoder.decode(kv[1], "UTF-8") : "";
+                    map.put(k, v);
+                } catch (Exception ignore) {}
+            }
+            return map;
+        }
+
+        private static String htmlEsc(String s) {
+            if (s == null) return "";
+            return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                    .replace("\"", "&quot;").replace("'", "&#39;");
         }
     }
 

@@ -25,9 +25,22 @@ public class OmniAuthJitExpiryWorker extends AsyncPeriodicWork {
         OmniAuthJitRequestStore store = OmniAuthJitRequestStore.get();
         if (store == null) return;
 
-        int changed = store.processExpiredAndTimedOut();
-        if (changed > 0) {
-            LOGGER.info("OmniAuth JIT: transitioned " + changed + " request(s) to EXPIRED/TIMED_OUT");
+        java.util.List<OmniAuthJitRequest> transitioned = store.processExpiredAndTimedOut();
+        if (!transitioned.isEmpty()) {
+            LOGGER.info("OmniAuth JIT: transitioned " + transitioned.size() + " request(s) to EXPIRED/TIMED_OUT");
+            OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+            for (OmniAuthJitRequest req : transitioned) {
+                if (OmniAuthJitRequest.STATUS_TIMED_OUT.equals(req.getStatus()) && req.getApprovedCount() > 0) {
+                    NotificationService.sendJitTimedOutPartial(cfg, req);
+                }
+            }
+        }
+
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        int retentionDays = cfg != null ? cfg.getJitHistoryRetentionDays() : 90;
+        int purged = store.purgeOldRecords(retentionDays);
+        if (purged > 0) {
+            LOGGER.info("OmniAuth JIT: purged " + purged + " terminal request(s) older than " + retentionDays + " days");
         }
     }
 }
