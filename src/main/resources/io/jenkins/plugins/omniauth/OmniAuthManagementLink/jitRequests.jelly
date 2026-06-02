@@ -1,0 +1,283 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:l="/lib/layout">
+  <l:layout title="OmniAuth — JIT Requests" norefresh="true">
+    <l:main-panel>
+
+      <div class="jenkins-app-bar">
+        <div class="jenkins-app-bar__content">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <a href="${rootURL}/manage/omniauth-management/"
+               style="color:var(--text-color-secondary,#6c757d);font-size:0.82em;text-decoration:none;">
+              &#8592; OmniAuth Management
+            </a>
+            <span style="color:var(--text-color-secondary,#ccc);">/</span>
+            <h1 class="jenkins-app-bar__heading">JIT Requests</h1>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding:0 16px 60px;">
+
+        <!-- Flash -->
+        <j:if test="${request2.getParameter('approved') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom:12px;">JIT request approved. Access is now active.</div>
+        </j:if>
+        <j:if test="${request2.getParameter('denied') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom:12px;">JIT request denied.</div>
+        </j:if>
+        <j:if test="${request2.getParameter('revoked') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-success" style="margin-bottom:12px;">Active JIT access revoked.</div>
+        </j:if>
+        <j:if test="${request2.getParameter('partialApproved') == 'true'}">
+          <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom:12px;">Your approval is recorded. Waiting for remaining approvers before access is granted.</div>
+        </j:if>
+
+        <!-- ── PENDING ─────────────────────────────────────────────────────── -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;margin-top:8px;">
+          <div style="font-weight:700;font-size:0.95em;">
+            Pending
+            <j:if test="${!it.pendingJitRequests.isEmpty()}">
+              <span style="background:#d97706;color:#fff;border-radius:10px;font-size:0.72em;font-weight:700;padding:2px 8px;margin-left:4px;">${it.pendingJitRequests.size()}</span>
+            </j:if>
+          </div>
+        </div>
+
+        <div style="border:1px solid var(--panel-border-color,#e0e0e0);border-radius:8px;overflow:hidden;margin-bottom:24px;">
+          <j:choose>
+            <j:when test="${it.pendingJitRequests.isEmpty()}">
+              <div style="padding:40px;text-align:center;color:var(--text-color-secondary,#888);">
+                <div style="margin-bottom:8px;opacity:0.3;display:flex;justify-content:center;">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="32" height="32"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>
+                </div>
+                <div style="font-size:0.9em;">No pending JIT requests.</div>
+              </div>
+            </j:when>
+            <j:otherwise>
+              <table style="width:100%;border-collapse:collapse;">
+                <thead>
+                  <tr style="background:var(--background-color,#fafafa);border-bottom:2px solid var(--panel-border-color,#e0e0e0);">
+                    <th class="jit-th">User</th>
+                    <th class="jit-th">Pipeline</th>
+                    <th class="jit-th">Reason</th>
+                    <th class="jit-th">Duration</th>
+                    <th class="jit-th">Approvals</th>
+                    <th class="jit-th">Requested</th>
+                    <th class="jit-th" style="width:160px;"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <j:forEach var="r" items="${it.pendingJitRequests}" varStatus="rs">
+                    <tr style="border-bottom:${rs.last ? '0' : '1px'} solid var(--panel-border-color,#f0f0f0);">
+                      <td style="padding:12px 16px;">
+                        <span style="font-weight:600;font-size:0.9em;">${r.requesterId}</span>
+                      </td>
+                      <td style="padding:12px 16px;">
+                        <code style="font-size:0.82em;background:#f5f5f5;padding:2px 6px;border-radius:3px;">${r.scope}</code>
+                      </td>
+                      <td style="padding:12px 16px;font-size:0.85em;color:var(--text-color,#333);max-width:200px;">
+                        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;" title="${r.reason}">${r.reason}</div>
+                      </td>
+                      <td style="padding:12px 16px;font-size:0.86em;white-space:nowrap;">${r.requestedDurationHours}h</td>
+                      <td style="padding:12px 16px;font-size:0.82em;">
+                        <!-- Per-approver status -->
+                        <j:if test="${!r.approvalEntries.isEmpty()}">
+                          <div style="font-size:0.78em;color:var(--text-color-secondary,#888);margin-bottom:4px;">
+                            ${r.approvedCount} of ${r.totalApprovers} approved
+                          </div>
+                          <j:forEach var="entry" items="${r.approvalEntries}">
+                            <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px;">
+                              <j:choose>
+                                <j:when test="${entry.approved}">
+                                  <span style="color:#16a34a;display:inline-flex;align-items:center;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="13" height="13"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+                                  </span>
+                                </j:when>
+                                <j:when test="${entry.denied}">
+                                  <span style="color:#dc2626;display:inline-flex;align-items:center;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="13" height="13"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>
+                                  </span>
+                                </j:when>
+                                <j:otherwise>
+                                  <span style="color:#d97706;display:inline-flex;align-items:center;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="13" height="13"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/></svg>
+                                  </span>
+                                </j:otherwise>
+                              </j:choose>
+                              <span style="font-size:0.82em;color:var(--text-color,#444);">${entry.approverIdentity}</span>
+                            </div>
+                          </j:forEach>
+                        </j:if>
+                        <j:if test="${r.approvalEntries.isEmpty()}">
+                          <span style="color:var(--text-color-secondary,#aaa);font-size:0.82em;">—</span>
+                        </j:if>
+                      </td>
+                      <td style="padding:12px 16px;font-size:0.82em;color:var(--text-color-secondary,#888);white-space:nowrap;">${r.timeAgo()}</td>
+                      <td style="padding:12px 16px;white-space:nowrap;text-align:right;">
+                        <!-- Only show Approve/Deny if current admin is a listed pending approver -->
+                        <j:if test="${r.isCurrentUserApprover(it.currentUserId)}">
+                          <form method="post" action="approveJit" style="display:inline;">
+                            <input type="hidden" name="${app.crumbRequestField}" value="${app.crumb}"/>
+                            <input type="hidden" name="requestId" value="${r.requestId}"/>
+                            <button type="submit" class="jenkins-button jenkins-button--primary"
+                                    style="font-size:0.78em;padding:4px 12px;margin-right:4px;background:#16a34a;border-color:#16a34a;display:inline-flex;align-items:center;gap:4px;">
+                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="12" height="12"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>Approve
+                            </button>
+                          </form>
+                          <button type="button"
+                                  onclick="openDenyModal('${r.requestId}', '${r.requesterId}', '${r.scope}')"
+                                  class="jenkins-button"
+                                  style="font-size:0.78em;padding:4px 12px;color:#dc3545;border-color:#dc3545;display:inline-flex;align-items:center;gap:4px;">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="12" height="12"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>Deny
+                          </button>
+                        </j:if>
+                        <j:if test="${!r.isCurrentUserApprover(it.currentUserId)}">
+                          <span style="font-size:0.78em;color:var(--text-color-secondary,#aaa);">Not your request</span>
+                        </j:if>
+                      </td>
+                    </tr>
+                  </j:forEach>
+                </tbody>
+              </table>
+            </j:otherwise>
+          </j:choose>
+        </div>
+
+        <!-- ── RECENT ACTIVITY ────────────────────────────────────────────── -->
+        <div style="font-weight:700;font-size:0.95em;margin-bottom:10px;">Recent Activity</div>
+
+        <div style="border:1px solid var(--panel-border-color,#e0e0e0);border-radius:8px;overflow:hidden;">
+          <j:choose>
+            <j:when test="${it.recentJitRequests.isEmpty()}">
+              <div style="padding:40px;text-align:center;color:var(--text-color-secondary,#888);">
+                <div style="font-size:0.9em;">No JIT request history yet.</div>
+              </div>
+            </j:when>
+            <j:otherwise>
+              <table style="width:100%;border-collapse:collapse;">
+                <thead>
+                  <tr style="background:var(--background-color,#fafafa);border-bottom:2px solid var(--panel-border-color,#e0e0e0);">
+                    <th class="jit-th">User</th>
+                    <th class="jit-th">Pipeline</th>
+                    <th class="jit-th">Status</th>
+                    <th class="jit-th">Approver</th>
+                    <th class="jit-th">Duration</th>
+                    <th class="jit-th">Requested</th>
+                    <th class="jit-th" style="width:80px;"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <j:forEach var="r" items="${it.recentJitRequests}" varStatus="rs">
+                    <j:if test="${!r.status.equals('PENDING')}">
+                      <tr style="border-bottom:${rs.last ? '0' : '1px'} solid var(--panel-border-color,#f0f0f0);">
+                        <td style="padding:11px 16px;font-size:0.88em;font-weight:600;">${r.requesterId}</td>
+                        <td style="padding:11px 16px;">
+                          <code style="font-size:0.8em;background:#f5f5f5;padding:2px 6px;border-radius:3px;">${r.scope}</code>
+                        </td>
+                        <td style="padding:11px 16px;">
+                          <j:choose>
+                            <j:when test="${r.status.equals('ACTIVE')}">
+                              <span style="font-size:0.75em;font-weight:700;padding:2px 8px;border-radius:10px;background:#dcfce7;color:#166534;">ACTIVE</span>
+                            </j:when>
+                            <j:when test="${r.status.equals('EXPIRED')}">
+                              <span style="font-size:0.75em;font-weight:700;padding:2px 8px;border-radius:10px;background:#f3f4f6;color:#374151;">EXPIRED</span>
+                            </j:when>
+                            <j:when test="${r.status.equals('DENIED')}">
+                              <span style="font-size:0.75em;font-weight:700;padding:2px 8px;border-radius:10px;background:#fee2e2;color:#991b1b;">DENIED</span>
+                            </j:when>
+                            <j:when test="${r.status.equals('REVOKED')}">
+                              <span style="font-size:0.75em;font-weight:700;padding:2px 8px;border-radius:10px;background:#fee2e2;color:#991b1b;">REVOKED</span>
+                            </j:when>
+                            <j:when test="${r.status.equals('TIMED_OUT')}">
+                              <span style="font-size:0.75em;font-weight:700;padding:2px 8px;border-radius:10px;background:#fff7ed;color:#c2410c;">TIMED OUT</span>
+                            </j:when>
+                            <j:when test="${r.status.equals('CANCELLED')}">
+                              <span style="font-size:0.75em;font-weight:700;padding:2px 8px;border-radius:10px;background:#f3f4f6;color:#374151;">CANCELLED</span>
+                            </j:when>
+                            <j:otherwise>
+                              <span style="font-size:0.75em;font-weight:700;padding:2px 8px;border-radius:10px;background:#f3f4f6;color:#374151;">${r.status}</span>
+                            </j:otherwise>
+                          </j:choose>
+                        </td>
+                        <td style="padding:11px 16px;font-size:0.84em;color:var(--text-color-secondary,#888);">
+                          <j:choose>
+                            <j:when test="${!r.approverId.isEmpty()}">${r.approverId}</j:when>
+                            <j:otherwise><span style="color:#ccc;">—</span></j:otherwise>
+                          </j:choose>
+                          <j:if test="${!r.approverComment.isEmpty()}">
+                            <div style="font-size:0.88em;color:#999;font-style:italic;">"${r.approverComment}"</div>
+                          </j:if>
+                        </td>
+                        <td style="padding:11px 16px;font-size:0.84em;">${r.requestedDurationHours}h</td>
+                        <td style="padding:11px 16px;font-size:0.8em;color:var(--text-color-secondary,#888);">${r.timeAgo()}</td>
+                        <td style="padding:11px 16px;text-align:right;">
+                          <j:if test="${r.status.equals('ACTIVE')}">
+                            <form method="post" action="revokeActiveJit" style="display:inline;">
+                              <input type="hidden" name="${app.crumbRequestField}" value="${app.crumb}"/>
+                              <input type="hidden" name="requestId" value="${r.requestId}"/>
+                              <button type="submit" class="jenkins-button"
+                                      onclick="return confirm('Revoke active JIT access for ${r.requesterId}?')"
+                                      style="font-size:0.75em;padding:3px 9px;color:#dc3545;border-color:#dc3545;">
+                                Revoke
+                              </button>
+                            </form>
+                          </j:if>
+                        </td>
+                      </tr>
+                    </j:if>
+                  </j:forEach>
+                </tbody>
+              </table>
+            </j:otherwise>
+          </j:choose>
+        </div>
+
+      </div>
+
+      <!-- Deny modal -->
+      <div id="jitDenyBackdrop" onclick="closeDenyModal()"
+           style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.35);z-index:9998;"></div>
+      <div id="jitDenyModal"
+           style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+                  z-index:9999;background:#fff;border-radius:8px;padding:24px;width:420px;
+                  max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,0.18);">
+        <div style="font-weight:700;font-size:1em;margin-bottom:4px;">Deny JIT Request</div>
+        <div id="jitDenyMeta" style="font-size:0.82em;color:#888;margin-bottom:16px;"></div>
+        <form method="post" action="denyJit">
+          <input type="hidden" name="${app.crumbRequestField}" value="${app.crumb}"/>
+          <input type="hidden" id="jitDenyRequestId" name="requestId" value=""/>
+          <div style="margin-bottom:12px;">
+            <label style="display:block;font-size:0.75em;font-weight:700;text-transform:uppercase;color:#888;margin-bottom:5px;">Denial Reason</label>
+            <input type="text" name="comment" class="jenkins-input"
+                   placeholder="e.g. Outside deployment window, deployment not scheduled"
+                   style="width:100%;box-sizing:border-box;"/>
+            <div style="font-size:0.74em;color:#aaa;margin-top:3px;">Optional but recommended — shown to the requester.</div>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button type="button" onclick="closeDenyModal()" class="jenkins-button" style="font-size:0.88em;">Cancel</button>
+            <button type="submit" class="jenkins-button"
+                    style="font-size:0.88em;color:#dc3545;border-color:#dc3545;">Confirm Deny</button>
+          </div>
+        </form>
+      </div>
+
+      <style>
+        .jit-th { padding:10px 16px;text-align:left;font-size:.76em;font-weight:700;text-transform:uppercase;
+                  letter-spacing:.05em;color:var(--text-color-secondary,#888);white-space:nowrap; }
+      </style>
+
+      <script>//<![CDATA[
+        function openDenyModal(requestId, userId, scope) {
+          document.getElementById('jitDenyRequestId').value = requestId;
+          document.getElementById('jitDenyMeta').textContent = userId + ' → ' + scope;
+          document.getElementById('jitDenyModal').style.display = '';
+          document.getElementById('jitDenyBackdrop').style.display = '';
+        }
+        function closeDenyModal() {
+          document.getElementById('jitDenyModal').style.display = 'none';
+          document.getElementById('jitDenyBackdrop').style.display = 'none';
+        }
+      //]]></script>
+
+    </l:main-panel>
+  </l:layout>
+</j:jelly>

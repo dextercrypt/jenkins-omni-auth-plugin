@@ -15,11 +15,8 @@ import org.kohsuke.stapler.DataBoundConstructor;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.logging.Logger;
 
 public class OmniAuthAuthorizationStrategy extends ProjectMatrixAuthorizationStrategy {
-
-    private static final Logger LOGGER = Logger.getLogger(OmniAuthAuthorizationStrategy.class.getName());
 
     private static final ConcurrentHashMap<String, ACL> aclCache = new ConcurrentHashMap<>();
 

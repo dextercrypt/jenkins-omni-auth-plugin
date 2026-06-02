@@ -64,6 +64,9 @@
         <j:if test="${request2.getParameter('error') == 'noPermissions'}">
           <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom:12px;">No permissions selected — choose at least one permission from the Custom picker.</div>
         </j:if>
+        <j:if test="${request2.getParameter('error') == 'jitMinApprovers'}">
+          <div class="jenkins-alert jenkins-alert-warning" style="margin-bottom:12px;">JIT assignments require at least 2 approvers. Add a second approver and save again.</div>
+        </j:if>
 
         <!-- Group-managed notice -->
         <j:if test="${header != null and header.groupManaged}">
@@ -217,6 +220,13 @@
                       <!-- Role -->
                       <td style="padding:12px 16px;">
                         <span class="udx-role-badge">${a.roleName}</span>
+                        <j:if test="${a.jit}">
+                          <span style="display:inline-flex;align-items:center;gap:3px;margin-left:5px;
+                                       font-size:0.72em;font-weight:700;padding:2px 7px;border-radius:10px;
+                                       background:#fffbeb;border:1px solid #f59e0b;color:#b45309;white-space:nowrap;">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="11" height="11" style="vertical-align:middle;margin-right:2px;"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>JIT
+                          </span>
+                        </j:if>
                         <j:if test="${userIsGlobalAdmin and !a.global}">
                           <span title="This assignment has no effect — the user's global Admin role supersedes all scoped restrictions."
                                 style="display:inline-flex;align-items:center;gap:4px;margin-left:6px;
@@ -252,7 +262,7 @@
                           <div style="display:flex;gap:6px;justify-content:flex-end;align-items:center;">
                             <j:if test="${!a.global and (header == null or !header.groupManaged)}">
                               <button type="button"
-                                      onclick="udxShowEdit('${a.scope}','${a.displayScope}','${a.roleName}',${a.customPermissionsJson},'${a.expiresAt != null ? a.expiresAt : ''}')"
+                                      onclick="udxShowEdit('${a.scope}','${a.displayScope}','${a.roleName}',${a.customPermissionsJson},'${a.expiresAt != null ? a.expiresAt : ''}','${a.accessType}','${a.approverGroup}',${a.maxDurationHours},${a.approvalTimeoutHours})"
                                       class="jenkins-button"
                                       style="font-size:0.78em;padding:3px 10px;">
                                 Edit
@@ -396,6 +406,61 @@
               <div id="udxExpiryHint" style="font-size:0.78em;color:#999;margin-top:4px;">Access will be automatically revoked at end of this day.</div>
             </div>
 
+            <!-- Access Type (only for scoped item assignments) -->
+            <div id="udxAccessTypeSection" style="display:none;margin-bottom:16px;padding:14px 16px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;">
+              <div class="udx-label" style="margin-bottom:10px;">Access Type</div>
+              <div style="display:flex;flex-direction:column;gap:10px;">
+                <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
+                  <input type="radio" name="accessType" value="STANDING" checked="checked"
+                         style="margin-top:3px;" onchange="udxAccessTypeChange('STANDING')"/>
+                  <div>
+                    <div style="font-size:0.9em;font-weight:600;">Standing</div>
+                    <div style="font-size:0.8em;color:#6c757d;margin-top:1px;">Permanent access while the assignment is active.</div>
+                  </div>
+                </label>
+                <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
+                  <input type="radio" name="accessType" value="JIT"
+                         style="margin-top:3px;" onchange="udxAccessTypeChange('JIT')"/>
+                  <div>
+                    <div style="font-size:0.9em;font-weight:600;display:flex;align-items:center;gap:5px;">JIT (Just-in-Time) <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="13" height="13"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg></div>
+                    <div style="font-size:0.8em;color:#6c757d;margin-top:1px;">User sees the pipeline but cannot build. Must request activation; an approver must approve before access is granted.</div>
+                  </div>
+                </label>
+              </div>
+              <!-- JIT-specific fields -->
+              <div id="udxJitFields" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid #e5e7eb;">
+                <div style="margin-bottom:14px;">
+                  <div class="udx-label">Approvers <span style="color:#dc2626;">*</span></div>
+                  <div style="font-size:0.76em;color:#999;margin-bottom:6px;">Minimum 2 required. All must approve before access is granted. Enter email addresses or Jenkins usernames.</div>
+                  <div id="udxApproverChips" style="display:flex;flex-wrap:wrap;gap:4px;min-height:32px;padding:4px 6px;border:1px solid #d1d5db;border-radius:6px;background:#fff;margin-bottom:6px;align-items:center;"></div>
+                  <div style="position:relative;">
+                    <input type="text" id="udxApproverInput" class="jenkins-input" style="width:100%;box-sizing:border-box;"
+                           placeholder="Type email or username and press Enter…" autocomplete="off"
+                           oninput="udxChipSearch(this.value,'udxApproverDrop','udxApproverChips','udxApprovers')"
+                           onkeydown="udxChipKeydown(event,'udxApproverInput','udxApproverDrop','udxApproverChips','udxApprovers')"
+                           onblur="setTimeout(function(){var d=document.getElementById('udxApproverDrop');if(d)d.style.display='none'},200)"/>
+                    <div id="udxApproverDrop" class="udx-suggest-drop" style="display:none;"></div>
+                  </div>
+                  <input type="hidden" name="approvers" id="udxApprovers" value=""/>
+                  <div id="udxApproverValidation" style="display:none;font-size:0.76em;color:#dc2626;margin-top:3px;">At least 2 approvers required.</div>
+                </div>
+                <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                  <div style="flex:1;min-width:110px;">
+                    <div class="udx-label">Max Duration (h)</div>
+                    <input type="number" onwheel="this.blur()" name="maxDurationHours" id="udxMaxDuration"
+                           class="jenkins-input" style="width:100%;" value="4" min="1" max="168"/>
+                    <div style="font-size:0.76em;color:#999;margin-top:3px;">Max hours a user can request.</div>
+                  </div>
+                  <div style="flex:1;min-width:110px;">
+                    <div class="udx-label">Approval Timeout (h)</div>
+                    <input type="number" onwheel="this.blur()" name="approvalTimeoutHours" id="udxApprovalTimeout"
+                           class="jenkins-input" style="width:100%;" value="4" min="1" max="48"/>
+                    <div style="font-size:0.76em;color:#999;margin-top:3px;">Hours before pending request auto-denies.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div style="display:flex;gap:10px;">
               <button type="submit" class="jenkins-button jenkins-button--primary"
                       style="font-size:0.85em;">Grant Access</button>
@@ -476,6 +541,58 @@
               <div id="udxEditExpiryHint" style="font-size:0.78em;color:#999;margin-top:4px;">Access will be automatically revoked at end of this day.</div>
             </div>
 
+            <!-- Access Type -->
+            <div style="margin-bottom:16px;padding:14px 16px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;">
+              <div class="udx-label" style="margin-bottom:10px;">Access Type</div>
+              <div style="display:flex;flex-direction:column;gap:10px;">
+                <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
+                  <input type="radio" name="accessType" value="STANDING" id="udxEditAccessTypeStanding"
+                         style="margin-top:3px;" onchange="udxEditAccessTypeChange('STANDING')"/>
+                  <div>
+                    <div style="font-size:0.9em;font-weight:600;">Standing</div>
+                    <div style="font-size:0.8em;color:#6c757d;margin-top:1px;">Permanent access while the assignment is active.</div>
+                  </div>
+                </label>
+                <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
+                  <input type="radio" name="accessType" value="JIT" id="udxEditAccessTypeJit"
+                         style="margin-top:3px;" onchange="udxEditAccessTypeChange('JIT')"/>
+                  <div>
+                    <div style="font-size:0.9em;font-weight:600;display:flex;align-items:center;gap:5px;">JIT (Just-in-Time) <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="13" height="13"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg></div>
+                    <div style="font-size:0.8em;color:#6c757d;margin-top:1px;">User must request activation and get approved before access is granted.</div>
+                  </div>
+                </label>
+              </div>
+              <div id="udxEditJitFields" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid #e5e7eb;">
+                <div style="margin-bottom:14px;">
+                  <div class="udx-label">Approvers <span style="color:#dc2626;">*</span></div>
+                  <div style="font-size:0.76em;color:#999;margin-bottom:6px;">Minimum 2 required. All must approve.</div>
+                  <div id="udxEditApproverChips" style="display:flex;flex-wrap:wrap;gap:4px;min-height:32px;padding:4px 6px;border:1px solid #d1d5db;border-radius:6px;background:#fff;margin-bottom:6px;align-items:center;"></div>
+                  <div style="position:relative;">
+                    <input type="text" id="udxEditApproverInput" class="jenkins-input" style="width:100%;box-sizing:border-box;"
+                           placeholder="Type email or username and press Enter…" autocomplete="off"
+                           oninput="udxChipSearch(this.value,'udxEditApproverDrop','udxEditApproverChips','udxEditApprovers')"
+                           onkeydown="udxChipKeydown(event,'udxEditApproverInput','udxEditApproverDrop','udxEditApproverChips','udxEditApprovers')"
+                           onblur="setTimeout(function(){var d=document.getElementById('udxEditApproverDrop');if(d)d.style.display='none'},200)"/>
+                    <div id="udxEditApproverDrop" class="udx-suggest-drop" style="display:none;"></div>
+                  </div>
+                  <input type="hidden" name="approvers" id="udxEditApprovers" value=""/>
+                  <div id="udxEditApproverValidation" style="display:none;font-size:0.76em;color:#dc2626;margin-top:3px;">At least 2 approvers required.</div>
+                </div>
+                <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                  <div style="flex:1;min-width:110px;">
+                    <div class="udx-label">Max Duration (h)</div>
+                    <input type="number" onwheel="this.blur()" name="maxDurationHours" id="udxEditMaxDuration"
+                           class="jenkins-input" style="width:100%;" value="4" min="1" max="168"/>
+                  </div>
+                  <div style="flex:1;min-width:110px;">
+                    <div class="udx-label">Approval Timeout (h)</div>
+                    <input type="number" onwheel="this.blur()" name="approvalTimeoutHours" id="udxEditApprovalTimeout"
+                           class="jenkins-input" style="width:100%;" value="4" min="1" max="48"/>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div style="display:flex;gap:10px;">
               <button type="submit" class="jenkins-button jenkins-button--primary"
                       style="font-size:0.85em;">Save Changes</button>
@@ -508,6 +625,25 @@
         .udx-expiry-badge {
           display:inline-block; padding:2px 8px; border-radius:8px; font-size:0.78em; font-weight:600;
           background:#fff3cd; color:#856404; border:1px solid #ffc107; white-space:nowrap;
+        }
+        .udx-suggest-drop {
+          position:absolute; top:100%; left:0; right:0; z-index:9990;
+          background:#fff; border:1.5px solid #1a73e8; border-top:none;
+          border-radius:0 0 8px 8px; box-shadow:0 6px 20px rgba(0,0,0,0.14);
+          max-height:220px; overflow-y:auto;
+        }
+        .udx-suggest-row {
+          display:flex; align-items:center; gap:9px;
+          padding:8px 12px; cursor:pointer; transition:background 0.1s;
+        }
+        .udx-suggest-row:hover { background:#f0f4ff; }
+        .udx-suggest-icon { display:inline-flex; flex-shrink:0; }
+        .udx-suggest-id   { font-size:0.88em; font-weight:600; color:#1a1a1a; line-height:1.2; }
+        .udx-suggest-dn   { font-size:0.78em; color:#6c757d; line-height:1.2; }
+        .udx-suggest-chip {
+          margin-left:auto; flex-shrink:0;
+          font-size:0.68em; font-weight:700; padding:1px 6px;
+          border-radius:8px; text-transform:uppercase; letter-spacing:0.04em;
         }
         .udx-expiry-badge.udx-expiry-soon {
           background:#ffe0e0; color:#dc3545; border-color:#dc3545;
@@ -561,11 +697,17 @@
           document.getElementById('udxAddPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           var sel = document.getElementById('udxRoleSelect');
           if (sel) udxRoleChange(sel.value);
+          // Reset access type to STANDING and clear JIT chips
+          document.querySelectorAll('input[name="accessType"]').forEach(function(r) {
+            r.checked = r.value === 'STANDING';
+          });
+          udxClearChips('udxApproverChips', 'udxApprovers');
+          udxAccessTypeChange('STANDING');
         }
         function udxHideAdd() {
           document.getElementById('udxAddPanel').style.display = 'none';
         }
-        function udxShowEdit(scope, scopeDisplay, roleId, customPermsArr, expiresAt) {
+        function udxShowEdit(scope, scopeDisplay, roleId, customPermsArr, expiresAt, accessType, approverGroup, maxDuration, approvalTimeout) {
           document.getElementById('udxAddPanel').style.display = 'none';
           document.getElementById('udxEditScope').value = scope;
           document.getElementById('udxEditScopeDisplay').textContent = scopeDisplay || scope;
@@ -587,11 +729,154 @@
           dateInput.value = expiresAt ? expiresAt.substring(0, 10) : '';
           udxUpdateExpiryHint(dateInput.value, 'udxEditExpiryHint');
 
+          // Pre-fill JIT fields
+          var isJit = accessType === 'JIT';
+          document.getElementById('udxEditAccessTypeJit').checked = isJit;
+          document.getElementById('udxEditAccessTypeStanding').checked = !isJit;
+          udxEditAccessTypeChange(accessType || 'STANDING');
+          udxClearChips('udxEditApproverChips', 'udxEditApprovers');
+          if (approverGroup) {
+            approverGroup.split(',').forEach(function(a) {
+              var t = a.trim(); if (t) udxChipAdd(t, 'udxEditApproverChips', 'udxEditApprovers');
+            });
+          }
+          document.getElementById('udxEditMaxDuration').value = maxDuration || 4;
+          document.getElementById('udxEditApprovalTimeout').value = approvalTimeout || 4;
+
           document.getElementById('udxEditPanel').style.display = '';
           document.getElementById('udxEditPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
         function udxHideEdit() {
           document.getElementById('udxEditPanel').style.display = 'none';
+        }
+        function udxAccessTypeChange(val) {
+          document.getElementById('udxJitFields').style.display = val === 'JIT' ? '' : 'none';
+        }
+        function udxEditAccessTypeChange(val) {
+          document.getElementById('udxEditJitFields').style.display = val === 'JIT' ? '' : 'none';
+        }
+
+        // ── Approver chip input ──────────────────────────────────────────────
+        var udxApproverXhr = null;
+        var udxSuggestBase = '${rootURL}/manage/omniauth-management/suggestApprovers';
+
+        function udxChipAdd(value, chipsId, hiddenId) {
+          if (!value || !value.trim()) return;
+          var v = value.trim();
+          var hidden = document.getElementById(hiddenId);
+          var existing = hidden.value ? hidden.value.split(',').map(function(s){return s.trim();}) : [];
+          if (existing.indexOf(v) >= 0) return; // no duplicates
+          existing.push(v);
+          hidden.value = existing.join(',');
+          var chips = document.getElementById(chipsId);
+          var chip = document.createElement('span');
+          chip.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:2px 8px 2px 10px;background:#dbeafe;color:#1e40af;border-radius:12px;font-size:0.78em;font-weight:600;';
+          chip.innerHTML = '<span>' + v.replace(/</g,'&lt;') + '</span>'
+            + '<button type="button" onclick="udxChipRemove(\''+v.replace(/'/g,"\\'") + '\',\'' + chipsId + '\',\'' + hiddenId + '\')" '
+            + 'style="border:none;background:none;cursor:pointer;color:#1e40af;font-size:0.9em;padding:0 0 0 2px;line-height:1;">&#10005;</button>';
+          chips.appendChild(chip);
+          udxUpdateChipValidation(chipsId, hiddenId);
+        }
+
+        function udxChipRemove(value, chipsId, hiddenId) {
+          var hidden = document.getElementById(hiddenId);
+          var existing = hidden.value ? hidden.value.split(',').map(function(s){return s.trim();}) : [];
+          hidden.value = existing.filter(function(s){return s !== value;}).join(',');
+          var chips = document.getElementById(chipsId);
+          chips.innerHTML = '';
+          hidden.value.split(',').forEach(function(v) { if (v.trim()) udxChipAdd(v.trim(), chipsId, hiddenId); });
+          // Re-add chips (simpler than finding the right chip element)
+          // Actually, we already cleared chips, so re-render from hidden value
+          // But we just added them above in the forEach... wait, udxChipAdd also sets hidden.value.
+          // The trick: clear hidden first, then re-add.
+          hidden.value = '';
+          chips.innerHTML = '';
+          existing.filter(function(s){return s.trim() && s.trim() !== value;}).forEach(function(v) {
+            udxChipAdd(v.trim(), chipsId, hiddenId);
+          });
+          udxUpdateChipValidation(chipsId, hiddenId);
+        }
+
+        function udxClearChips(chipsId, hiddenId) {
+          document.getElementById(chipsId).innerHTML = '';
+          document.getElementById(hiddenId).value = '';
+          udxUpdateChipValidation(chipsId, hiddenId);
+        }
+
+        function udxUpdateChipValidation(chipsId, hiddenId) {
+          var hidden = document.getElementById(hiddenId);
+          var count = hidden.value ? hidden.value.split(',').filter(function(s){return s.trim();}).length : 0;
+          var validId = hiddenId.replace('Approvers','ApproverValidation');
+          var valid = document.getElementById(validId);
+          if (valid) valid.style.display = count < 2 && count > 0 ? '' : 'none';
+        }
+
+        function udxChipKeydown(event, inputId, dropId, chipsId, hiddenId) {
+          if (event.key === 'Enter' || event.key === ',') {
+            event.preventDefault();
+            var input = document.getElementById(inputId);
+            var v = input.value.trim().replace(/,$/, '');
+            if (v) { udxChipAdd(v, chipsId, hiddenId); input.value = ''; }
+            var drop = document.getElementById(dropId);
+            if (drop) drop.style.display = 'none';
+          }
+        }
+
+        function udxChipSearch(q, dropId, chipsId, hiddenId) {
+          var drop = document.getElementById(dropId);
+          if (!q.trim()) { drop.style.display = 'none'; return; }
+          if (udxApproverXhr) udxApproverXhr.abort();
+          udxApproverXhr = new XMLHttpRequest();
+          var url = udxSuggestBase + '?q=' + encodeURIComponent(q);
+          udxApproverXhr.open('GET', url, true);
+          udxApproverXhr.onload = function() {
+            if (udxApproverXhr.status !== 200) { drop.style.display = 'none'; return; }
+            var users;
+            try { users = JSON.parse(udxApproverXhr.responseText); } catch(e) { drop.style.display = 'none'; return; }
+            if (!users || !users.length) { drop.style.display = 'none'; return; }
+            drop.innerHTML = '';
+            users.forEach(function(u) {
+              var isGroup = u.type === 'group';
+              var row = document.createElement('div');
+              row.className = 'udx-suggest-row';
+              var icon = document.createElement('span');
+              icon.className = 'udx-suggest-icon';
+              icon.innerHTML = isGroup
+                ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
+                : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+              icon.style.color = isGroup ? '#7c3aed' : '#1a73e8';
+              icon.style.flexShrink = '0';
+              row.appendChild(icon);
+              var text = document.createElement('div');
+              text.style.cssText = 'display:flex;flex-direction:column;gap:1px;min-width:0;';
+              var nameEl = document.createElement('span');
+              nameEl.className = 'udx-suggest-id';
+              nameEl.textContent = u.id;
+              text.appendChild(nameEl);
+              if (u.displayName) {
+                var dn = document.createElement('span');
+                dn.className = 'udx-suggest-dn';
+                dn.textContent = u.displayName;
+                text.appendChild(dn);
+              }
+              row.appendChild(text);
+              var chipEl = document.createElement('span');
+              chipEl.className = 'udx-suggest-chip';
+              chipEl.textContent = isGroup ? 'group' : 'user';
+              chipEl.style.background = isGroup ? '#ede9fe' : '#dbeafe';
+              chipEl.style.color      = isGroup ? '#6d28d9' : '#1e40af';
+              row.appendChild(chipEl);
+              row.onmousedown = function() {
+                var inputEl = drop.previousElementSibling;
+                udxChipAdd(u.id, chipsId, hiddenId);
+                if (inputEl) inputEl.value = '';
+                drop.style.display = 'none';
+              };
+              drop.appendChild(row);
+            });
+            drop.style.display = '';
+          };
+          udxApproverXhr.send();
         }
         function udxEditRoleChange(val) {
           var picker = document.getElementById('udxEditCustomPerms');
@@ -641,14 +926,20 @@
           var itemDiv    = document.getElementById('udxItemInput');
           var scopeVal   = document.getElementById('udxScopeValue');
           var globalHid  = document.getElementById('udxScopeGlobal');
+          var atSection  = document.getElementById('udxAccessTypeSection');
           if (val === 'item') {
             itemDiv.style.display = '';
             scopeVal.setAttribute('name', 'scope');
             globalHid.removeAttribute('name');
+            if (atSection) atSection.style.display = '';
           } else {
             itemDiv.style.display = 'none';
             globalHid.setAttribute('name', 'scope');
             scopeVal.removeAttribute('name');
+            if (atSection) atSection.style.display = 'none';
+            // Reset to STANDING when switching to global
+            document.querySelectorAll('input[name="accessType"]').forEach(function(r) { r.checked = r.value === 'STANDING'; });
+            udxAccessTypeChange('STANDING');
           }
         }
 

@@ -144,6 +144,9 @@
                   <option value="accessReview">Access Review Digest</option>
                   <option value="protectedListChanged">Protected List Changed</option>
                   <option value="graphApiFailure">Graph API Failure</option>
+                  <option value="jitRequest">⚡ JIT Request (to approver)</option>
+                  <option value="jitApproved">⚡ JIT Approved (to requester)</option>
+                  <option value="jitDenied">⚡ JIT Denied (to requester)</option>
                   <option value="smtpTest">SMTP Test Email</option>
                 </select>
                 <button type="button" onclick="oauClosePreview()"
@@ -334,6 +337,9 @@
                     <label class="oau-event-label"><input type="checkbox" name="smtpEvents" value="bruteForce"/>       <span>Brute force detected</span></label>
                     <label class="oau-event-label"><input type="checkbox" name="smtpEvents" value="staleWarning"/>     <span>Stale warning digest</span></label>
                     <label class="oau-event-label"><input type="checkbox" name="smtpEvents" value="accessReview"/>     <span>Access review digest</span></label>
+                    <label class="oau-event-label"><input type="checkbox" name="smtpEvents" value="jitRequest"/>       <span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="12" height="12" style="vertical-align:middle;margin-right:3px;"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>JIT request submitted</span></label>
+                    <label class="oau-event-label"><input type="checkbox" name="smtpEvents" value="jitApproved"/>      <span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="12" height="12" style="vertical-align:middle;margin-right:3px;"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>JIT access approved</span></label>
+                    <label class="oau-event-label"><input type="checkbox" name="smtpEvents" value="jitDenied"/>        <span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="12" height="12" style="vertical-align:middle;margin-right:3px;"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>JIT access denied</span></label>
                   </div>
                 </div>
 
@@ -416,6 +422,9 @@
                     <label class="oau-event-label"><input type="checkbox" name="slackEvents" value="bruteForce"/>       <span>Brute force detected</span></label>
                     <label class="oau-event-label"><input type="checkbox" name="slackEvents" value="staleWarning"/>     <span>Stale warning digest</span></label>
                     <label class="oau-event-label"><input type="checkbox" name="slackEvents" value="accessReview"/>     <span>Access review digest</span></label>
+                    <label class="oau-event-label"><input type="checkbox" name="slackEvents" value="jitRequest"/>       <span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="12" height="12" style="vertical-align:middle;margin-right:3px;"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>JIT request submitted</span></label>
+                    <label class="oau-event-label"><input type="checkbox" name="slackEvents" value="jitApproved"/>      <span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="12" height="12" style="vertical-align:middle;margin-right:3px;"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>JIT access approved</span></label>
+                    <label class="oau-event-label"><input type="checkbox" name="slackEvents" value="jitDenied"/>        <span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="12" height="12" style="vertical-align:middle;margin-right:3px;"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>JIT access denied</span></label>
                   </div>
                 </div>
               </div>
@@ -494,6 +503,9 @@
                     <label class="oau-event-label"><input type="checkbox" name="teamsEvents" value="bruteForce"/>       <span>Brute force detected</span></label>
                     <label class="oau-event-label"><input type="checkbox" name="teamsEvents" value="staleWarning"/>     <span>Stale warning digest</span></label>
                     <label class="oau-event-label"><input type="checkbox" name="teamsEvents" value="accessReview"/>     <span>Access review digest</span></label>
+                    <label class="oau-event-label"><input type="checkbox" name="teamsEvents" value="jitRequest"/>       <span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="12" height="12" style="vertical-align:middle;margin-right:3px;"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>JIT request submitted</span></label>
+                    <label class="oau-event-label"><input type="checkbox" name="teamsEvents" value="jitApproved"/>      <span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="12" height="12" style="vertical-align:middle;margin-right:3px;"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>JIT access approved</span></label>
+                    <label class="oau-event-label"><input type="checkbox" name="teamsEvents" value="jitDenied"/>        <span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="12" height="12" style="vertical-align:middle;margin-right:3px;"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>JIT access denied</span></label>
                   </div>
                 </div>
               </div>
@@ -734,7 +746,10 @@
           graphApiFailure:      'Alert when Microsoft Graph API calls fail, breaking Entra group sync.',
           adminGranted:         'Alert when a user is granted Jenkins ADMINISTER permission.',
           bruteForce:           'Alert when consecutive login failures hit the configured threshold.',
-          staleWarning:         'Periodic digest of users approaching the stale threshold.'
+          staleWarning:         'Periodic digest of users approaching the stale threshold.',
+          jitRequest:           'Sent to approvers when a user submits a JIT access request.',
+          jitApproved:          'Sent to the requester when their JIT request is approved.',
+          jitDenied:            'Sent to the requester when their JIT request is denied or times out.'
         };
         ['smtpEvents','slackEvents','teamsEvents'].forEach(function(ch) {
           document.querySelectorAll('[name="' + ch + '"]').forEach(function(cb) {

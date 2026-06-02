@@ -59,7 +59,7 @@ public class OmniAuthItemACL extends ACL {
 
         for (OmniAuthAssignment assignment : userAssignments) {
             if (assignment.isExpired()) continue;
-            Set<String> granted = computeGrantedPermissions(assignment, roleConfig);
+            Set<String> granted = computeGrantedPermissions(assignment, roleConfig, userId);
             if (impliedBy(granted, permission)) return true;
         }
 
@@ -71,7 +71,7 @@ public class OmniAuthItemACL extends ACL {
                         config.getAssignmentsForUser(group.getObjectId(), "GROUP");
                 for (OmniAuthAssignment assignment : groupAssignments) {
                     if (assignment.isExpired()) continue;
-                    Set<String> granted = computeGrantedPermissions(assignment, roleConfig);
+                    Set<String> granted = computeGrantedPermissions(assignment, roleConfig, userId);
                     if (impliedBy(granted, permission)) return true;
                 }
             }
@@ -86,37 +86,59 @@ public class OmniAuthItemACL extends ACL {
         return false;
     }
 
-    private Set<String> computeGrantedPermissions(OmniAuthAssignment assignment, OmniAuthRoleConfig roleConfig) {
+    private Set<String> computeGrantedPermissions(OmniAuthAssignment assignment,
+                                                    OmniAuthRoleConfig roleConfig,
+                                                    String userId) {
         String scope = assignment.getScope();
 
         // Global assignment — full role permissions apply everywhere
         if (scope.isEmpty()) {
-            return getRolePermissions(assignment, roleConfig);
+            return resolvePermissions(assignment, roleConfig, userId, scope);
         }
 
         String scopeType = assignment.getScopeType();
 
         if ("FOLDER".equals(scopeType)) {
             if (itemFullName.equals(scope)) {
-                return getRolePermissions(assignment, roleConfig);       // item IS the granted folder
+                return resolvePermissions(assignment, roleConfig, userId, scope);
             }
             if (itemFullName.startsWith(scope + "/")) {
-                return getRolePermissions(assignment, roleConfig);       // item is a descendant
+                return resolvePermissions(assignment, roleConfig, userId, scope);
             }
             if (scope.startsWith(itemFullName + "/")) {
-                return NAV_PERMISSIONS;                                  // item is an ancestor (navigation)
+                return NAV_PERMISSIONS;
             }
         } else {
             // JOB scope
             if (itemFullName.equals(scope)) {
-                return getRolePermissions(assignment, roleConfig);       // item IS the granted job
+                return resolvePermissions(assignment, roleConfig, userId, scope);
             }
             if (scope.startsWith(itemFullName + "/")) {
-                return NAV_PERMISSIONS;                                  // item is an ancestor (navigation)
+                // Jenkins delegates WorkflowJob ACL to its parent folder — so permission checks
+                // for the pipeline itself arrive here as a check on the parent folder.
+                // For STANDING: grant full permissions so the pipeline's Build button works.
+                // For JIT: grant full permissions only when there's an active request.
+                return resolvePermissions(assignment, roleConfig, userId, scope);
             }
         }
 
         return Collections.emptySet();
+    }
+
+    /** Returns full role permissions for STANDING, or nav-only vs full based on active JIT request. */
+    private Set<String> resolvePermissions(OmniAuthAssignment assignment,
+                                            OmniAuthRoleConfig roleConfig,
+                                            String userId, String scope) {
+        if (!assignment.isJit()) {
+            return getRolePermissions(assignment, roleConfig);
+        }
+        // JIT — only grant full permissions if there is an active JIT request for this user+scope
+        OmniAuthJitRequestStore store = OmniAuthJitRequestStore.get();
+        if (store != null && store.findActiveForUser(userId, assignment.getScope()) != null) {
+            return getRolePermissions(assignment, roleConfig);
+        }
+        // No active JIT request — grant navigation only so they can see (but not build) the job
+        return NAV_PERMISSIONS;
     }
 
     /** Walks the impliedBy chain — if any granted permission directly or transitively implies the requested one. */

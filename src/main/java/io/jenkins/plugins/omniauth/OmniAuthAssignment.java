@@ -15,6 +15,11 @@ public class OmniAuthAssignment {
     private String grantedBy;
     private String expiresAt;   // ISO-8601 UTC, null = no expiry
     private String reviewedAt;  // ISO-8601 UTC, null = never reviewed
+    private String       accessType;  // STANDING (default) | JIT
+    private String       approverGroup; // legacy — kept for XStream compat only; migrated to approvers on load
+    private List<String> approvers = new ArrayList<>();
+    private int          maxDurationHours     = 4;
+    private int          approvalTimeoutHours = 4;
 
     public OmniAuthAssignment() {}
 
@@ -65,6 +70,36 @@ public class OmniAuthAssignment {
 
     public String getReviewedAt() { return reviewedAt; }
     public void setReviewedAt(String reviewedAt) { this.reviewedAt = (reviewedAt != null && !reviewedAt.isBlank()) ? reviewedAt : null; }
+
+    public String getAccessType() { return accessType != null ? accessType : "STANDING"; }
+    public void setAccessType(String v) { this.accessType = v; }
+    public boolean isJit() { return "JIT".equalsIgnoreCase(accessType); }
+
+    private Object readResolve() {
+        if (approvers == null) approvers = new ArrayList<>();
+        if (approvers.isEmpty() && approverGroup != null && !approverGroup.isBlank()) {
+            approvers.add(approverGroup.trim());
+        }
+        return this;
+    }
+
+    public List<String> getApprovers() { return approvers != null ? approvers : new ArrayList<>(); }
+    public void setApprovers(List<String> v) {
+        this.approvers = v != null ? new java.util.ArrayList<>(v) : new ArrayList<>();
+    }
+
+    /** Legacy — returns the first approver, or empty string. Use getApprovers() for full list. */
+    public String getApproverGroup() {
+        List<String> a = getApprovers();
+        return a.isEmpty() ? "" : String.join(", ", a);
+    }
+    public void setApproverGroup(String v) { this.approverGroup = v; }
+
+    public int getMaxDurationHours() { return maxDurationHours > 0 ? maxDurationHours : 4; }
+    public void setMaxDurationHours(int v) { this.maxDurationHours = v; }
+
+    public int getApprovalTimeoutHours() { return approvalTimeoutHours > 0 ? approvalTimeoutHours : 4; }
+    public void setApprovalTimeoutHours(int v) { this.approvalTimeoutHours = v; }
 
     public boolean isExpired() {
         if (expiresAt == null || expiresAt.isBlank()) return false;

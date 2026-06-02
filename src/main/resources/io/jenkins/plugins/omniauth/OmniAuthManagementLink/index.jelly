@@ -275,6 +275,18 @@
             <div class="oau-kpi-card__label">Failed Logins <span class="oau-kpi-card__sublabel">(24h)</span></div>
           </a>
 
+          <j:set var="pendingJit" value="${it.pendingJitCount}"/>
+          <a href="jitRequests" class="oau-kpi-card">
+            <div class="oau-kpi-card__icon" style="background:${pendingJit gt 0 ? '#fffbeb' : '#f0f0f0'};">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                   stroke="${pendingJit gt 0 ? '#d97706' : '#adb5bd'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+              </svg>
+            </div>
+            <div class="oau-kpi-card__value" style="color:${pendingJit gt 0 ? '#d97706' : '#adb5bd'};">${pendingJit}</div>
+            <div class="oau-kpi-card__label">Pending JIT</div>
+          </a>
+
         </div>
 
         <!-- ── Row 2: Needs Attention + Expiring Access + User Composition + Notifications ── -->

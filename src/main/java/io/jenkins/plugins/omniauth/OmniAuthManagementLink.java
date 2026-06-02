@@ -102,6 +102,11 @@ public class OmniAuthManagementLink extends ManagementLink {
         req.getView(this, "accessReview.jelly").forward(req, rsp);
     }
 
+    public void doJitRequests(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        req.getView(this, "jitRequests.jelly").forward(req, rsp);
+    }
+
     public void doAuditLog(StaplerRequest req, StaplerResponse rsp) throws Exception {
         Jenkins.get().checkPermission(Jenkins.ADMINISTER);
         req.getView(this, "auditLog.jelly").forward(req, rsp);
@@ -1118,6 +1123,88 @@ public class OmniAuthManagementLink extends ManagementLink {
         }
         items.sort((x, y) -> Integer.compare(y.getDaysAgo(), x.getDaysAgo()));
         return items;
+    }
+
+    // ── JIT: getters ────────────────────────────────────────────────────────
+
+    public int getPendingJitCount() {
+        OmniAuthJitRequestStore store = OmniAuthJitRequestStore.get();
+        return store == null ? 0 : store.getPendingCount();
+    }
+
+    public List<OmniAuthJitRequest> getPendingJitRequests() {
+        OmniAuthJitRequestStore store = OmniAuthJitRequestStore.get();
+        return store == null ? Collections.emptyList() : store.getPendingRequests();
+    }
+
+    public List<OmniAuthJitRequest> getRecentJitRequests() {
+        OmniAuthJitRequestStore store = OmniAuthJitRequestStore.get();
+        return store == null ? Collections.emptyList() : store.getRecentRequests(50);
+    }
+
+    // ── JIT: admin actions ───────────────────────────────────────────────────
+
+    @POST
+    public void doApproveJit(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String requestId = req.getParameter("requestId");
+        if (requestId == null || requestId.isBlank()) { rsp.sendRedirect("jitRequests"); return; }
+        String approver = Jenkins.getAuthentication2().getName();
+        OmniAuthJitRequestStore store = OmniAuthJitRequestStore.get();
+        OmniAuthJitRequest jitReq = store != null ? store.findById(requestId) : null;
+        if (jitReq == null) { rsp.sendRedirect("jitRequests"); return; }
+
+        boolean wentActive = store.approveAsApprover(requestId, approver);
+        OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        if (wentActive) {
+            if (audit != null) audit.logJitApproved(approver, jitReq.getRequesterId(),
+                    jitReq.getScope(), jitReq.getRequestedDurationHours());
+            NotificationService.sendJitApproved(cfg, jitReq);
+            rsp.sendRedirect("jitRequests?approved=true");
+        } else {
+            rsp.sendRedirect("jitRequests?partialApproved=true");
+        }
+    }
+
+    @POST
+    public void doDenyJit(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String requestId = req.getParameter("requestId");
+        String comment   = req.getParameter("comment");
+        if (requestId == null || requestId.isBlank()) { rsp.sendRedirect("jitRequests"); return; }
+        String approver = Jenkins.getAuthentication2().getName();
+        OmniAuthJitRequestStore store = OmniAuthJitRequestStore.get();
+        OmniAuthJitRequest jitReq = store != null ? store.findById(requestId) : null;
+        if (jitReq == null) { rsp.sendRedirect("jitRequests"); return; }
+
+        if (store.denyAsApprover(requestId, approver, comment)) {
+            OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+            if (audit != null) audit.logJitDenied(approver, jitReq.getRequesterId(),
+                    jitReq.getScope(), comment);
+            OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+            NotificationService.sendJitDenied(cfg, jitReq);
+        }
+        rsp.sendRedirect("jitRequests?denied=true");
+    }
+
+    public String getCurrentUserId() {
+        try { return Jenkins.getAuthentication2().getName(); } catch (Exception e) { return ""; }
+    }
+
+    @POST
+    public void doRevokeActiveJit(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String requestId = req.getParameter("requestId");
+        if (requestId == null || requestId.isBlank()) { rsp.sendRedirect("jitRequests"); return; }
+        String revokedBy = Jenkins.getAuthentication2().getName();
+        OmniAuthJitRequestStore store = OmniAuthJitRequestStore.get();
+        OmniAuthJitRequest jitReq = store != null ? store.findById(requestId) : null;
+        if (jitReq != null && store.revoke(requestId, revokedBy)) {
+            OmniAuthAuditLog audit = OmniAuthAuditLog.get();
+            if (audit != null) audit.logJitRevoked(revokedBy, jitReq.getRequesterId(), jitReq.getScope());
+        }
+        rsp.sendRedirect("jitRequests?revoked=true");
     }
 
     public int getPendingDeletionCount() {
@@ -2476,6 +2563,10 @@ public class OmniAuthManagementLink extends ManagementLink {
                         a.getRoleId(), new ArrayList<>(perms),
                         a.getExpiresAt(), new ArrayList<>(customPerms));
                 if (reviewThreshold > 0) info.setReviewDue(a.isReviewDue(reviewThreshold));
+                info.setAccessType(a.getAccessType());
+                info.setApproverGroup(a.getApproverGroup());
+                info.setMaxDurationHours(a.getMaxDurationHours());
+                info.setApprovalTimeoutHours(a.getApprovalTimeoutHours());
                 result.add(info);
             }
         }
@@ -2534,6 +2625,10 @@ public class OmniAuthManagementLink extends ManagementLink {
             OmniAuthAssignment assignment = new OmniAuthAssignment(
                     sid, authTypeStr, roleName, scope, scopeType, customPerms, grantedAt, grantedBy);
             assignment.setExpiresAt(expiresAt);
+            applyJitFieldsFromRequest(req, assignment);
+            if (assignment.isJit() && assignment.getApprovers().size() < 2) {
+                rsp.sendRedirect(detailUrl(sid, atype, "error=jitMinApprovers")); return;
+            }
             OmniAuthAssignmentConfig config = OmniAuthAssignmentConfig.get();
             if (config != null) config.addAssignment(assignment);
             // Ensure user can log in — Hudson.Read at global is required for any access
@@ -2541,6 +2636,74 @@ public class OmniAuthManagementLink extends ManagementLink {
             OmniAuthAuditLog audit = OmniAuthAuditLog.get();
             if (audit != null) audit.logGrant(Jenkins.getAuthentication2().getName(), sid, roleName, scope, expiresAt);
             rsp.sendRedirect(detailUrl(sid, atype, "saved=true"));
+        }
+    }
+
+    /** Typeahead endpoint — returns up to 10 users + groups whose id/name contains the query. */
+    public void doSuggestApprovers(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        String q = req.getParameter("q");
+        if (q == null) q = "";
+        String lq = q.toLowerCase().trim();
+
+        java.util.List<String> results = new java.util.ArrayList<>();
+
+        // Groups first — from OmniAuth group assignments (unique group IDs)
+        OmniAuthAssignmentConfig assignmentConfig = OmniAuthAssignmentConfig.get();
+        if (assignmentConfig != null) {
+            java.util.LinkedHashSet<String> seen = new java.util.LinkedHashSet<>();
+            for (OmniAuthAssignment a : assignmentConfig.getAssignments()) {
+                if (!"GROUP".equalsIgnoreCase(a.getAuthType())) continue;
+                String gid = a.getUserId();
+                if (gid == null || gid.isBlank() || seen.contains(gid)) continue;
+                seen.add(gid);
+                if (!lq.isEmpty() && !gid.toLowerCase().contains(lq)) continue;
+                results.add("{\"id\":\"" + jsonEsc(gid) + "\",\"type\":\"group\"}");
+                if (results.size() >= 5) break;
+            }
+        }
+
+        // Users — remaining slots up to 10 total
+        int remaining = 10 - results.size();
+        for (User user : User.getAll()) {
+            if (remaining <= 0) break;
+            if (isInternalUser(user)) continue;
+            String id      = user.getId();
+            String full    = user.getFullName();
+            String display = (full != null && !full.equals(id)) ? full : null;
+            String combined = (id + " " + (display != null ? display : "")).toLowerCase();
+            if (!lq.isEmpty() && !combined.contains(lq)) continue;
+            StringBuilder entry = new StringBuilder("{\"id\":\"").append(jsonEsc(id)).append("\",\"type\":\"user\"");
+            if (display != null) entry.append(",\"displayName\":\"").append(jsonEsc(display)).append("\"");
+            entry.append("}");
+            results.add(entry.toString());
+            remaining--;
+        }
+
+        rsp.setContentType("application/json;charset=UTF-8");
+        rsp.getWriter().write("[" + String.join(",", results) + "]");
+    }
+
+    private static String jsonEsc(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "");
+    }
+
+    private static void applyJitFieldsFromRequest(StaplerRequest req, OmniAuthAssignment assignment) {
+        String accessType = req.getParameter("accessType");
+        if ("JIT".equalsIgnoreCase(accessType)) {
+            assignment.setAccessType("JIT");
+            String approversParam = req.getParameter("approvers");
+            if (approversParam != null && !approversParam.isBlank()) {
+                java.util.List<String> approvers = java.util.Arrays.stream(approversParam.split(","))
+                        .map(String::trim).filter(s -> !s.isEmpty())
+                        .collect(java.util.stream.Collectors.toList());
+                assignment.setApprovers(approvers);
+            }
+            try { assignment.setMaxDurationHours(Integer.parseInt(req.getParameter("maxDurationHours"))); } catch (Exception ignore) {}
+            try { assignment.setApprovalTimeoutHours(Integer.parseInt(req.getParameter("approvalTimeoutHours"))); } catch (Exception ignore) {}
+        } else {
+            assignment.setAccessType("STANDING");
         }
     }
 
@@ -2597,6 +2760,10 @@ public class OmniAuthManagementLink extends ManagementLink {
                 java.time.Instant.now().toString(),
                 Jenkins.getAuthentication2().getName());
         updated.setExpiresAt(expiresAt);
+        applyJitFieldsFromRequest(req, updated);
+        if (updated.isJit() && updated.getApprovers().size() < 2) {
+            rsp.sendRedirect(detailUrl(sid, atype, "error=jitMinApprovers")); return;
+        }
 
         OmniAuthAssignmentConfig config = OmniAuthAssignmentConfig.get();
         String oldRole = null;
@@ -4300,10 +4467,24 @@ public class OmniAuthManagementLink extends ManagementLink {
         public String getExpiresAt()                 { return expiresAt; }
         public List<String> getCustomPermissions()   { return customPermissions; }
         private boolean reviewDue = false;
+        private String accessType;
+        private String approverGroup;
+        private int maxDurationHours;
+        private int approvalTimeoutHours;
+
         public boolean isGlobal()                    { return scope == null || scope.isEmpty(); }
         public int getPermissionCount()              { return permissionIds != null ? permissionIds.size() : 0; }
         public boolean isReviewDue()                 { return reviewDue; }
         public void setReviewDue(boolean v)          { this.reviewDue = v; }
+        public String getAccessType()                { return accessType != null ? accessType : "STANDING"; }
+        public void setAccessType(String v)          { this.accessType = v; }
+        public boolean isJit()                       { return "JIT".equalsIgnoreCase(accessType); }
+        public String getApproverGroup()             { return approverGroup != null ? approverGroup : ""; }
+        public void setApproverGroup(String v)       { this.approverGroup = v; }
+        public int getMaxDurationHours()             { return maxDurationHours > 0 ? maxDurationHours : 4; }
+        public void setMaxDurationHours(int v)       { this.maxDurationHours = v; }
+        public int getApprovalTimeoutHours()         { return approvalTimeoutHours > 0 ? approvalTimeoutHours : 4; }
+        public void setApprovalTimeoutHours(int v)   { this.approvalTimeoutHours = v; }
 
         public String getCustomPermissionsJson() {
             if (customPermissions == null || customPermissions.isEmpty()) return "[]";

@@ -133,6 +133,45 @@ public class OmniAuthAuditLog {
         write(e);
     }
 
+    public void logJitRequested(String requesterId, String scope, String reason, int durationHours) {
+        Map<String, String> e = event("jit_requested");
+        e.put("user", requesterId); e.put("scope", scopeLabel(scope));
+        e.put("reason", reason != null ? reason : ""); e.put("durationHours", String.valueOf(durationHours));
+        write(e);
+    }
+
+    public void logJitApproved(String approverId, String requesterId, String scope, int durationHours) {
+        Map<String, String> e = event("jit_approved");
+        e.put("by", approverId); e.put("user", requesterId);
+        e.put("scope", scopeLabel(scope)); e.put("durationHours", String.valueOf(durationHours));
+        write(e);
+    }
+
+    public void logJitDenied(String approverId, String requesterId, String scope, String comment) {
+        Map<String, String> e = event("jit_denied");
+        e.put("by", approverId); e.put("user", requesterId); e.put("scope", scopeLabel(scope));
+        if (comment != null && !comment.isBlank()) e.put("reason", comment);
+        write(e);
+    }
+
+    public void logJitExpired(String requesterId, String scope) {
+        Map<String, String> e = event("jit_expired");
+        e.put("user", requesterId); e.put("scope", scopeLabel(scope));
+        write(e);
+    }
+
+    public void logJitRevoked(String by, String requesterId, String scope) {
+        Map<String, String> e = event("jit_revoked");
+        e.put("by", by); e.put("user", requesterId); e.put("scope", scopeLabel(scope));
+        write(e);
+    }
+
+    public void logJitCancelled(String requesterId, String scope) {
+        Map<String, String> e = event("jit_cancelled");
+        e.put("user", requesterId); e.put("scope", scopeLabel(scope));
+        write(e);
+    }
+
     public void logReviewConfirmed(String by, String user, String role, String scope) {
         Map<String, String> e = event("review_confirmed");
         e.put("by", by); e.put("user", user);

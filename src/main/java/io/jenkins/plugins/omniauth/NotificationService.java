@@ -241,6 +241,113 @@ public class NotificationService {
     }
 
     // -------------------------------------------------------------------------
+    // Event: JIT access requested (sent to approvers)
+    // -------------------------------------------------------------------------
+
+    public static void sendJitRequested(OmniAuthGlobalConfig cfg,
+                                         OmniAuthJitRequest req, String approverGroup) {
+        // Slack / Teams broadcast — single message to webhook
+        if (cfg == null) return;
+        String subject = "[Jenkins OmniAuth] JIT Request — " + req.getRequesterId()
+                + " wants access to " + req.getScope();
+        String plain = "OmniAuth JIT Access Request\n"
+                + "===========================\n\n"
+                + "Requested by:  " + req.getRequesterId() + "\n"
+                + "Pipeline:      " + req.getScope() + "\n"
+                + "Duration:      " + req.getRequestedDurationHours() + " hour(s)\n"
+                + "Reason: " + req.getReason() + "\n\n"
+                + "Waiting for " + req.getTotalApprovers() + " approver(s).\n"
+                + ctaLine("Open JIT Requests", "jitRequests")
+                + "\n---\nJenkins OmniAuth Plugin";
+        if (cfg.isNotificationsEnabled()) {
+            if (cfg.isSlackEvent("jitRequest")) SlackHelper.send(cfg, subject, plain);
+            if (cfg.isTeamsEvent("jitRequest")) TeamsHelper.send(cfg, subject, plain);
+        }
+    }
+
+    /** Sends a per-approver action email with their unique Take Action link. */
+    public static void sendJitApproverRequest(OmniAuthGlobalConfig cfg,
+                                               OmniAuthJitRequest req,
+                                               OmniAuthJitRequest.ApprovalEntry entry) {
+        if (cfg == null || !cfg.isNotificationsEnabled() || !cfg.isSmtpEnabled()) return;
+        String actionUrl = rootUrl() + "/omniauth-jit/action?token=" + entry.getToken();
+        String subject = "[Action Required] JIT Access Request — " + req.getRequesterId()
+                + " → " + req.getScope();
+        String plain = "JIT Access Request\n"
+                + "==================\n\n"
+                + "Requested by: " + req.getRequesterId() + "\n"
+                + "Pipeline:     " + req.getScope() + "\n"
+                + "Duration:     " + req.getRequestedDurationHours() + " hour(s)\n"
+                + "Reason:       " + req.getReason() + "\n\n"
+                + "Take action: " + actionUrl + "\n"
+                + "This link is unique to you and expires when the approval window closes.\n"
+                + "\n---\nJenkins OmniAuth Plugin";
+        SmtpHelper.sendTo(cfg, entry.getApproverIdentity(), subject,
+                SmtpHelper.buildJitApproverRequestHtml(cfg, req, entry.getApproverIdentity(), actionUrl),
+                plain);
+    }
+
+    /** Sent to requester when their JIT request timed out but had partial approvals. */
+    public static void sendJitTimedOutPartial(OmniAuthGlobalConfig cfg, OmniAuthJitRequest req) {
+        if (cfg == null) return;
+        String subject = "[Jenkins OmniAuth] JIT Request Timed Out — " + req.getScope();
+        StringBuilder plain = new StringBuilder();
+        plain.append("OmniAuth JIT Request Timed Out\n")
+             .append("==============================\n\n")
+             .append("Your JIT request for ").append(req.getScope()).append(" has timed out.\n\n")
+             .append("Approval status:\n");
+        for (OmniAuthJitRequest.ApprovalEntry e : req.getApprovalEntries()) {
+            plain.append("  ").append(e.getApproverIdentity())
+                 .append(": ").append(e.isApproved() ? "Approved" : "Did not respond").append("\n");
+        }
+        plain.append("\nSubmit a new request if you still need access.\n")
+             .append("\n---\nJenkins OmniAuth Plugin");
+        dispatch(cfg, "jitDenied", subject, plain.toString(),
+                SmtpHelper.buildJitTimedOutPartialHtml(cfg, req));
+    }
+
+    // -------------------------------------------------------------------------
+    // Event: JIT access approved (sent to requester)
+    // -------------------------------------------------------------------------
+
+    public static void sendJitApproved(OmniAuthGlobalConfig cfg, OmniAuthJitRequest req) {
+        if (cfg == null) return;
+        String subject = "[Jenkins OmniAuth] JIT Access Approved — " + req.getScope();
+
+        String plain = "OmniAuth JIT Access Approved\n"
+                + "============================\n\n"
+                + "Your JIT access request has been approved.\n\n"
+                + "Pipeline:    " + req.getScope() + "\n"
+                + "Approved by: " + req.getApproverId() + "\n"
+                + "Duration:    " + req.getRequestedDurationHours() + " hour(s)\n\n"
+                + "Go to the pipeline and build.\n"
+                + "\n---\nJenkins OmniAuth Plugin";
+
+        dispatch(cfg, "jitApproved", subject, plain,
+                SmtpHelper.buildJitApprovedHtml(cfg, req));
+    }
+
+    // -------------------------------------------------------------------------
+    // Event: JIT access denied (sent to requester)
+    // -------------------------------------------------------------------------
+
+    public static void sendJitDenied(OmniAuthGlobalConfig cfg, OmniAuthJitRequest req) {
+        if (cfg == null) return;
+        String subject = "[Jenkins OmniAuth] JIT Request Denied — " + req.getScope();
+
+        String plain = "OmniAuth JIT Request Denied\n"
+                + "===========================\n\n"
+                + "Your JIT access request was denied.\n\n"
+                + "Pipeline:   " + req.getScope() + "\n"
+                + "Denied by:  " + req.getApproverId() + "\n"
+                + (req.getApproverComment().isBlank() ? "" : "Reason:     " + req.getApproverComment() + "\n")
+                + "\n---\nJenkins OmniAuth Plugin";
+
+        dispatch(cfg, "jitDenied", subject, plain,
+                SmtpHelper.buildJitDeniedHtml(cfg, req));
+    }
+
+    // -------------------------------------------------------------------------
     // Event: Graph API failed
     // -------------------------------------------------------------------------
 
