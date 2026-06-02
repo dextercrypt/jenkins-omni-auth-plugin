@@ -510,6 +510,9 @@ public class OmniAuthManagementLink extends ManagementLink {
             putParam(json, req, "smtpFromName");
             putParam(json, req, "smtpReplyTo");
             putParam(json, req, "notifyEmails");
+            putParam(json, req, "loginLogoUrl");
+            putParam(json, req, "loginHeading");
+            putParam(json, req, "loginTabTitle");
             putParam(json, req, "notificationLogoUrl");
             putParam(json, req, "notificationFooterNote");
             // brute force

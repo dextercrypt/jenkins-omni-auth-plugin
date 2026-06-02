@@ -82,6 +82,23 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
         return entraConfig;
     }
 
+    public String getLoginHeading() {
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        String v = cfg != null ? cfg.getLoginHeading() : "";
+        return (v != null && !v.isBlank()) ? v : "Sign in to Jenkins";
+    }
+
+    public String getLoginTabTitle() {
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        String v = cfg != null ? cfg.getLoginTabTitle() : "";
+        return (v != null && !v.isBlank()) ? v : "Sign In";
+    }
+
+    public String getLoginLogoUrl() {
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        return cfg != null ? cfg.getLoginLogoUrl() : "";
+    }
+
     // -------------------------------------------------------------------------
     // Override only the login URL — everything else is inherited from
     // HudsonPrivateSecurityRealm without change.

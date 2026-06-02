@@ -65,6 +65,11 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     // ── JIT history retention ─────────────────────────────────────────────────
     private int jitHistoryRetentionDays = 90;
 
+    // ── Login page branding ───────────────────────────────────────────────────
+    private String loginLogoUrl   = "";
+    private String loginHeading   = "";
+    private String loginTabTitle  = "";
+
     // ── Notification branding ─────────────────────────────────────────────────
     private String notificationLogoUrl  = "";
     private String notificationFooterNote = "";
@@ -110,6 +115,13 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     public boolean isSmtpTls()          { return smtpTls; }
     public String  getSmtpFromAddress() { return smtpFromAddress; }
     public String  getSmtpFromName()    { return smtpFromName; }
+    public String  getLoginLogoUrl()   { return loginLogoUrl  != null ? loginLogoUrl.trim()  : ""; }
+    public String  getLoginHeading()   { return loginHeading  != null ? loginHeading.trim()  : ""; }
+    public String  getLoginTabTitle()  { return loginTabTitle != null ? loginTabTitle.trim() : ""; }
+    public void    setLoginLogoUrl(String v)  { this.loginLogoUrl  = v != null ? v.trim() : ""; }
+    public void    setLoginHeading(String v)  { this.loginHeading  = v != null ? v.trim() : ""; }
+    public void    setLoginTabTitle(String v) { this.loginTabTitle = v != null ? v.trim() : ""; }
+
     public String  getNotificationLogoUrl() {
         return notificationLogoUrl != null ? notificationLogoUrl.trim() : "";
     }
@@ -221,6 +233,9 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
         smtpFromName    = jsonStr(json, "smtpFromName",    "Jenkins OmniAuth");
         smtpReplyTo     = jsonStr(json, "smtpReplyTo",     "");
         notifyEmails          = jsonStr(json, "notifyEmails",          "");
+        loginLogoUrl   = jsonStr(json, "loginLogoUrl",   "");
+        loginHeading   = jsonStr(json, "loginHeading",   "");
+        loginTabTitle  = jsonStr(json, "loginTabTitle",  "");
         notificationLogoUrl   = jsonStr(json, "notificationLogoUrl",   "");
         notificationFooterNote = jsonStr(json, "notificationFooterNote", "");
 

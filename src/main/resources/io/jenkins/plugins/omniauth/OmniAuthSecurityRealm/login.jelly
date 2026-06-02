@@ -25,10 +25,13 @@
 
     <html lang="${request2.getLocale().toLanguageTag()}">
       <head data-rooturl="${rootURL}" data-resurl="${resURL}" data-imagesurl="${imagesURL}" resURL="${resURL}">
-        <title>${%signIn} - Jenkins</title>
+        <title>${it.loginTabTitle}</title>
         <meta name="ROBOTS" content="NOFOLLOW" />
         <meta name="viewport" content="width=device-width, initial-scale=1"/>
         <st:include it="${simpleDecorator}" page="simple-head.jelly" />
+        <j:if test="${it.loginLogoUrl != null and it.loginLogoUrl != ''}">
+          <style>.app-sign-in-register__branding img[alt="logo"]{content:url('${it.loginLogoUrl}');}</style>
+        </j:if>
       </head>
       <body class="app-sign-in-register">
         <j:choose>
@@ -39,7 +42,7 @@
             <st:include it="${simpleDecorator}" page="simple-branding.jelly" />
             <main id="main-panel" class="app-sign-in-register__content">
               <div class="app-sign-in-register__content-inner">
-                <h1>${%Sign in to Jenkins}</h1>
+                <h1>${it.loginHeading}</h1>
 
                 <st:include it="${simpleDecorator}" page="simple-header.jelly" />
 
