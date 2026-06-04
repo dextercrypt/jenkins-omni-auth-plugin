@@ -54,45 +54,6 @@
           </div>
 
           <!-- ================================================================
-               LOGIN PAGE BRANDING
-               ================================================================ -->
-          <div class="jenkins-card" style="padding: 16px 20px; margin-bottom: 20px;">
-            <div style="font-weight:700; font-size:0.95em; margin-bottom:2px;">Login Page</div>
-            <div style="color:var(--text-color-secondary,#6c757d); font-size:0.82em; margin-bottom:16px;">
-              Customise what users see on the Jenkins login screen.
-            </div>
-
-            <div style="display:grid; gap:14px;">
-              <div>
-                <label style="display:block; font-size:0.82em; font-weight:600; margin-bottom:4px;">Page Heading</label>
-                <input type="text" name="loginHeading"
-                       value="${cfg.loginHeading}"
-                       placeholder="Sign in to Jenkins"
-                       style="width:360px; max-width:100%;"/>
-                <div style="font-size:0.78em; color:var(--text-color-secondary,#6c757d); margin-top:3px;">The large title above the login form. Leave blank for the default.</div>
-              </div>
-
-              <div>
-                <label style="display:block; font-size:0.82em; font-weight:600; margin-bottom:4px;">Browser Tab Title</label>
-                <input type="text" name="loginTabTitle"
-                       value="${cfg.loginTabTitle}"
-                       placeholder="Sign In"
-                       style="width:360px; max-width:100%;"/>
-                <div style="font-size:0.78em; color:var(--text-color-secondary,#6c757d); margin-top:3px;">The text shown in the browser tab. Leave blank for the default.</div>
-              </div>
-
-              <div>
-                <label style="display:block; font-size:0.82em; font-weight:600; margin-bottom:4px;">Logo URL</label>
-                <input type="url" name="loginLogoUrl"
-                       value="${cfg.loginLogoUrl}"
-                       placeholder="https://your-domain.com/logo.svg"
-                       style="width:360px; max-width:100%;"/>
-                <div style="font-size:0.78em; color:var(--text-color-secondary,#6c757d); margin-top:3px;">Replaces the Jenkins butler on the login page. PNG, SVG, or JPEG. Leave blank to keep the default.</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- ================================================================
                NOTIFICATIONS LOGO
                ================================================================ -->
           <div id="oauLogoSection" class="jenkins-card" style="padding: 16px 20px; margin-bottom: 20px;">

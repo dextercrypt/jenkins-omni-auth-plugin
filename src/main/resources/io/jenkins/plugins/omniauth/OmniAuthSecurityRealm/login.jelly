@@ -44,6 +44,22 @@
               <div class="app-sign-in-register__content-inner">
                 <h1>${it.loginHeading}</h1>
 
+                <j:if test="${it.loginAnnouncementText != null and it.loginAnnouncementText != ''}">
+                  <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;
+                       background:var(--warning-color-bg,#fff8e1);
+                       border:1px solid var(--warning-color,#f0ad4e);
+                       border-radius:6px;margin-bottom:16px;font-size:13px;line-height:1.5;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                         stroke="var(--warning-color,#d97706)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                         style="flex-shrink:0;margin-top:1px;">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                      <line x1="12" y1="9" x2="12" y2="13"/>
+                      <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <span>${it.loginAnnouncementText}</span>
+                  </div>
+                </j:if>
+
                 <st:include it="${simpleDecorator}" page="simple-header.jelly" />
 
                 <!-- ============================================================
@@ -142,6 +158,13 @@
                     </svg>
                     Sign in with Microsoft
                   </a>
+                </j:if>
+
+                <j:if test="${it.loginFooterText != null and it.loginFooterText != ''}">
+                  <div style="margin-top:20px;text-align:center;font-size:12px;
+                       color:var(--text-color-secondary,#888);line-height:1.5;">
+                    ${it.loginFooterText}
+                  </div>
                 </j:if>
 
                 <div class="footer">

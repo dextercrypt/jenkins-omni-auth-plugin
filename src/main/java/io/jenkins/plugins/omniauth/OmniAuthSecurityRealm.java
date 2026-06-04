@@ -94,9 +94,44 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
         return (v != null && !v.isBlank()) ? v : "Sign In";
     }
 
-    public String getLoginLogoUrl() {
+    public String getLoginAnnouncementText() {
         OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
-        return cfg != null ? cfg.getLoginLogoUrl() : "";
+        return cfg != null ? cfg.getLoginAnnouncementText() : "";
+    }
+
+    public String getLoginFooterText() {
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        return cfg != null ? cfg.getLoginFooterText() : "";
+    }
+
+    public String getLoginLogoUrl() {
+        java.io.File dir = new java.io.File(jenkins.model.Jenkins.get().getRootDir(), "omniauth-branding");
+        java.io.File[] files = dir.listFiles(f -> f.getName().startsWith("login-logo."));
+        if (files == null || files.length == 0) return "";
+        String root = jenkins.model.Jenkins.get().getRootUrl();
+        if (root == null) return "";
+        if (root.endsWith("/")) root = root.substring(0, root.length() - 1);
+        return root + "/omniauth/loginLogo";
+    }
+
+    public void doLoginLogo(org.kohsuke.stapler.StaplerRequest req,
+                            org.kohsuke.stapler.StaplerResponse rsp) throws Exception {
+        java.io.File dir = new java.io.File(jenkins.model.Jenkins.get().getRootDir(), "omniauth-branding");
+        java.io.File[] files = dir.listFiles(f -> f.getName().startsWith("login-logo."));
+        if (files == null || files.length == 0) { rsp.setStatus(404); return; }
+        java.io.File logo = files[0];
+        String name = logo.getName().toLowerCase();
+        String ct = "image/png";
+        if (name.endsWith(".svg"))              ct = "image/svg+xml";
+        else if (name.endsWith(".jpg") || name.endsWith(".jpeg")) ct = "image/jpeg";
+        else if (name.endsWith(".gif"))         ct = "image/gif";
+        else if (name.endsWith(".webp"))        ct = "image/webp";
+        else if (name.endsWith(".ico"))         ct = "image/x-icon";
+        rsp.setContentType(ct);
+        rsp.setHeader("Cache-Control", "public, max-age=3600");
+        byte[] data = java.nio.file.Files.readAllBytes(logo.toPath());
+        rsp.setContentLength(data.length);
+        rsp.getOutputStream().write(data);
     }
 
     // -------------------------------------------------------------------------

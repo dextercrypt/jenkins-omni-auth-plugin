@@ -66,9 +66,10 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     private int jitHistoryRetentionDays = 90;
 
     // ── Login page branding ───────────────────────────────────────────────────
-    private String loginLogoUrl   = "";
-    private String loginHeading   = "";
-    private String loginTabTitle  = "";
+    private String loginHeading          = "";
+    private String loginTabTitle         = "";
+    private String loginAnnouncementText = "";
+    private String loginFooterText       = "";
 
     // ── Notification branding ─────────────────────────────────────────────────
     private String notificationLogoUrl  = "";
@@ -115,12 +116,14 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     public boolean isSmtpTls()          { return smtpTls; }
     public String  getSmtpFromAddress() { return smtpFromAddress; }
     public String  getSmtpFromName()    { return smtpFromName; }
-    public String  getLoginLogoUrl()   { return loginLogoUrl  != null ? loginLogoUrl.trim()  : ""; }
     public String  getLoginHeading()   { return loginHeading  != null ? loginHeading.trim()  : ""; }
     public String  getLoginTabTitle()  { return loginTabTitle != null ? loginTabTitle.trim() : ""; }
-    public void    setLoginLogoUrl(String v)  { this.loginLogoUrl  = v != null ? v.trim() : ""; }
     public void    setLoginHeading(String v)  { this.loginHeading  = v != null ? v.trim() : ""; }
     public void    setLoginTabTitle(String v) { this.loginTabTitle = v != null ? v.trim() : ""; }
+    public String  getLoginAnnouncementText() { return loginAnnouncementText != null ? loginAnnouncementText.trim() : ""; }
+    public String  getLoginFooterText()       { return loginFooterText != null ? loginFooterText.trim() : ""; }
+    public void    setLoginAnnouncementText(String v) { this.loginAnnouncementText = v != null ? v.trim() : ""; }
+    public void    setLoginFooterText(String v)       { this.loginFooterText       = v != null ? v.trim() : ""; }
 
     public String  getNotificationLogoUrl() {
         return notificationLogoUrl != null ? notificationLogoUrl.trim() : "";
@@ -233,9 +236,10 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
         smtpFromName    = jsonStr(json, "smtpFromName",    "Jenkins OmniAuth");
         smtpReplyTo     = jsonStr(json, "smtpReplyTo",     "");
         notifyEmails          = jsonStr(json, "notifyEmails",          "");
-        loginLogoUrl   = jsonStr(json, "loginLogoUrl",   "");
-        loginHeading   = jsonStr(json, "loginHeading",   "");
-        loginTabTitle  = jsonStr(json, "loginTabTitle",  "");
+        loginHeading          = jsonStr(json, "loginHeading",          "");
+        loginTabTitle         = jsonStr(json, "loginTabTitle",         "");
+        loginAnnouncementText = jsonStr(json, "loginAnnouncementText", "");
+        loginFooterText       = jsonStr(json, "loginFooterText",       "");
         notificationLogoUrl   = jsonStr(json, "notificationLogoUrl",   "");
         notificationFooterNote = jsonStr(json, "notificationFooterNote", "");
 
