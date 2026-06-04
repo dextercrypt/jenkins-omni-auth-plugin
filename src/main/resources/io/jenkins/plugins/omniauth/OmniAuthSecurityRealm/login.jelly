@@ -39,7 +39,7 @@
             <st:include it="${app.setupWizard}" page="authenticate-security-token"/>
           </j:when>
           <j:otherwise>
-            <st:include it="${simpleDecorator}" page="simple-branding.jelly" />
+            <st:include it="${it}" page="animated-branding.jelly"/>
             <main id="main-panel" class="app-sign-in-register__content">
               <div class="app-sign-in-register__content-inner">
                 <h1>${it.loginHeading}</h1>
