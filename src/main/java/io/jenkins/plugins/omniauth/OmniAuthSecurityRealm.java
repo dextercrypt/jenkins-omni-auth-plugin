@@ -104,6 +104,11 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
         return cfg != null ? cfg.getLoginFooterText() : "";
     }
 
+    public String getLoginBackground() {
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        return cfg != null ? cfg.getLoginBackground() : "omniauth";
+    }
+
     public String getLoginLogoUrl() {
         java.io.File dir = new java.io.File(jenkins.model.Jenkins.get().getRootDir(), "omniauth-branding");
         java.io.File[] files = dir.listFiles(f -> f.getName().startsWith("login-logo."));

@@ -230,6 +230,19 @@
             </div>
             <div style="padding: 16px 20px; display: flex; flex-direction: column; gap: 16px;">
 
+              <!-- Login Background -->
+              <div>
+                <label style="display: block; font-weight: 600; font-size: 0.88em; margin-bottom: 4px;">Login Background</label>
+                <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.8em; margin-bottom: 6px;">
+                  Background design shown behind the logo on the login page. Default: OmniAuth animation.
+                </div>
+                <select name="loginBackground" class="jenkins-input" style="width: 360px; max-width: 100%;">
+                  <j:set var="bg" value="${cfg.loginBackground}"/>
+                  <option value="omniauth"  selected="${bg == 'omniauth'  ? 'selected' : null}">OmniAuth Animation (animated reactor)</option>
+                  <option value="starburst" selected="${bg == 'starburst' ? 'selected' : null}">Starburst (Jenkins native)</option>
+                </select>
+              </div>
+
               <!-- Page Heading -->
               <div>
                 <label style="display: block; font-weight: 600; font-size: 0.88em; margin-bottom: 4px;">Page Heading</label>
@@ -434,6 +447,10 @@
           if (tabTitle) tabTitle.value = '';
           if (announce) announce.value = '';
           if (footer)   footer.value   = '';
+
+          // Reset background to default (OmniAuth animation)
+          var bg = document.querySelector('[name="loginBackground"]');
+          if (bg) bg.value = 'omniauth';
 
           // Remove logo if one is uploaded
           var preview = document.getElementById('oauLogoPreview');

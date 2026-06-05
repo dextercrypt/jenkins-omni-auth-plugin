@@ -70,6 +70,9 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     private String loginTabTitle         = "";
     private String loginAnnouncementText = "";
     private String loginFooterText       = "";
+    // Which background the login panel shows. Known values: "omniauth" (animated reactor,
+    // default) and "starburst" (Jenkins' native starburst). New designs can be added later.
+    private String loginBackground       = "omniauth";
 
     // ── Notification branding ─────────────────────────────────────────────────
     private String notificationLogoUrl  = "";
@@ -124,6 +127,11 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     public String  getLoginFooterText()       { return loginFooterText != null ? loginFooterText.trim() : ""; }
     public void    setLoginAnnouncementText(String v) { this.loginAnnouncementText = v != null ? v.trim() : ""; }
     public void    setLoginFooterText(String v)       { this.loginFooterText       = v != null ? v.trim() : ""; }
+    public String  getLoginBackground() {
+        String v = loginBackground != null ? loginBackground.trim() : "";
+        return v.isEmpty() ? "omniauth" : v;
+    }
+    public void    setLoginBackground(String v) { this.loginBackground = (v != null && !v.trim().isEmpty()) ? v.trim() : "omniauth"; }
 
     public String  getNotificationLogoUrl() {
         return notificationLogoUrl != null ? notificationLogoUrl.trim() : "";
@@ -240,6 +248,7 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
         loginTabTitle         = jsonStr(json, "loginTabTitle",         "");
         loginAnnouncementText = jsonStr(json, "loginAnnouncementText", "");
         loginFooterText       = jsonStr(json, "loginFooterText",       "");
+        loginBackground       = jsonStr(json, "loginBackground",       "omniauth");
         notificationLogoUrl   = jsonStr(json, "notificationLogoUrl",   "");
         notificationFooterNote = jsonStr(json, "notificationFooterNote", "");
 

@@ -39,7 +39,15 @@
             <st:include it="${app.setupWizard}" page="authenticate-security-token"/>
           </j:when>
           <j:otherwise>
-            <st:include it="${it}" page="animated-branding.jelly"/>
+            <!-- Login branding panel: switchable background design -->
+            <j:choose>
+              <j:when test="${it.loginBackground == 'starburst'}">
+                <st:include it="${simpleDecorator}" page="simple-branding.jelly" />
+              </j:when>
+              <j:otherwise>
+                <st:include it="${it}" page="animated-branding.jelly"/>
+              </j:otherwise>
+            </j:choose>
             <main id="main-panel" class="app-sign-in-register__content">
               <div class="app-sign-in-register__content-inner">
                 <h1>${it.loginHeading}</h1>
