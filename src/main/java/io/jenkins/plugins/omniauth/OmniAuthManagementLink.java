@@ -1006,7 +1006,7 @@ public class OmniAuthManagementLink extends ManagementLink {
         String root = Jenkins.get().getRootUrl();
         if (root == null) return "";
         if (root.endsWith("/")) root = root.substring(0, root.length() - 1);
-        return root + "/omniauth/loginLogo";
+        return root + "/securityRealm/loginLogo";
     }
 
     @POST

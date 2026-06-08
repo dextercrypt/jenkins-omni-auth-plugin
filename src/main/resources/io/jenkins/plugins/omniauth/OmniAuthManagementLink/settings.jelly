@@ -267,9 +267,9 @@
 
               <!-- Logo upload -->
               <div>
-                <label style="display: block; font-weight: 600; font-size: 0.88em; margin-bottom: 4px;">Login Logo</label>
+                <label style="display: block; font-weight: 600; font-size: 0.88em; margin-bottom: 4px;">Company Logo</label>
                 <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.8em; margin-bottom: 10px;">
-                  Replaces the Jenkins butler on the login page. PNG, JPG, SVG, or GIF. Max 2 MB. Leave empty to show the default butler.
+                  Shown above the sign-in form. The Jenkins butler stays on the branding panel. PNG, JPG, SVG, or GIF. Max 2 MB. Leave empty to hide.
                 </div>
 
                 <!-- Preview row — shown when a logo is already uploaded -->
@@ -399,7 +399,7 @@
               statusEl.textContent = 'Uploaded.';
               var preview = document.getElementById('oauLogoPreview');
               var img     = document.getElementById('oauLogoPreviewImg');
-              if (img) img.src = '${rootURL}/omniauth/loginLogo?t=' + Date.now();
+              if (img) img.src = '${rootURL}/securityRealm/loginLogo?t=' + Date.now();
               if (preview) preview.style.display = 'flex';
             } else {
               statusEl.style.color = '#e74c3c';
@@ -430,7 +430,7 @@
               var preview = document.getElementById('oauLogoPreview');
               if (preview) preview.style.display = 'none';
               var statusEl = document.getElementById('oauLogoUploadStatus');
-              if (statusEl) { statusEl.style.color = '#27ae60'; statusEl.textContent = 'Logo removed. Butler will show on login page.'; }
+              if (statusEl) { statusEl.style.color = '#27ae60'; statusEl.textContent = 'Logo removed.'; }
             }
           })
           .catch(function() {})

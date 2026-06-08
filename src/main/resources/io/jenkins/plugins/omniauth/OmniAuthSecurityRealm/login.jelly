@@ -29,9 +29,6 @@
         <meta name="ROBOTS" content="NOFOLLOW" />
         <meta name="viewport" content="width=device-width, initial-scale=1"/>
         <st:include it="${simpleDecorator}" page="simple-head.jelly" />
-        <j:if test="${it.loginLogoUrl != null and it.loginLogoUrl != ''}">
-          <style>.app-sign-in-register__branding img[alt="logo"]{content:url('${it.loginLogoUrl}');}</style>
-        </j:if>
       </head>
       <body class="app-sign-in-register">
         <j:choose>
@@ -50,6 +47,11 @@
             </j:choose>
             <main id="main-panel" class="app-sign-in-register__content">
               <div class="app-sign-in-register__content-inner">
+                <!-- Company logo: tenant identity above the form. Hidden when not uploaded. -->
+                <j:if test="${it.loginLogoUrl != null and it.loginLogoUrl != ''}">
+                  <img src="${it.loginLogoUrl}" alt=""
+                       style="align-self:flex-start;max-height:88px;max-width:100%;width:auto;height:auto;display:block;margin-bottom:18px;"/>
+                </j:if>
                 <h1>${it.loginHeading}</h1>
 
                 <j:if test="${it.loginAnnouncementText != null and it.loginAnnouncementText != ''}">

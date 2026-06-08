@@ -116,7 +116,7 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
         String root = jenkins.model.Jenkins.get().getRootUrl();
         if (root == null) return "";
         if (root.endsWith("/")) root = root.substring(0, root.length() - 1);
-        return root + "/omniauth/loginLogo";
+        return root + "/securityRealm/loginLogo";
     }
 
     public void doLoginLogo(org.kohsuke.stapler.StaplerRequest req,
