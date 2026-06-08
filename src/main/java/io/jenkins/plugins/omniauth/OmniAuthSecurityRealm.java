@@ -116,7 +116,9 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
         String root = jenkins.model.Jenkins.get().getRootUrl();
         if (root == null) return "";
         if (root.endsWith("/")) root = root.substring(0, root.length() - 1);
-        return root + "/securityRealm/loginLogo";
+        // Cache-bust by the file's last-modified time so swapping the logo busts the
+        // browser cache, while an unchanged logo keeps a stable, cacheable URL.
+        return root + "/securityRealm/loginLogo?v=" + files[0].lastModified();
     }
 
     public void doLoginLogo(org.kohsuke.stapler.StaplerRequest req,

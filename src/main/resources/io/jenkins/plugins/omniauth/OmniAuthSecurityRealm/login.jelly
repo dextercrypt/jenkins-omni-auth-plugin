@@ -110,7 +110,7 @@
                 <!-- Company logo: tenant identity above the form. Hidden when not uploaded. -->
                 <j:if test="${it.loginLogoUrl != null and it.loginLogoUrl != ''}">
                   <img src="${it.loginLogoUrl}" alt=""
-                       style="align-self:flex-start;max-height:88px;max-width:100%;width:auto;height:auto;display:block;margin-bottom:18px;"/>
+                       style="align-self:flex-start;height:40px;width:auto;max-width:none;object-fit:contain;display:block;margin-bottom:18px;"/>
                 </j:if>
                 <h1>${it.loginHeading}</h1>
 

@@ -1002,11 +1002,14 @@ public class OmniAuthManagementLink extends ManagementLink {
     }
 
     public String getLoginLogoPreviewUrl() {
-        if (!isLoginLogoUploaded()) return "";
+        java.io.File dir = new java.io.File(Jenkins.get().getRootDir(), "omniauth-branding");
+        java.io.File[] files = dir.listFiles(f -> f.getName().startsWith("login-logo."));
+        if (files == null || files.length == 0) return "";
         String root = Jenkins.get().getRootUrl();
         if (root == null) return "";
         if (root.endsWith("/")) root = root.substring(0, root.length() - 1);
-        return root + "/securityRealm/loginLogo";
+        // Cache-bust by last-modified so a freshly uploaded logo shows immediately.
+        return root + "/securityRealm/loginLogo?v=" + files[0].lastModified();
     }
 
     @POST
