@@ -29,6 +29,66 @@
         <meta name="ROBOTS" content="NOFOLLOW" />
         <meta name="viewport" content="width=device-width, initial-scale=1"/>
         <st:include it="${simpleDecorator}" page="simple-head.jelly" />
+        <style>
+          /* ===== Dark login — right side, SOFT glow (maps design .right-panel) ===== */
+          .app-sign-in-register__content {
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(160deg, #0a1226 0%, #0c1730 60%, #0a1426 100%);
+          }
+          /* edge-bleed glow from the panel seam — removes the hard divide */
+          .app-sign-in-register__content::before {
+            content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+            background:
+              radial-gradient(140% 90% at -6% 50%, rgba(40,120,230,0.18) 0%, rgba(30,90,200,0.06) 28%, transparent 56%),
+              radial-gradient(60% 50% at 6% 42%, rgba(34,211,238,0.07) 0%, transparent 60%);
+          }
+          /* depth vignette */
+          .app-sign-in-register__content::after {
+            content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+            background: radial-gradient(120% 120% at 70% 50%, transparent 55%, rgba(2,6,16,0.55) 100%);
+          }
+          /* keep the form above the glow layers */
+          .app-sign-in-register__content-inner { position: relative; z-index: 2; }
+
+          /* text */
+          .app-sign-in-register__content-inner h1 { color: #f2f6ff; }
+          .app-sign-in-register__content-inner label { color: #aebbd0; }
+
+          /* inputs */
+          .app-sign-in-register__content-inner input[type=text],
+          .app-sign-in-register__content-inner input[type=password] {
+            background: #101a2e;
+            border: 1px solid #26344c;
+            color: #eaf1ff;
+            transition: box-shadow .2s, border-color .2s;
+          }
+          .app-sign-in-register__content-inner input::placeholder { color: #6b7a92; }
+          .app-sign-in-register__content-inner input[type=text]:focus,
+          .app-sign-in-register__content-inner input[type=password]:focus {
+            border-color: #3f7ce8;
+            box-shadow: 0 0 0 2px rgba(47,116,232,0.18), 0 0 10px rgba(47,116,232,0.10);
+            outline: none;
+          }
+
+          /* sign-in button — gentle lift, no bloom */
+          .app-sign-in-register__content-inner button[type=submit] {
+            background: #1f57e0;
+            color: #fff;
+            box-shadow: 0 0 0 1px rgba(80,150,255,.22), 0 6px 18px rgba(31,87,224,0.32);
+          }
+          .app-sign-in-register__content-inner button[type=submit]:hover { background: #2a63ee; }
+
+          /* checkbox label */
+          .app-sign-in-register__content-inner .jenkins-checkbox label { color: #c2cde0; }
+
+          /* Microsoft button hover (base colours set inline on the anchor) */
+          .app-sign-in-register__content-inner a[href*='commenceLogin']:hover { background: #16223a !important; }
+
+          /* footer readability on dark */
+          .app-sign-in-register__content-inner .footer,
+          .app-sign-in-register__content-inner .footer * { color: #7d8aa2 !important; }
+        </style>
       </head>
       <body class="app-sign-in-register">
         <j:choose>
@@ -140,9 +200,9 @@
                      ============================================================ -->
                 <j:if test="${it.entraConfig != null}">
                   <div style="display:flex;align-items:center;margin:16px 0;gap:8px;">
-                    <hr style="flex:1;border:none;border-top:1px solid var(--text-color-secondary,#888);"/>
-                    <span style="font-size:12px;color:var(--text-color-secondary,#888);white-space:nowrap;">or</span>
-                    <hr style="flex:1;border:none;border-top:1px solid var(--text-color-secondary,#888);"/>
+                    <hr style="flex:1;border:none;border-top:1px dashed #26344c;"/>
+                    <span style="font-size:12px;color:#7d8aa2;white-space:nowrap;">or</span>
+                    <hr style="flex:1;border:none;border-top:1px dashed #26344c;"/>
                   </div>
 
                   <j:set var="entraUrl" value="${rootURL}/omniauth/commenceLogin"/>
@@ -153,9 +213,9 @@
                   <a href="${entraUrl}" style="
                        display:flex;align-items:center;justify-content:center;gap:10px;
                        width:100%;padding:9px 12px;box-sizing:border-box;
-                       background:var(--background,#fff);
-                       color:var(--text-color,#1a1a1a);
-                       border:1px solid var(--input-border,#c8cbd0);
+                       background:#101c30;
+                       color:#dde6f4;
+                       border:1px solid #2a3a54;
                        border-radius:var(--form-input-border-radius,4px);
                        font-size:14px;font-weight:500;
                        text-decoration:none;cursor:pointer;
