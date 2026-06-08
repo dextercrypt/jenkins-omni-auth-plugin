@@ -119,6 +119,11 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
         return cfg != null ? cfg.getLoginLogoSize() : "40";
     }
 
+    public String getLoginButler() {
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        return cfg != null ? cfg.getLoginButler() : "default";
+    }
+
     public String getLoginLogoUrl() {
         java.io.File dir = new java.io.File(jenkins.model.Jenkins.get().getRootDir(), "omniauth-branding");
         java.io.File[] files = dir.listFiles(f -> f.getName().startsWith("login-logo."));

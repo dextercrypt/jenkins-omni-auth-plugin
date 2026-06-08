@@ -519,6 +519,7 @@ public class OmniAuthManagementLink extends ManagementLink {
             json.put("loginBackground",       config.getLoginBackground());
             json.put("loginLogoPosition",     config.getLoginLogoPosition());
             json.put("loginLogoSize",         config.getLoginLogoSize());
+            json.put("loginButler",           config.getLoginButler());
             putParam(json, req, "notificationFooterNote");
             // brute force
             String bft = req.getParameter("bruteForceThreshold");
@@ -755,6 +756,7 @@ public class OmniAuthManagementLink extends ManagementLink {
             String lbg = req.getParameter("loginBackground");
             String llp = req.getParameter("loginLogoPosition");
             String lls = req.getParameter("loginLogoSize");
+            String lbt = req.getParameter("loginButler");
             if (lh  != null) json.put("loginHeading",          lh.trim());
             if (ltt != null) json.put("loginTabTitle",          ltt.trim());
             if (lat != null) json.put("loginAnnouncementText", lat.trim());
@@ -762,6 +764,7 @@ public class OmniAuthManagementLink extends ManagementLink {
             if (lbg != null) json.put("loginBackground",       lbg.trim());
             if (llp != null) json.put("loginLogoPosition",     llp.trim());
             if (lls != null) json.put("loginLogoSize",         lls.trim());
+            if (lbt != null) json.put("loginButler",           lbt.trim());
             // preserve fields managed by the Notifications page
             json.put("notificationsEnabled", config.isNotificationsEnabled());
             json.put("smtpEnabled",          config.isSmtpEnabled());

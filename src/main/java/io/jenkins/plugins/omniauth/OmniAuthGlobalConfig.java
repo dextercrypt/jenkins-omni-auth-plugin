@@ -79,6 +79,9 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     private String loginLogoPosition     = "a";
     // Company-logo height on the login form, in px. Known values: "20", "30", "40" (default).
     private String loginLogoSize         = "40";
+    // Centre figure on the animated login panel. Known values: "default" (native Jenkins
+    // butler) and "austin" (the "Willie Nelson"/Austin Jenkins butler, CC BY-SA 3.0).
+    private String loginButler           = "default";
 
     // ── Notification branding ─────────────────────────────────────────────────
     private String notificationLogoUrl  = "";
@@ -153,6 +156,14 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     public void    setLoginLogoSize(String v) {
         String t = v != null ? v.trim() : "";
         this.loginLogoSize = (t.equals("20") || t.equals("30")) ? t : "40";
+    }
+    public String  getLoginButler() {
+        String v = loginButler != null ? loginButler.trim() : "";
+        return v.equals("austin") ? "austin" : "default";
+    }
+    public void    setLoginButler(String v) {
+        String t = v != null ? v.trim() : "";
+        this.loginButler = t.equals("austin") ? "austin" : "default";
     }
 
     public String  getNotificationLogoUrl() {
@@ -273,6 +284,7 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
         loginBackground       = jsonStr(json, "loginBackground",       "omniauth");
         loginLogoPosition     = jsonStr(json, "loginLogoPosition",     "a");
         loginLogoSize         = jsonStr(json, "loginLogoSize",         "40");
+        loginButler           = jsonStr(json, "loginButler",           "default");
         notificationLogoUrl   = jsonStr(json, "notificationLogoUrl",   "");
         notificationFooterNote = jsonStr(json, "notificationFooterNote", "");
 
