@@ -8,7 +8,22 @@
     We only add a background colour; the canvas is absolutely positioned inside the fixed
     section (inset:0) and the logo stays a normal flex-centered child (sized by Jenkins CSS).
   -->
-  <section class="app-sign-in-register__branding" style="background:#070b1e;">
+  <section class="app-sign-in-register__branding"
+           style="background:linear-gradient(135deg,#080b1e 0%,#0a1026 50%,#0c1430 100%);">
+
+    <!--
+      Kill Jenkins' native colourful starburst blobs. Core paints two pseudo-elements
+      (.app-sign-in-register__branding::before / ::after) of radial gradients at z-index:-1 —
+      ON TOP of this section's own background but BEHIND the canvas. The canvas is transparent
+      until JS paints its first frame, so on reload those blobs flash through for a beat
+      ("stardust"). Removing them means the pre-paint state is just our dark base gradient,
+      visually identical to the animation's drawBG() — no flash. Only applies in animated mode
+      (this jelly isn't included for the 'starburst' background option).
+    -->
+    <style>
+      .app-sign-in-register__branding::before,
+      .app-sign-in-register__branding::after { content: none !important; background: none !important; }
+    </style>
 
     <canvas id="omniauth-bg-canvas"
             style="position:absolute;inset:0;display:block;z-index:0;"></canvas>
@@ -41,17 +56,25 @@
         ctx.moveTo(x+s,y-s*0.6);ctx.lineTo(x+s*0.14,y);ctx.lineTo(x+s,y+s*0.6);ctx.closePath();ctx.fill();
         ctx.fillStyle='rgba(234,250,255,'+a+')';roundRect(x-s*0.16,y-s*0.2,s*0.32,s*0.4,1.4);ctx.fill();
       }
+      let lastW=0,lastH=0;
       function resize(){
         const dpr=window.devicePixelRatio||1;
         const sec=canvas.parentElement;
         W=sec.offsetWidth;H=sec.offsetHeight;
+        // Panel is display:none under 992px (e.g. devtools docked to the side) → 0×0.
+        // Bail without building a scene; the running loop will pause itself on the next frame.
         if(!W||!H)return;
+        // Size unchanged (e.g. observer fired for an unrelated reason, or panel just reappeared
+        // at the same size) → don't rebuild the scene, just make sure the loop is alive again.
+        if(W===lastW&&H===lastH){startLoop();return;}
+        lastW=W;lastH=H;
         D=Math.min(W,H);cx=W/2;cy=H/2;
         RX=Math.min(W*0.40,H*0.40);RY=Math.min(RX*1.18,H*0.40);EDGE=D*0.135;
         canvas.width=W*dpr;canvas.height=H*dpr;
         canvas.style.width=W+'px';canvas.style.height=H+'px';
         ctx.setTransform(dpr,0,0,dpr,0,0);
         buildScene();
+        startLoop();
       }
       let code;
       function buildCode(){
@@ -329,8 +352,13 @@
         else if(s.mode==='release'){hubGlow+=(0-hubGlow)*Math.min(1,dt*2.2);
           if(s.timer>=2.0){s.mode='idle';s.timer=0;s.next=13+Math.random()*8;}}
       }
-      let last=performance.now(),t=0;
+      let last=performance.now(),t=0,running=false;
+      function startLoop(){if(running)return;running=true;last=performance.now();requestAnimationFrame(tick);}
       function tick(now){
+        // Pause (don't crash) if the panel got hidden or the scene isn't built yet — resize()
+        // restarts the loop once the panel is visible again. This is what keeps the animation
+        // from dying permanently when devtools is opened/closed across a reload.
+        if(!W||!H||!modules){running=false;return;}
         const dt=Math.min(0.05,(now-last)/1000);last=now;t+=dt;orbit+=dt*0.05;
         updateSurge(dt);sweepPrev=sweep;sweep+=dt*(TAU/8);
         const done=[];for(const m of modules){if(m.update(dt,t,orbit))done.push(m);}
@@ -354,8 +382,11 @@
         drawVignette();requestAnimationFrame(tick);
       }
       window.addEventListener('resize',resize);
-      // Defer until flex layout is computed — inline scripts run before layout
-      setTimeout(function(){resize();requestAnimationFrame(tick);},0);
+      // A ResizeObserver on the panel catches the display:none -> visible transition (e.g. closing
+      // a docked devtools), which doesn't always emit a window 'resize'. It rebuilds + restarts.
+      if(window.ResizeObserver){try{new ResizeObserver(resize).observe(canvas.parentElement);}catch(e){}}
+      // Defer until flex layout is computed — inline scripts run before layout. resize() starts the loop.
+      setTimeout(resize,0);
     })();
     ]]>
     </script>

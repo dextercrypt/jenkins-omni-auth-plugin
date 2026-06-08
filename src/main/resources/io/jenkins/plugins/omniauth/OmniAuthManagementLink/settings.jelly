@@ -320,6 +320,34 @@
                 </div>
               </div>
 
+              <!-- Logo Position -->
+              <div>
+                <label style="display: block; font-weight: 600; font-size: 0.88em; margin-bottom: 4px;">Logo Position</label>
+                <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.8em; margin-bottom: 6px;">
+                  Where the company logo sits on the login form. Only applies when a logo is uploaded.
+                </div>
+                <select name="loginLogoPosition" class="jenkins-input" style="width: 360px; max-width: 100%;">
+                  <j:set var="llp" value="${cfg.loginLogoPosition}"/>
+                  <option value="a" selected="${llp == 'a' ? 'selected' : null}">Top left (above the heading) — default</option>
+                  <option value="e" selected="${llp == 'e' ? 'selected' : null}">Top-right corner of the panel</option>
+                  <option value="f" selected="${llp == 'f' ? 'selected' : null}">Centered (above the heading)</option>
+                </select>
+              </div>
+
+              <!-- Logo Size -->
+              <div>
+                <label style="display: block; font-weight: 600; font-size: 0.88em; margin-bottom: 4px;">Logo Size</label>
+                <div style="color: var(--text-color-secondary,#6c757d); font-size: 0.8em; margin-bottom: 6px;">
+                  Height of the company logo on the login form. Only applies when a logo is uploaded.
+                </div>
+                <select name="loginLogoSize" class="jenkins-input" style="width: 360px; max-width: 100%;">
+                  <j:set var="lls" value="${cfg.loginLogoSize}"/>
+                  <option value="20" selected="${lls == '20' ? 'selected' : null}">Small (20px)</option>
+                  <option value="30" selected="${lls == '30' ? 'selected' : null}">Medium (30px)</option>
+                  <option value="40" selected="${lls == '40' ? 'selected' : null}">Large (40px) — default</option>
+                </select>
+              </div>
+
               <!-- Announcement Banner -->
               <div>
                 <label style="display: block; font-weight: 600; font-size: 0.88em; margin-bottom: 4px;">Announcement Banner</label>
@@ -451,6 +479,14 @@
           // Reset background to default (OmniAuth animation)
           var bg = document.querySelector('[name="loginBackground"]');
           if (bg) bg.value = 'omniauth';
+
+          // Reset logo position to default (top left)
+          var llp = document.querySelector('[name="loginLogoPosition"]');
+          if (llp) llp.value = 'a';
+
+          // Reset logo size to default (40px)
+          var lls = document.querySelector('[name="loginLogoSize"]');
+          if (lls) lls.value = '40';
 
           // Remove logo if one is uploaded
           var preview = document.getElementById('oauLogoPreview');

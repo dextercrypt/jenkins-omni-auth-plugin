@@ -20,6 +20,10 @@
     <x:doctype name="html" />
     <j:set var="from" value="${error ? request2.session.getAttribute('from') : request2.getParameter('from')}"/>
     <j:set var="inputClass" value="${error ? 'jenkins-input--error' : ''}"/>
+    <!-- Company-logo placement, chosen in Settings (a=top-left default, e=top-right, f=centered) -->
+    <j:set var="logoPos" value="${it.loginLogoPosition}"/>
+    <!-- Company-logo height in px, chosen in Settings (20 / 30 / 40 default) -->
+    <j:set var="logoSize" value="${it.loginLogoSize}"/>
     <j:set var="simpleDecorator" value="${h.simplePageDecorator}"/>
     <j:set var="simpleDecorators" value="${h.simplePageDecorators}"/>
 
@@ -50,6 +54,15 @@
           }
           /* keep the form above the glow layers */
           .app-sign-in-register__content-inner { position: relative; z-index: 2; }
+
+          /* ===== company-logo placement (Settings → Logo Position: a|e|f) ===== */
+          .brand-logo img { height: ${logoSize}px; width: auto; max-width: none; object-fit: contain; display: block; }
+          /* A — top of column, left-aligned (default) */
+          .pos-a .brand-logo { align-self: flex-start; margin: 0 0 18px 0; }
+          /* E — pinned to the panel's top-right corner */
+          .pos-e .brand-logo { position: absolute; top: 28px; right: 9%; z-index: 3; }
+          /* F — center the logo only; heading and everything else stay left/default */
+          .pos-f .brand-logo { align-self: center; margin: 0 auto 18px auto; }
 
           /* text */
           .app-sign-in-register__content-inner h1 { color: #f2f6ff; }
@@ -105,12 +118,15 @@
                 <st:include it="${it}" page="animated-branding.jelly"/>
               </j:otherwise>
             </j:choose>
-            <main id="main-panel" class="app-sign-in-register__content">
+            <main id="main-panel" class="app-sign-in-register__content pos-${logoPos}">
+              <!-- Company logo for option E: direct panel child so it anchors to the panel corner -->
+              <j:if test="${logoPos == 'e' and it.loginLogoUrl != null and it.loginLogoUrl != ''}">
+                <div class="brand-logo"><img src="${it.loginLogoUrl}" alt=""/></div>
+              </j:if>
               <div class="app-sign-in-register__content-inner">
-                <!-- Company logo: tenant identity above the form. Hidden when not uploaded. -->
-                <j:if test="${it.loginLogoUrl != null and it.loginLogoUrl != ''}">
-                  <img src="${it.loginLogoUrl}" alt=""
-                       style="align-self:flex-start;height:40px;width:auto;max-width:none;object-fit:contain;display:block;margin-bottom:18px;"/>
+                <!-- Company logo for options A/F: in the form column, above the heading. Hidden when not uploaded. -->
+                <j:if test="${logoPos != 'e' and it.loginLogoUrl != null and it.loginLogoUrl != ''}">
+                  <div class="brand-logo"><img src="${it.loginLogoUrl}" alt=""/></div>
                 </j:if>
                 <h1>${it.loginHeading}</h1>
 

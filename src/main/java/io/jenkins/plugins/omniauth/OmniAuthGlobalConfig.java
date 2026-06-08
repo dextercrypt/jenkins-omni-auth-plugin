@@ -73,6 +73,12 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     // Which background the login panel shows. Known values: "omniauth" (animated reactor,
     // default) and "starburst" (Jenkins' native starburst). New designs can be added later.
     private String loginBackground       = "omniauth";
+    // Where the company logo sits on the login form. Known values: "a" (top of the
+    // form column, left-aligned — default), "e" (pinned top-right corner of the panel),
+    // "f" (logo centred above the form). Only takes effect when a logo is uploaded.
+    private String loginLogoPosition     = "a";
+    // Company-logo height on the login form, in px. Known values: "20", "30", "40" (default).
+    private String loginLogoSize         = "40";
 
     // ── Notification branding ─────────────────────────────────────────────────
     private String notificationLogoUrl  = "";
@@ -132,6 +138,22 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
         return v.isEmpty() ? "omniauth" : v;
     }
     public void    setLoginBackground(String v) { this.loginBackground = (v != null && !v.trim().isEmpty()) ? v.trim() : "omniauth"; }
+    public String  getLoginLogoPosition() {
+        String v = loginLogoPosition != null ? loginLogoPosition.trim() : "";
+        return (v.equals("a") || v.equals("e") || v.equals("f")) ? v : "a";
+    }
+    public void    setLoginLogoPosition(String v) {
+        String t = v != null ? v.trim() : "";
+        this.loginLogoPosition = (t.equals("e") || t.equals("f")) ? t : "a";
+    }
+    public String  getLoginLogoSize() {
+        String v = loginLogoSize != null ? loginLogoSize.trim() : "";
+        return (v.equals("20") || v.equals("30") || v.equals("40")) ? v : "40";
+    }
+    public void    setLoginLogoSize(String v) {
+        String t = v != null ? v.trim() : "";
+        this.loginLogoSize = (t.equals("20") || t.equals("30")) ? t : "40";
+    }
 
     public String  getNotificationLogoUrl() {
         return notificationLogoUrl != null ? notificationLogoUrl.trim() : "";
@@ -249,6 +271,8 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
         loginAnnouncementText = jsonStr(json, "loginAnnouncementText", "");
         loginFooterText       = jsonStr(json, "loginFooterText",       "");
         loginBackground       = jsonStr(json, "loginBackground",       "omniauth");
+        loginLogoPosition     = jsonStr(json, "loginLogoPosition",     "a");
+        loginLogoSize         = jsonStr(json, "loginLogoSize",         "40");
         notificationLogoUrl   = jsonStr(json, "notificationLogoUrl",   "");
         notificationFooterNote = jsonStr(json, "notificationFooterNote", "");
 
