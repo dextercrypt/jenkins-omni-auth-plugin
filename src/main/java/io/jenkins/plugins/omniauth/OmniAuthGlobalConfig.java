@@ -157,13 +157,16 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
         String t = v != null ? v.trim() : "";
         this.loginLogoSize = (t.equals("20") || t.equals("30")) ? t : "40";
     }
+    /** Whitelist of selectable butler styles. Add the id here when inlining a new butler. */
+    private static final java.util.Set<String> BUTLERS =
+        java.util.Set.of("default", "austin", "jenkinsx");
     public String  getLoginButler() {
         String v = loginButler != null ? loginButler.trim() : "";
-        return v.equals("austin") ? "austin" : "default";
+        return BUTLERS.contains(v) ? v : "default";
     }
     public void    setLoginButler(String v) {
         String t = v != null ? v.trim() : "";
-        this.loginButler = t.equals("austin") ? "austin" : "default";
+        this.loginButler = BUTLERS.contains(t) ? t : "default";
     }
 
     public String  getNotificationLogoUrl() {

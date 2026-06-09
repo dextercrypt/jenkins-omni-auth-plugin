@@ -253,6 +253,7 @@
                   <j:set var="btl" value="${cfg.loginButler}"/>
                   <option value="default" selected="${btl == 'default' ? 'selected' : null}">Jenkins Butler (native) — default</option>
                   <option value="austin"  selected="${btl == 'austin'  ? 'selected' : null}">Willie Nelson (Austin butler)</option>
+                  <option value="jenkinsx" selected="${btl == 'jenkinsx' ? 'selected' : null}">JayeX (Jenkins X butler)</option>
                 </select>
               </div>
 
