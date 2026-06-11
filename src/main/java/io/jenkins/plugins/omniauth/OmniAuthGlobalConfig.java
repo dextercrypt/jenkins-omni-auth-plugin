@@ -159,7 +159,9 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     }
     /** Whitelist of selectable butler styles. Add the id here when inlining a new butler. */
     private static final java.util.Set<String> BUTLERS =
-        java.util.Set.of("default", "austin", "jenkinsx");
+        java.util.Set.of(
+                "default", "austin", "jenkinsx", "general", "nerd", "ninja", "santaclaus", "superhero",
+                "raleigh", "sandiego");
     public String  getLoginButler() {
         String v = loginButler != null ? loginButler.trim() : "";
         return BUTLERS.contains(v) ? v : "default";

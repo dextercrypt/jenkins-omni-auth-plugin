@@ -254,6 +254,13 @@
                   <option value="default" selected="${btl == 'default' ? 'selected' : null}">Jenkins Butler (native) — default</option>
                   <option value="austin"  selected="${btl == 'austin'  ? 'selected' : null}">Willie Nelson (Austin butler)</option>
                   <option value="jenkinsx" selected="${btl == 'jenkinsx' ? 'selected' : null}">JayeX (Jenkins X butler)</option>
+                  <option value="general"  selected="${btl == 'general'  ? 'selected' : null}">General butler</option>
+                  <option value="nerd"  selected="${btl == 'nerd'  ? 'selected' : null}">Nerd butler</option>
+                  <option value="ninja"  selected="${btl == 'ninja'  ? 'selected' : null}">Ninja butler</option>
+                  <option value="santaclaus"  selected="${btl == 'santaclaus'  ? 'selected' : null}">Santa butler</option>
+                  <option value="superhero"  selected="${btl == 'superhero'  ? 'selected' : null}">Superhero butler</option>
+                  <option value="raleigh"    selected="${btl == 'raleigh'    ? 'selected' : null}">Raleigh butler</option>
+                  <option value="sandiego"   selected="${btl == 'sandiego'   ? 'selected' : null}">San Diego butler</option>
                 </select>
               </div>
 
