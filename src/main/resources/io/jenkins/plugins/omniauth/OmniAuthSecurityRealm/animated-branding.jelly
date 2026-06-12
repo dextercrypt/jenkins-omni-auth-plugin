@@ -30,36 +30,36 @@
 
     
     <j:choose>
-      <j:when test="${it.loginButler == 'jenkinsx'}">
+      <j:when test="${it.resolvedLoginButler =='jenkinsx'}">
         <st:include page="butler-jenkinsx.jelly"/>
       
       </j:when>
-      <j:when test="${it.loginButler == 'austin'}">
+      <j:when test="${it.resolvedLoginButler =='austin'}">
         <st:include page="butler-austin.jelly"/>
       
       </j:when>
-      <j:when test="${it.loginButler == 'general'}">
+      <j:when test="${it.resolvedLoginButler =='general'}">
         <st:include page="butler-general.jelly"/>
       </j:when>
-      <j:when test="${it.loginButler == 'nerd'}">
+      <j:when test="${it.resolvedLoginButler =='nerd'}">
         <st:include page="butler-nerd.jelly"/>
       </j:when>
-      <j:when test="${it.loginButler == 'ninja'}">
+      <j:when test="${it.resolvedLoginButler =='ninja'}">
         <st:include page="butler-ninja.jelly"/>
       </j:when>
-      <j:when test="${it.loginButler == 'santaclaus'}">
+      <j:when test="${it.resolvedLoginButler =='santaclaus'}">
         <st:include page="butler-santa-claus.jelly"/>
       </j:when>
-      <j:when test="${it.loginButler == 'superhero'}">
+      <j:when test="${it.resolvedLoginButler =='superhero'}">
         <st:include page="butler-superhero.jelly"/>
       </j:when>
-      <j:when test="${it.loginButler == 'raleigh'}">
+      <j:when test="${it.resolvedLoginButler =='raleigh'}">
         <st:include page="butler-raleigh.jelly"/>
       </j:when>
-      <j:when test="${it.loginButler == 'sandiego'}">
+      <j:when test="${it.resolvedLoginButler =='sandiego'}">
         <st:include page="butler-san-diego.jelly"/>
       </j:when>
-      <j:when test="${it.loginButler == 'cowboy'}">
+      <j:when test="${it.resolvedLoginButler =='cowboy'}">
         <st:include page="butler-cowboy.jelly"/>
       </j:when>
       <j:otherwise>

@@ -262,6 +262,8 @@
                   <option value="raleigh"    selected="${btl == 'raleigh'    ? 'selected' : null}">Raleigh butler</option>
                   <option value="sandiego"   selected="${btl == 'sandiego'   ? 'selected' : null}">San Diego butler</option>
                   <option value="cowboy"     selected="${btl == 'cowboy'     ? 'selected' : null}">Cowboy butler</option>
+                  <option value="daily"      selected="${btl == 'daily'      ? 'selected' : null}">🎲 Surprise: Butler of the Day</option>
+                  <option value="random"     selected="${btl == 'random'     ? 'selected' : null}">🎲 Surprise: Random each visit</option>
                 </select>
               </div>
 

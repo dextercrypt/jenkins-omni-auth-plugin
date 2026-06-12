@@ -124,6 +124,12 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
         return cfg != null ? cfg.getLoginButler() : "default";
     }
 
+    /** Concrete butler the branding panel renders (rotation modes resolved here). */
+    public String getResolvedLoginButler() {
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        return cfg != null ? cfg.getResolvedLoginButler() : "default";
+    }
+
     public String getLoginLogoUrl() {
         java.io.File dir = new java.io.File(jenkins.model.Jenkins.get().getRootDir(), "omniauth-branding");
         java.io.File[] files = dir.listFiles(f -> f.getName().startsWith("login-logo."));

@@ -157,18 +157,70 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
         String t = v != null ? v.trim() : "";
         this.loginLogoSize = (t.equals("20") || t.equals("30")) ? t : "40";
     }
-    /** Whitelist of selectable butler styles. Add the id here when inlining a new butler. */
+    /** Whitelist of concrete butler styles. Add the id here when inlining a new butler. */
     private static final java.util.Set<String> BUTLERS =
         java.util.Set.of(
                 "default", "austin", "jenkinsx", "general", "nerd", "ninja", "santaclaus", "superhero",
                 "raleigh", "sandiego", "cowboy");
+    /** Rotation modes: not concrete butlers, resolved per render by getResolvedLoginButler(). */
+    private static final java.util.Set<String> ROTATION_MODES = java.util.Set.of("daily", "random");
+    /**
+     * Ordered pool the rotation modes cycle through — the "cool" styled butlers (native excluded).
+     * Santa is gated to December (see buildRotationPool); changing this order changes the daily cadence.
+     */
+    private static final java.util.List<String> ROTATION_POOL = java.util.List.of(
+            "austin", "jenkinsx", "general", "nerd", "ninja", "superhero",
+            "raleigh", "sandiego", "cowboy", "santaclaus");
+
+    /** Raw stored selection — a concrete butler id OR a rotation mode ("daily"/"random"). For settings + persistence. */
     public String  getLoginButler() {
         String v = loginButler != null ? loginButler.trim() : "";
-        return BUTLERS.contains(v) ? v : "default";
+        return (BUTLERS.contains(v) || ROTATION_MODES.contains(v)) ? v : "default";
     }
     public void    setLoginButler(String v) {
         String t = v != null ? v.trim() : "";
-        this.loginButler = BUTLERS.contains(t) ? t : "default";
+        this.loginButler = (BUTLERS.contains(t) || ROTATION_MODES.contains(t)) ? t : "default";
+    }
+
+    /** The concrete butler to actually render: rotation modes resolve here, everything else passes through. */
+    public String  getResolvedLoginButler() {
+        String raw = getLoginButler();
+        if (!ROTATION_MODES.contains(raw)) {
+            return raw; // explicit fixed pick (incl. native) is always respected — festive lock never overrides it
+        }
+        // Festive lock: Dec 21 → Jan 1, rotation modes always show Santa 🎅
+        if (isFestiveWindow(java.time.LocalDate.now())) {
+            return "santaclaus";
+        }
+        java.util.List<String> pool = buildRotationPool();
+        if (pool.isEmpty()) {
+            return "default";
+        }
+        java.time.LocalDate today = java.time.LocalDate.now();
+        int idx = "daily".equals(raw)
+                ? (today.getDayOfYear() % pool.size())
+                : java.util.concurrent.ThreadLocalRandom.current().nextInt(pool.size());
+        return pool.get(idx);
+    }
+
+    /** The Christmas lock window: Dec 21 through Jan 1 (inclusive). */
+    private static boolean isFestiveWindow(java.time.LocalDate d) {
+        int month = d.getMonthValue();
+        int day = d.getDayOfMonth();
+        return (month == 12 && day >= 21) || (month == 1 && day == 1);
+    }
+
+    /** Rotation pool for the current date — Santa only joins in December. */
+    private static java.util.List<String> buildRotationPool() {
+        boolean december = java.time.LocalDate.now().getMonthValue() == 12;
+        java.util.List<String> pool = new java.util.ArrayList<>();
+        for (String b : ROTATION_POOL) {
+            if ("santaclaus".equals(b) && !december) {
+                continue;
+            }
+            pool.add(b);
+        }
+        return pool;
     }
 
     public String  getNotificationLogoUrl() {
