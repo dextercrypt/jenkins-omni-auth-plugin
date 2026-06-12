@@ -59,6 +59,9 @@
       <j:when test="${it.loginButler == 'sandiego'}">
         <st:include page="butler-san-diego.jelly"/>
       </j:when>
+      <j:when test="${it.loginButler == 'cowboy'}">
+        <st:include page="butler-cowboy.jelly"/>
+      </j:when>
       <j:otherwise>
         <img src="${resURL}/images/svgs/logo.svg" alt="Jenkins"
              style="position:relative;z-index:1;filter:drop-shadow(0 0 28px rgba(34,211,238,0.45));"/>

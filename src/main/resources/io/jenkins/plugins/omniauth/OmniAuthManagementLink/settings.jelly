@@ -261,6 +261,7 @@
                   <option value="superhero"  selected="${btl == 'superhero'  ? 'selected' : null}">Superhero butler</option>
                   <option value="raleigh"    selected="${btl == 'raleigh'    ? 'selected' : null}">Raleigh butler</option>
                   <option value="sandiego"   selected="${btl == 'sandiego'   ? 'selected' : null}">San Diego butler</option>
+                  <option value="cowboy"     selected="${btl == 'cowboy'     ? 'selected' : null}">Cowboy butler</option>
                 </select>
               </div>
 

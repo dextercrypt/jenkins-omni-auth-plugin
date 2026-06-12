@@ -161,7 +161,7 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     private static final java.util.Set<String> BUTLERS =
         java.util.Set.of(
                 "default", "austin", "jenkinsx", "general", "nerd", "ninja", "santaclaus", "superhero",
-                "raleigh", "sandiego");
+                "raleigh", "sandiego", "cowboy");
     public String  getLoginButler() {
         String v = loginButler != null ? loginButler.trim() : "";
         return BUTLERS.contains(v) ? v : "default";
