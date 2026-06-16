@@ -9,19 +9,21 @@ package io.jenkins.plugins.omniauth;
  * (add an enum constant + a logo branch in the jelly's {@code <j:choose>}).
  */
 public enum SsoProvider {
-    MICROSOFT("microsoft", "Sign in with Microsoft");
+    MICROSOFT("microsoft", "Sign in with Microsoft", "Redirecting to Microsoft…");
 
     // Future providers slot in here, e.g.:
-    // GOOGLE("google", "Sign in with Google"),
-    // OKTA("okta", "Sign in with Okta"),
-    // GENERIC_OIDC("oidc", "Sign in with SSO");
+    // GOOGLE("google", "Sign in with Google", "Redirecting to Google…"),
+    // OKTA("okta", "Sign in with Okta", "Redirecting to Okta…"),
+    // GENERIC_OIDC("oidc", "Sign in with SSO", "Redirecting…");
 
     private final String id;
     private final String buttonLabel;
+    private final String loadingLabel;
 
-    SsoProvider(String id, String buttonLabel) {
+    SsoProvider(String id, String buttonLabel, String loadingLabel) {
         this.id = id;
         this.buttonLabel = buttonLabel;
+        this.loadingLabel = loadingLabel;
     }
 
     /** Stable key used to select the provider's logo in the login markup. */
@@ -32,5 +34,10 @@ public enum SsoProvider {
     /** Text shown on the sign-in button, e.g. "Sign in with Microsoft". */
     public String getButtonLabel() {
         return buttonLabel;
+    }
+
+    /** Text shown on the button while redirecting to the provider, e.g. "Redirecting to Microsoft…". */
+    public String getLoadingLabel() {
+        return loadingLabel;
     }
 }
