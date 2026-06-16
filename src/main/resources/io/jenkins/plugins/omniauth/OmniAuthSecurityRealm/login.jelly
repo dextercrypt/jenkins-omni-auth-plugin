@@ -20,15 +20,126 @@
     <x:doctype name="html" />
     <j:set var="from" value="${error ? request2.session.getAttribute('from') : request2.getParameter('from')}"/>
     <j:set var="inputClass" value="${error ? 'jenkins-input--error' : ''}"/>
+    <!-- Company-logo placement, chosen in Settings (a=top-left default, e=top-right, f=centered) -->
+    <j:set var="logoPos" value="${it.loginLogoPosition}"/>
+    <!-- Company-logo height in px, chosen in Settings (20 / 30 / 40 default) -->
+    <j:set var="logoSize" value="${it.loginLogoSize}"/>
     <j:set var="simpleDecorator" value="${h.simplePageDecorator}"/>
     <j:set var="simpleDecorators" value="${h.simplePageDecorators}"/>
 
     <html lang="${request2.getLocale().toLanguageTag()}">
       <head data-rooturl="${rootURL}" data-resurl="${resURL}" data-imagesurl="${imagesURL}" resURL="${resURL}">
-        <title>${%signIn} - Jenkins</title>
+        <title>${it.loginTabTitle}</title>
         <meta name="ROBOTS" content="NOFOLLOW" />
         <meta name="viewport" content="width=device-width, initial-scale=1"/>
         <st:include it="${simpleDecorator}" page="simple-head.jelly" />
+        <style>
+          /* ===== Dark login — right side, SOFT glow (maps design .right-panel) ===== */
+          .app-sign-in-register__content {
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(160deg, #0a1226 0%, #0c1730 60%, #0a1426 100%);
+          }
+          /* edge-bleed glow from the panel seam — removes the hard divide */
+          .app-sign-in-register__content::before {
+            content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+            background:
+              radial-gradient(140% 90% at -6% 50%, rgba(40,120,230,0.18) 0%, rgba(30,90,200,0.06) 28%, transparent 56%),
+              radial-gradient(60% 50% at 6% 42%, rgba(34,211,238,0.07) 0%, transparent 60%);
+          }
+          /* depth vignette */
+          .app-sign-in-register__content::after {
+            content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+            background: radial-gradient(120% 120% at 70% 50%, transparent 55%, rgba(2,6,16,0.55) 100%);
+          }
+          /* keep the form above the glow layers */
+          .app-sign-in-register__content-inner { position: relative; z-index: 2; }
+
+          /* ===== company-logo placement (Settings → Logo Position: a|e|f) ===== */
+          .brand-logo img { height: ${logoSize}px; width: auto; max-width: none; object-fit: contain; display: block; }
+          /* A — top of column, left-aligned (default) */
+          .pos-a .brand-logo { align-self: flex-start; margin: 0 0 18px 0; }
+          /* E — pinned to the panel's top-right corner */
+          .pos-e .brand-logo { position: absolute; top: 28px; right: 9%; z-index: 3; }
+          /* F — center the logo only; heading and everything else stay left/default */
+          .pos-f .brand-logo { align-self: center; margin: 0 auto 18px auto; }
+
+          /* text */
+          .app-sign-in-register__content-inner h1 { color: #f2f6ff; }
+          .app-sign-in-register__content-inner label { color: #aebbd0; }
+
+          /* inputs */
+          .app-sign-in-register__content-inner input[type=text],
+          .app-sign-in-register__content-inner input[type=password] {
+            background: #101a2e;
+            border: 1px solid #26344c;
+            color: #eaf1ff;
+            transition: box-shadow .2s, border-color .2s;
+          }
+          .app-sign-in-register__content-inner input::placeholder { color: #6b7a92; }
+          .app-sign-in-register__content-inner input[type=text]:focus,
+          .app-sign-in-register__content-inner input[type=password]:focus {
+            border-color: #3f7ce8;
+            box-shadow: 0 0 0 2px rgba(47,116,232,0.18), 0 0 10px rgba(47,116,232,0.10);
+            outline: none;
+          }
+
+          /* sign-in button — gentle lift, no bloom */
+          .app-sign-in-register__content-inner button[type=submit] {
+            background: #1f57e0;
+            color: #fff;
+            box-shadow: 0 0 0 1px rgba(80,150,255,.22), 0 6px 18px rgba(31,87,224,0.32);
+          }
+          .app-sign-in-register__content-inner button[type=submit]:hover { background: #2a63ee; }
+
+          /* checkbox label */
+          .app-sign-in-register__content-inner .jenkins-checkbox label { color: #c2cde0; }
+
+          /* Microsoft button hover (base colours set inline on the anchor) */
+          .app-sign-in-register__content-inner a[href*='commenceLogin']:hover { background: #16223a !important; }
+
+          /* footer readability on dark */
+          .app-sign-in-register__content-inner .footer,
+          .app-sign-in-register__content-inner .footer * { color: #7d8aa2 !important; }
+
+          /* ===== show-password eye toggle ===== */
+          .pw-wrap { position: relative; }
+          .pw-wrap input[type=text],
+          .pw-wrap input[type=password] { padding-right: 44px; }
+          .pw-toggle {
+            position: absolute; top: 0; right: 0; height: 100%; width: 42px;
+            display: flex; align-items: center; justify-content: center;
+            background: none; border: none; padding: 0; margin: 0; cursor: pointer;
+            color: #9fb2d0;
+          }
+          .pw-toggle:hover { color: #e2e9f5; }
+          /* force a sensible icon size — Jenkins core shrinks bare svg icons otherwise */
+          .pw-toggle svg { width: 20px !important; height: 20px !important; display: block; }
+          .pw-toggle .icon-eye-off { display: none; }
+          .pw-toggle.revealed .icon-eye { display: none; }
+          .pw-toggle.revealed .icon-eye-off { display: block; }
+
+          /* ===== caps-lock warning ===== */
+          .caps-warn {
+            display: none; align-items: center; gap: 6px;
+            margin-top: 6px; font-size: 12px; color: #ffcf66;
+          }
+          .caps-warn.show { display: flex; }
+
+          /* ===== SSO button loading state ===== */
+          .sso-spinner {
+            display: none;
+            width: 16px; height: 16px; flex-shrink: 0;
+            border: 2px solid rgba(221, 230, 244, 0.3);
+            border-top-color: #dde6f4;
+            border-radius: 50%;
+            animation: sso-spin 0.6s linear infinite;
+          }
+          .sso-btn.loading .sso-spinner { display: inline-block; }
+          .sso-btn.loading .sso-logo { display: none; }
+          .sso-btn.loading { pointer-events: none; opacity: 0.85; cursor: default; }
+          @keyframes sso-spin { to { transform: rotate(360deg); } }
+        </style>
       </head>
       <body class="app-sign-in-register">
         <j:choose>
@@ -36,10 +147,42 @@
             <st:include it="${app.setupWizard}" page="authenticate-security-token"/>
           </j:when>
           <j:otherwise>
-            <st:include it="${simpleDecorator}" page="simple-branding.jelly" />
-            <main id="main-panel" class="app-sign-in-register__content">
+            <!-- Login branding panel: switchable background design -->
+            <j:choose>
+              <j:when test="${it.loginBackground == 'starburst'}">
+                <st:include it="${simpleDecorator}" page="simple-branding.jelly" />
+              </j:when>
+              <j:otherwise>
+                <st:include it="${it}" page="animated-branding.jelly"/>
+              </j:otherwise>
+            </j:choose>
+            <main id="main-panel" class="app-sign-in-register__content pos-${logoPos}">
+              <!-- Company logo for option E: direct panel child so it anchors to the panel corner -->
+              <j:if test="${logoPos == 'e' and it.loginLogoUrl != null and it.loginLogoUrl != ''}">
+                <div class="brand-logo"><img src="${it.loginLogoUrl}" alt=""/></div>
+              </j:if>
               <div class="app-sign-in-register__content-inner">
-                <h1>${%Sign in to Jenkins}</h1>
+                <!-- Company logo for options A/F: in the form column, above the heading. Hidden when not uploaded. -->
+                <j:if test="${logoPos != 'e' and it.loginLogoUrl != null and it.loginLogoUrl != ''}">
+                  <div class="brand-logo"><img src="${it.loginLogoUrl}" alt=""/></div>
+                </j:if>
+                <h1>${it.loginHeading}</h1>
+
+                <j:if test="${it.loginAnnouncementText != null and it.loginAnnouncementText != ''}">
+                  <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;
+                       background:var(--warning-color-bg,#fff8e1);
+                       border:1px solid var(--warning-color,#f0ad4e);
+                       border-radius:6px;margin-bottom:16px;font-size:13px;line-height:1.5;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                         stroke="var(--warning-color,#d97706)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                         style="flex-shrink:0;margin-top:1px;">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                      <line x1="12" y1="9" x2="12" y2="13"/>
+                      <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    <span>${it.loginAnnouncementText}</span>
+                  </div>
+                </j:if>
 
                 <st:include it="${simpleDecorator}" page="simple-header.jelly" />
 
@@ -73,18 +216,41 @@
                          name="j_username"
                          id="j_username"
                          autocorrect="off"
-                         autocomplete="off"
+                         autocomplete="username"
                          autocapitalize="off"
                          autofocus="autofocus"
                     />
                   </div>
                   <div>
                     <label class="app-sign-in-register__form-label" for="j_password">${%Password}</label>
-                    <input id="j_password"
-                         class="jenkins-input ${inputClass}"
-                         type="password"
-                         name="j_password"
-                    />
+                    <div class="pw-wrap">
+                      <input id="j_password"
+                           class="jenkins-input ${inputClass}"
+                           type="password"
+                           name="j_password"
+                           autocomplete="current-password"
+                      />
+                      <button type="button" id="togglePw" class="pw-toggle" tabindex="-1"
+                              aria-label="Show password" title="Show password">
+                        <svg class="icon-eye" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                        </svg>
+                        <svg class="icon-eye-off" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                          <line x1="1" y1="1" x2="23" y2="23"/>
+                        </svg>
+                      </button>
+                    </div>
+                    <div id="capsWarn" class="caps-warn" aria-live="polite">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                      </svg>
+                      <span>Caps Lock is on</span>
+                    </div>
                   </div>
 
                   <j:if test="${app.security.name()=='SECURED' and !app.disableRememberMe}">
@@ -107,13 +273,14 @@
                 </form>
 
                 <!-- ============================================================
-                     MICROSOFT ENTRA LOGIN — added by dual-auth plugin
+                     EXTERNAL SSO LOGIN — provider preset (see SsoProvider.java)
+                     Label + logo come from the configured provider; today: Microsoft.
                      ============================================================ -->
-                <j:if test="${it.entraConfig != null}">
+                <j:if test="${it.ssoProvider != null}">
                   <div style="display:flex;align-items:center;margin:16px 0;gap:8px;">
-                    <hr style="flex:1;border:none;border-top:1px solid var(--text-color-secondary,#888);"/>
-                    <span style="font-size:12px;color:var(--text-color-secondary,#888);white-space:nowrap;">or</span>
-                    <hr style="flex:1;border:none;border-top:1px solid var(--text-color-secondary,#888);"/>
+                    <hr style="flex:1;border:none;border-top:1px dashed #26344c;"/>
+                    <span style="font-size:12px;color:#7d8aa2;white-space:nowrap;">or</span>
+                    <hr style="flex:1;border:none;border-top:1px dashed #26344c;"/>
                   </div>
 
                   <j:set var="entraUrl" value="${rootURL}/omniauth/commenceLogin"/>
@@ -121,24 +288,48 @@
                     <j:set var="entraUrl" value="${rootURL}/omniauth/commenceLogin?from=${from}"/>
                   </j:if>
 
-                  <a href="${entraUrl}" style="
+                  <a href="${entraUrl}" id="ssoBtn" class="sso-btn"
+                     data-loading-label="${it.ssoProvider.loadingLabel}" style="
                        display:flex;align-items:center;justify-content:center;gap:10px;
                        width:100%;padding:9px 12px;box-sizing:border-box;
-                       background:var(--background,#fff);
-                       color:var(--text-color,#1a1a1a);
-                       border:1px solid var(--input-border,#c8cbd0);
+                       background:#101c30;
+                       color:#dde6f4;
+                       border:1px solid #2a3a54;
                        border-radius:var(--form-input-border-radius,4px);
                        font-size:14px;font-weight:500;
                        text-decoration:none;cursor:pointer;
                        transition:box-shadow .15s ease;">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 21 21" style="flex-shrink:0;">
-                      <rect x="1"  y="1"  width="9" height="9" fill="#f25022"/>
-                      <rect x="11" y="1"  width="9" height="9" fill="#00a4ef"/>
-                      <rect x="1"  y="11" width="9" height="9" fill="#7fba00"/>
-                      <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
-                    </svg>
-                    Sign in with Microsoft
+                    <!-- Spinner shown only while redirecting (hidden by default via CSS). -->
+                    <span class="sso-spinner" aria-hidden="true"></span>
+                    <!-- Provider logo, keyed off the preset id. Add a branch per new provider. -->
+                    <span class="sso-logo" style="display:flex;align-items:center;">
+                      <j:choose>
+                        <j:when test="${it.ssoProvider.id == 'microsoft'}">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 21 21" style="flex-shrink:0;">
+                            <rect x="1"  y="1"  width="9" height="9" fill="#f25022"/>
+                            <rect x="11" y="1"  width="9" height="9" fill="#00a4ef"/>
+                            <rect x="1"  y="11" width="9" height="9" fill="#7fba00"/>
+                            <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+                          </svg>
+                        </j:when>
+                        <j:otherwise>
+                          <!-- Generic SSO fallback (key icon) for providers without a bespoke logo -->
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                               stroke="#dde6f4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+                            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                          </svg>
+                        </j:otherwise>
+                      </j:choose>
+                    </span>
+                    <span id="ssoLabel">${it.ssoProvider.buttonLabel}</span>
                   </a>
+                </j:if>
+
+                <j:if test="${it.loginFooterText != null and it.loginFooterText != ''}">
+                  <div style="margin-top:20px;text-align:center;font-size:12px;
+                       color:var(--text-color-secondary,#888);line-height:1.5;">
+                    ${it.loginFooterText}
+                  </div>
                 </j:if>
 
                 <div class="footer">
@@ -148,6 +339,81 @@
                 </div>
               </div>
             </main>
+            <!-- Password UX: show/hide toggle + caps-lock warning (always-on, no setting) -->
+            <script>
+              //<![CDATA[
+              (function () {
+                var pw = document.getElementById('j_password');
+                var btn = document.getElementById('togglePw');
+                var caps = document.getElementById('capsWarn');
+                if (pw && btn) {
+                  btn.addEventListener('click', function () {
+                    var reveal = pw.type === 'password';
+                    pw.type = reveal ? 'text' : 'password';
+                    btn.classList.toggle('revealed', reveal);
+                    var label = reveal ? 'Hide password' : 'Show password';
+                    btn.setAttribute('aria-label', label);
+                    btn.setAttribute('title', label);
+                    pw.focus();
+                  });
+                }
+                if (pw && caps) {
+                  var update = function (e) {
+                    var on = false;
+                    if (e && typeof e.getModifierState === 'function') {
+                      on = e.getModifierState('CapsLock');
+                    }
+                    caps.classList.toggle('show', on);
+                  };
+                  pw.addEventListener('keydown', update);
+                  pw.addEventListener('keyup', update);
+                  pw.addEventListener('blur', function () { caps.classList.remove('show'); });
+                }
+                // Remember last username: prefill on load, save on submit.
+                var user = document.getElementById('j_username');
+                var form = document.forms['login'];
+                var KEY = 'omniauth.lastUser';
+                if (user) {
+                  try {
+                    if (!user.value) {
+                      var last = window.localStorage.getItem(KEY);
+                      if (last) {
+                        user.value = last;
+                        if (pw) { pw.focus(); }
+                      }
+                    }
+                  } catch (e) {}
+                  if (form) {
+                    form.addEventListener('submit', function () {
+                      try { window.localStorage.setItem(KEY, user.value || ''); } catch (e) {}
+                    });
+                  }
+                }
+
+                // SSO button loading state: on click, show a spinner + "Redirecting…"
+                // label so the redirect gap doesn't look dead. The navigation still
+                // proceeds (we don't preventDefault). A safety timeout re-enables the
+                // button if the redirect stalls without unloading the page.
+                var sso = document.getElementById('ssoBtn');
+                var ssoLabel = document.getElementById('ssoLabel');
+                if (sso) {
+                  sso.addEventListener('click', function () {
+                    if (sso.classList.contains('loading')) { return; }
+                    var orig = ssoLabel ? ssoLabel.textContent : '';
+                    var loading = sso.getAttribute('data-loading-label');
+                    sso.classList.add('loading');
+                    sso.setAttribute('aria-busy', 'true');
+                    if (ssoLabel && loading) { ssoLabel.textContent = loading; }
+                    window.setTimeout(function () {
+                      sso.classList.remove('loading');
+                      sso.removeAttribute('aria-busy');
+                      if (ssoLabel) { ssoLabel.textContent = orig; }
+                    }, 8000);
+                  });
+                }
+              })();
+              //]]>
+            </script>
           </j:otherwise>
         </j:choose>
       </body>

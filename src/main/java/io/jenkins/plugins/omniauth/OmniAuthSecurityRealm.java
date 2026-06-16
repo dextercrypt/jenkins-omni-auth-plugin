@@ -82,6 +82,95 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
         return entraConfig;
     }
 
+    /**
+     * The configured external SSO provider preset, or {@code null} when no SSO is set up.
+     * Drives the sign-in button's label and logo on the login page. Today Entra maps to
+     * {@link SsoProvider#MICROSOFT}; add more mappings here as new providers are supported.
+     */
+    public SsoProvider getSsoProvider() {
+        return entraConfig != null ? SsoProvider.MICROSOFT : null;
+    }
+
+    public String getLoginHeading() {
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        String v = cfg != null ? cfg.getLoginHeading() : "";
+        return (v != null && !v.isBlank()) ? v : "Sign in to Jenkins";
+    }
+
+    public String getLoginTabTitle() {
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        String v = cfg != null ? cfg.getLoginTabTitle() : "";
+        return (v != null && !v.isBlank()) ? v : "Sign In";
+    }
+
+    public String getLoginAnnouncementText() {
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        return cfg != null ? cfg.getLoginAnnouncementText() : "";
+    }
+
+    public String getLoginFooterText() {
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        return cfg != null ? cfg.getLoginFooterText() : "";
+    }
+
+    public String getLoginBackground() {
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        return cfg != null ? cfg.getLoginBackground() : "omniauth";
+    }
+
+    public String getLoginLogoPosition() {
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        return cfg != null ? cfg.getLoginLogoPosition() : "a";
+    }
+
+    public String getLoginLogoSize() {
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        return cfg != null ? cfg.getLoginLogoSize() : "40";
+    }
+
+    public String getLoginButler() {
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        return cfg != null ? cfg.getLoginButler() : "default";
+    }
+
+    /** Concrete butler the branding panel renders (rotation modes resolved here). */
+    public String getResolvedLoginButler() {
+        OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
+        return cfg != null ? cfg.getResolvedLoginButler() : "default";
+    }
+
+    public String getLoginLogoUrl() {
+        java.io.File dir = new java.io.File(jenkins.model.Jenkins.get().getRootDir(), "omniauth-branding");
+        java.io.File[] files = dir.listFiles(f -> f.getName().startsWith("login-logo."));
+        if (files == null || files.length == 0) return "";
+        String root = jenkins.model.Jenkins.get().getRootUrl();
+        if (root == null) return "";
+        if (root.endsWith("/")) root = root.substring(0, root.length() - 1);
+        // Cache-bust by the file's last-modified time so swapping the logo busts the
+        // browser cache, while an unchanged logo keeps a stable, cacheable URL.
+        return root + "/securityRealm/loginLogo?v=" + files[0].lastModified();
+    }
+
+    public void doLoginLogo(org.kohsuke.stapler.StaplerRequest req,
+                            org.kohsuke.stapler.StaplerResponse rsp) throws Exception {
+        java.io.File dir = new java.io.File(jenkins.model.Jenkins.get().getRootDir(), "omniauth-branding");
+        java.io.File[] files = dir.listFiles(f -> f.getName().startsWith("login-logo."));
+        if (files == null || files.length == 0) { rsp.setStatus(404); return; }
+        java.io.File logo = files[0];
+        String name = logo.getName().toLowerCase();
+        String ct = "image/png";
+        if (name.endsWith(".svg"))              ct = "image/svg+xml";
+        else if (name.endsWith(".jpg") || name.endsWith(".jpeg")) ct = "image/jpeg";
+        else if (name.endsWith(".gif"))         ct = "image/gif";
+        else if (name.endsWith(".webp"))        ct = "image/webp";
+        else if (name.endsWith(".ico"))         ct = "image/x-icon";
+        rsp.setContentType(ct);
+        rsp.setHeader("Cache-Control", "public, max-age=3600");
+        byte[] data = java.nio.file.Files.readAllBytes(logo.toPath());
+        rsp.setContentLength(data.length);
+        rsp.getOutputStream().write(data);
+    }
+
     // -------------------------------------------------------------------------
     // Override only the login URL — everything else is inherited from
     // HudsonPrivateSecurityRealm without change.

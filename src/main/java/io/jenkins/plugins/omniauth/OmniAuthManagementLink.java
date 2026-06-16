@@ -66,7 +66,7 @@ public class OmniAuthManagementLink extends ManagementLink {
     // ManagementLink metadata
     // -------------------------------------------------------------------------
 
-    @Override public String getIconFileName()    { return "symbol-people"; }
+    @Override public String getIconFileName()    { return "/plugin/omni-auth/images/icon.svg"; }
     @Override public String getDisplayName()     { return "OmniAuth Management"; }
     @Override public String getDescription()     { return "Manage users, review access, monitor security, and clean up stale accounts."; }
     @Override public String getUrlName()         { return "omniauth-management"; }
@@ -511,6 +511,15 @@ public class OmniAuthManagementLink extends ManagementLink {
             putParam(json, req, "smtpReplyTo");
             putParam(json, req, "notifyEmails");
             putParam(json, req, "notificationLogoUrl");
+            // preserve login branding (managed by Settings page)
+            json.put("loginHeading",          config.getLoginHeading());
+            json.put("loginTabTitle",         config.getLoginTabTitle());
+            json.put("loginAnnouncementText", config.getLoginAnnouncementText());
+            json.put("loginFooterText",       config.getLoginFooterText());
+            json.put("loginBackground",       config.getLoginBackground());
+            json.put("loginLogoPosition",     config.getLoginLogoPosition());
+            json.put("loginLogoSize",         config.getLoginLogoSize());
+            json.put("loginButler",           config.getLoginButler());
             putParam(json, req, "notificationFooterNote");
             // brute force
             String bft = req.getParameter("bruteForceThreshold");
@@ -739,6 +748,23 @@ public class OmniAuthManagementLink extends ManagementLink {
             json.put("accessReviewEnabled", req.getParameter("accessReviewEnabled") != null);
             String arDays = req.getParameter("accessReviewThresholdDays");
             if (arDays != null) json.put("accessReviewThresholdDays", arDays.trim());
+            // login page branding (managed by this page)
+            String lh  = req.getParameter("loginHeading");
+            String ltt = req.getParameter("loginTabTitle");
+            String lat = req.getParameter("loginAnnouncementText");
+            String lft = req.getParameter("loginFooterText");
+            String lbg = req.getParameter("loginBackground");
+            String llp = req.getParameter("loginLogoPosition");
+            String lls = req.getParameter("loginLogoSize");
+            String lbt = req.getParameter("loginButler");
+            if (lh  != null) json.put("loginHeading",          lh.trim());
+            if (ltt != null) json.put("loginTabTitle",          ltt.trim());
+            if (lat != null) json.put("loginAnnouncementText", lat.trim());
+            if (lft != null) json.put("loginFooterText",       lft.trim());
+            if (lbg != null) json.put("loginBackground",       lbg.trim());
+            if (llp != null) json.put("loginLogoPosition",     llp.trim());
+            if (lls != null) json.put("loginLogoSize",         lls.trim());
+            if (lbt != null) json.put("loginButler",           lbt.trim());
             // preserve fields managed by the Notifications page
             json.put("notificationsEnabled", config.isNotificationsEnabled());
             json.put("smtpEnabled",          config.isSmtpEnabled());
@@ -976,6 +1002,68 @@ public class OmniAuthManagementLink extends ManagementLink {
 
     public OmniAuthGlobalConfig getOmniAuthGlobalConfig() {
         return OmniAuthGlobalConfig.get();
+    }
+
+    public boolean isLoginLogoUploaded() {
+        java.io.File dir = new java.io.File(Jenkins.get().getRootDir(), "omniauth-branding");
+        java.io.File[] files = dir.listFiles(f -> f.getName().startsWith("login-logo."));
+        return files != null && files.length > 0;
+    }
+
+    public String getLoginLogoPreviewUrl() {
+        java.io.File dir = new java.io.File(Jenkins.get().getRootDir(), "omniauth-branding");
+        java.io.File[] files = dir.listFiles(f -> f.getName().startsWith("login-logo."));
+        if (files == null || files.length == 0) return "";
+        String root = Jenkins.get().getRootUrl();
+        if (root == null) return "";
+        if (root.endsWith("/")) root = root.substring(0, root.length() - 1);
+        // Cache-bust by last-modified so a freshly uploaded logo shows immediately.
+        return root + "/securityRealm/loginLogo?v=" + files[0].lastModified();
+    }
+
+    @POST
+    public void doUploadLoginLogo(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        org.apache.commons.fileupload.FileItem fileItem = req.getFileItem("loginLogo");
+        if (fileItem == null || fileItem.getSize() == 0) {
+            writeJson(rsp, "{\"ok\":false,\"msg\":\"No file received.\"}");
+            return;
+        }
+        String originalName = fileItem.getName();
+        String ext = "";
+        if (originalName != null) {
+            int dot = originalName.lastIndexOf('.');
+            if (dot >= 0) ext = originalName.substring(dot + 1).toLowerCase().trim();
+        }
+        java.util.Set<String> allowed = new java.util.HashSet<>(
+                java.util.Arrays.asList("png", "jpg", "jpeg", "svg", "gif", "webp", "ico"));
+        if (!allowed.contains(ext)) {
+            writeJson(rsp, "{\"ok\":false,\"msg\":\"Unsupported file type. Use PNG, JPG, SVG, GIF, or WebP.\"}");
+            return;
+        }
+        if (fileItem.getSize() > 2 * 1024 * 1024) {
+            writeJson(rsp, "{\"ok\":false,\"msg\":\"File too large. Maximum 2 MB.\"}");
+            return;
+        }
+        java.io.File brandingDir = new java.io.File(Jenkins.get().getRootDir(), "omniauth-branding");
+        brandingDir.mkdirs();
+        java.io.File[] existing = brandingDir.listFiles(f -> f.getName().startsWith("login-logo."));
+        if (existing != null) for (java.io.File f : existing) f.delete();
+        java.io.File dest = new java.io.File(brandingDir, "login-logo." + ext);
+        try { fileItem.write(dest); } catch (Exception e) {
+            writeJson(rsp, "{\"ok\":false,\"msg\":\"Failed to save file: " + escapeJson(e.getMessage()) + "\"}");
+            return;
+        }
+        writeJson(rsp, "{\"ok\":true,\"msg\":\"Logo uploaded.\"}");
+    }
+
+    @POST
+    public void doRemoveLoginLogo(StaplerRequest req, StaplerResponse rsp) throws Exception {
+        Jenkins.get().checkPermission(Jenkins.ADMINISTER);
+        java.io.File dir = new java.io.File(Jenkins.get().getRootDir(), "omniauth-branding");
+        java.io.File[] files = dir.listFiles(f -> f.getName().startsWith("login-logo."));
+        if (files != null) for (java.io.File f : files) f.delete();
+        writeJson(rsp, "{\"ok\":true}");
     }
 
     public EntraOAuthConfig getEntraConfig() {

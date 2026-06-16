@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="10 10 44 46" shape-rendering="geometricPrecision">
+  <style>
+    .oa-s-sec { stroke: #b6bcc6; }
+    .oa-s-pri { stroke: #1b1f24; }
+    .oa-f-sec { fill: #b6bcc6; }
+    .oa-f-pri { fill: #1b1f24; }
+    :root[data-theme="dark"] .oa-s-sec { stroke: #7d8794; }
+    :root[data-theme="dark"] .oa-s-pri { stroke: #ffffff; }
+    :root[data-theme="dark"] .oa-f-sec { fill: #7d8794; }
+    :root[data-theme="dark"] .oa-f-pri { fill: #ffffff; }
+  </style>
+  <path class="oa-s-sec" d="M16 51 L16 32 A16 16 0 0 1 32 16" fill="none" stroke-width="8.5" stroke-linecap="butt"/>
+  <path class="oa-s-pri" d="M32 16 A16 16 0 0 1 48 32 L48 51" fill="none" stroke-width="8.5" stroke-linecap="butt"/>
+  <circle class="oa-f-sec" cx="16" cy="51" r="3.2"/>
+  <circle class="oa-f-pri" cx="48" cy="51" r="3.2"/>
+  <circle class="oa-f-pri" cx="32" cy="29" r="5"/>
+  <path class="oa-f-pri" d="M30 33 H34 L33.2 39.5 H30.8 Z"/>
+</svg>

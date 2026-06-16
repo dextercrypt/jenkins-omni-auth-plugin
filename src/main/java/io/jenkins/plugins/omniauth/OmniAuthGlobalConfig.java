@@ -65,6 +65,24 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     // ── JIT history retention ─────────────────────────────────────────────────
     private int jitHistoryRetentionDays = 90;
 
+    // ── Login page branding ───────────────────────────────────────────────────
+    private String loginHeading          = "";
+    private String loginTabTitle         = "";
+    private String loginAnnouncementText = "";
+    private String loginFooterText       = "";
+    // Which background the login panel shows. Known values: "omniauth" (animated reactor,
+    // default) and "starburst" (Jenkins' native starburst). New designs can be added later.
+    private String loginBackground       = "omniauth";
+    // Where the company logo sits on the login form. Known values: "a" (top of the
+    // form column, left-aligned — default), "e" (pinned top-right corner of the panel),
+    // "f" (logo centred above the form). Only takes effect when a logo is uploaded.
+    private String loginLogoPosition     = "a";
+    // Company-logo height on the login form, in px. Known values: "20", "30", "40" (default).
+    private String loginLogoSize         = "40";
+    // Centre figure on the animated login panel. Known values: "default" (native Jenkins
+    // butler) and "austin" (the "Willie Nelson"/Austin Jenkins butler, CC BY-SA 3.0).
+    private String loginButler           = "default";
+
     // ── Notification branding ─────────────────────────────────────────────────
     private String notificationLogoUrl  = "";
     private String notificationFooterNote = "";
@@ -110,6 +128,101 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
     public boolean isSmtpTls()          { return smtpTls; }
     public String  getSmtpFromAddress() { return smtpFromAddress; }
     public String  getSmtpFromName()    { return smtpFromName; }
+    public String  getLoginHeading()   { return loginHeading  != null ? loginHeading.trim()  : ""; }
+    public String  getLoginTabTitle()  { return loginTabTitle != null ? loginTabTitle.trim() : ""; }
+    public void    setLoginHeading(String v)  { this.loginHeading  = v != null ? v.trim() : ""; }
+    public void    setLoginTabTitle(String v) { this.loginTabTitle = v != null ? v.trim() : ""; }
+    public String  getLoginAnnouncementText() { return loginAnnouncementText != null ? loginAnnouncementText.trim() : ""; }
+    public String  getLoginFooterText()       { return loginFooterText != null ? loginFooterText.trim() : ""; }
+    public void    setLoginAnnouncementText(String v) { this.loginAnnouncementText = v != null ? v.trim() : ""; }
+    public void    setLoginFooterText(String v)       { this.loginFooterText       = v != null ? v.trim() : ""; }
+    public String  getLoginBackground() {
+        String v = loginBackground != null ? loginBackground.trim() : "";
+        return v.isEmpty() ? "omniauth" : v;
+    }
+    public void    setLoginBackground(String v) { this.loginBackground = (v != null && !v.trim().isEmpty()) ? v.trim() : "omniauth"; }
+    public String  getLoginLogoPosition() {
+        String v = loginLogoPosition != null ? loginLogoPosition.trim() : "";
+        return (v.equals("a") || v.equals("e") || v.equals("f")) ? v : "a";
+    }
+    public void    setLoginLogoPosition(String v) {
+        String t = v != null ? v.trim() : "";
+        this.loginLogoPosition = (t.equals("e") || t.equals("f")) ? t : "a";
+    }
+    public String  getLoginLogoSize() {
+        String v = loginLogoSize != null ? loginLogoSize.trim() : "";
+        return (v.equals("20") || v.equals("30") || v.equals("40")) ? v : "40";
+    }
+    public void    setLoginLogoSize(String v) {
+        String t = v != null ? v.trim() : "";
+        this.loginLogoSize = (t.equals("20") || t.equals("30")) ? t : "40";
+    }
+    /** Whitelist of concrete butler styles. Add the id here when inlining a new butler. */
+    private static final java.util.Set<String> BUTLERS =
+        java.util.Set.of(
+                "default", "austin", "jenkinsx", "general", "nerd", "ninja", "santaclaus", "superhero",
+                "raleigh", "sandiego", "cowboy");
+    /** Rotation modes: not concrete butlers, resolved per render by getResolvedLoginButler(). */
+    private static final java.util.Set<String> ROTATION_MODES = java.util.Set.of("daily", "random");
+    /**
+     * Ordered pool the rotation modes cycle through — the "cool" styled butlers (native excluded).
+     * Santa is gated to December (see buildRotationPool); changing this order changes the daily cadence.
+     */
+    private static final java.util.List<String> ROTATION_POOL = java.util.List.of(
+            "austin", "jenkinsx", "general", "nerd", "ninja", "superhero",
+            "raleigh", "sandiego", "cowboy", "santaclaus");
+
+    /** Raw stored selection — a concrete butler id OR a rotation mode ("daily"/"random"). For settings + persistence. */
+    public String  getLoginButler() {
+        String v = loginButler != null ? loginButler.trim() : "";
+        return (BUTLERS.contains(v) || ROTATION_MODES.contains(v)) ? v : "default";
+    }
+    public void    setLoginButler(String v) {
+        String t = v != null ? v.trim() : "";
+        this.loginButler = (BUTLERS.contains(t) || ROTATION_MODES.contains(t)) ? t : "default";
+    }
+
+    /** The concrete butler to actually render: rotation modes resolve here, everything else passes through. */
+    public String  getResolvedLoginButler() {
+        String raw = getLoginButler();
+        if (!ROTATION_MODES.contains(raw)) {
+            return raw; // explicit fixed pick (incl. native) is always respected — festive lock never overrides it
+        }
+        // Festive lock: Dec 21 → Jan 1, rotation modes always show Santa 🎅
+        if (isFestiveWindow(java.time.LocalDate.now())) {
+            return "santaclaus";
+        }
+        java.util.List<String> pool = buildRotationPool();
+        if (pool.isEmpty()) {
+            return "default";
+        }
+        java.time.LocalDate today = java.time.LocalDate.now();
+        int idx = "daily".equals(raw)
+                ? (today.getDayOfYear() % pool.size())
+                : java.util.concurrent.ThreadLocalRandom.current().nextInt(pool.size());
+        return pool.get(idx);
+    }
+
+    /** The Christmas lock window: Dec 21 through Jan 1 (inclusive). */
+    private static boolean isFestiveWindow(java.time.LocalDate d) {
+        int month = d.getMonthValue();
+        int day = d.getDayOfMonth();
+        return (month == 12 && day >= 21) || (month == 1 && day == 1);
+    }
+
+    /** Rotation pool for the current date — Santa only joins in December. */
+    private static java.util.List<String> buildRotationPool() {
+        boolean december = java.time.LocalDate.now().getMonthValue() == 12;
+        java.util.List<String> pool = new java.util.ArrayList<>();
+        for (String b : ROTATION_POOL) {
+            if ("santaclaus".equals(b) && !december) {
+                continue;
+            }
+            pool.add(b);
+        }
+        return pool;
+    }
+
     public String  getNotificationLogoUrl() {
         return notificationLogoUrl != null ? notificationLogoUrl.trim() : "";
     }
@@ -221,6 +334,14 @@ public class OmniAuthGlobalConfig extends GlobalConfiguration {
         smtpFromName    = jsonStr(json, "smtpFromName",    "Jenkins OmniAuth");
         smtpReplyTo     = jsonStr(json, "smtpReplyTo",     "");
         notifyEmails          = jsonStr(json, "notifyEmails",          "");
+        loginHeading          = jsonStr(json, "loginHeading",          "");
+        loginTabTitle         = jsonStr(json, "loginTabTitle",         "");
+        loginAnnouncementText = jsonStr(json, "loginAnnouncementText", "");
+        loginFooterText       = jsonStr(json, "loginFooterText",       "");
+        loginBackground       = jsonStr(json, "loginBackground",       "omniauth");
+        loginLogoPosition     = jsonStr(json, "loginLogoPosition",     "a");
+        loginLogoSize         = jsonStr(json, "loginLogoSize",         "40");
+        loginButler           = jsonStr(json, "loginButler",           "default");
         notificationLogoUrl   = jsonStr(json, "notificationLogoUrl",   "");
         notificationFooterNote = jsonStr(json, "notificationFooterNote", "");
 
