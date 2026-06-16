@@ -82,6 +82,15 @@ public class OmniAuthSecurityRealm extends HudsonPrivateSecurityRealm {
         return entraConfig;
     }
 
+    /**
+     * The configured external SSO provider preset, or {@code null} when no SSO is set up.
+     * Drives the sign-in button's label and logo on the login page. Today Entra maps to
+     * {@link SsoProvider#MICROSOFT}; add more mappings here as new providers are supported.
+     */
+    public SsoProvider getSsoProvider() {
+        return entraConfig != null ? SsoProvider.MICROSOFT : null;
+    }
+
     public String getLoginHeading() {
         OmniAuthGlobalConfig cfg = OmniAuthGlobalConfig.get();
         String v = cfg != null ? cfg.getLoginHeading() : "";

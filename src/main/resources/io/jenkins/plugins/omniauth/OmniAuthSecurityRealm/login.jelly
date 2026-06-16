@@ -101,6 +101,30 @@
           /* footer readability on dark */
           .app-sign-in-register__content-inner .footer,
           .app-sign-in-register__content-inner .footer * { color: #7d8aa2 !important; }
+
+          /* ===== show-password eye toggle ===== */
+          .pw-wrap { position: relative; }
+          .pw-wrap input[type=text],
+          .pw-wrap input[type=password] { padding-right: 44px; }
+          .pw-toggle {
+            position: absolute; top: 0; right: 0; height: 100%; width: 42px;
+            display: flex; align-items: center; justify-content: center;
+            background: none; border: none; padding: 0; margin: 0; cursor: pointer;
+            color: #9fb2d0;
+          }
+          .pw-toggle:hover { color: #e2e9f5; }
+          /* force a sensible icon size — Jenkins core shrinks bare svg icons otherwise */
+          .pw-toggle svg { width: 20px !important; height: 20px !important; display: block; }
+          .pw-toggle .icon-eye-off { display: none; }
+          .pw-toggle.revealed .icon-eye { display: none; }
+          .pw-toggle.revealed .icon-eye-off { display: block; }
+
+          /* ===== caps-lock warning ===== */
+          .caps-warn {
+            display: none; align-items: center; gap: 6px;
+            margin-top: 6px; font-size: 12px; color: #ffcf66;
+          }
+          .caps-warn.show { display: flex; }
         </style>
       </head>
       <body class="app-sign-in-register">
@@ -178,18 +202,41 @@
                          name="j_username"
                          id="j_username"
                          autocorrect="off"
-                         autocomplete="off"
+                         autocomplete="username"
                          autocapitalize="off"
                          autofocus="autofocus"
                     />
                   </div>
                   <div>
                     <label class="app-sign-in-register__form-label" for="j_password">${%Password}</label>
-                    <input id="j_password"
-                         class="jenkins-input ${inputClass}"
-                         type="password"
-                         name="j_password"
-                    />
+                    <div class="pw-wrap">
+                      <input id="j_password"
+                           class="jenkins-input ${inputClass}"
+                           type="password"
+                           name="j_password"
+                           autocomplete="current-password"
+                      />
+                      <button type="button" id="togglePw" class="pw-toggle" tabindex="-1"
+                              aria-label="Show password" title="Show password">
+                        <svg class="icon-eye" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                        </svg>
+                        <svg class="icon-eye-off" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                          <line x1="1" y1="1" x2="23" y2="23"/>
+                        </svg>
+                      </button>
+                    </div>
+                    <div id="capsWarn" class="caps-warn" aria-live="polite">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                      </svg>
+                      <span>Caps Lock is on</span>
+                    </div>
                   </div>
 
                   <j:if test="${app.security.name()=='SECURED' and !app.disableRememberMe}">
@@ -212,9 +259,10 @@
                 </form>
 
                 <!-- ============================================================
-                     MICROSOFT ENTRA LOGIN — added by dual-auth plugin
+                     EXTERNAL SSO LOGIN — provider preset (see SsoProvider.java)
+                     Label + logo come from the configured provider; today: Microsoft.
                      ============================================================ -->
-                <j:if test="${it.entraConfig != null}">
+                <j:if test="${it.ssoProvider != null}">
                   <div style="display:flex;align-items:center;margin:16px 0;gap:8px;">
                     <hr style="flex:1;border:none;border-top:1px dashed #26344c;"/>
                     <span style="font-size:12px;color:#7d8aa2;white-space:nowrap;">or</span>
@@ -236,13 +284,25 @@
                        font-size:14px;font-weight:500;
                        text-decoration:none;cursor:pointer;
                        transition:box-shadow .15s ease;">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 21 21" style="flex-shrink:0;">
-                      <rect x="1"  y="1"  width="9" height="9" fill="#f25022"/>
-                      <rect x="11" y="1"  width="9" height="9" fill="#00a4ef"/>
-                      <rect x="1"  y="11" width="9" height="9" fill="#7fba00"/>
-                      <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
-                    </svg>
-                    Sign in with Microsoft
+                    <!-- Provider logo, keyed off the preset id. Add a branch per new provider. -->
+                    <j:choose>
+                      <j:when test="${it.ssoProvider.id == 'microsoft'}">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 21 21" style="flex-shrink:0;">
+                          <rect x="1"  y="1"  width="9" height="9" fill="#f25022"/>
+                          <rect x="11" y="1"  width="9" height="9" fill="#00a4ef"/>
+                          <rect x="1"  y="11" width="9" height="9" fill="#7fba00"/>
+                          <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+                        </svg>
+                      </j:when>
+                      <j:otherwise>
+                        <!-- Generic SSO fallback (key icon) for providers without a bespoke logo -->
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                             stroke="#dde6f4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+                          <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                        </svg>
+                      </j:otherwise>
+                    </j:choose>
+                    ${it.ssoProvider.buttonLabel}
                   </a>
                 </j:if>
 
@@ -260,6 +320,59 @@
                 </div>
               </div>
             </main>
+            <!-- Password UX: show/hide toggle + caps-lock warning (always-on, no setting) -->
+            <script>
+              //<![CDATA[
+              (function () {
+                var pw = document.getElementById('j_password');
+                var btn = document.getElementById('togglePw');
+                var caps = document.getElementById('capsWarn');
+                if (pw && btn) {
+                  btn.addEventListener('click', function () {
+                    var reveal = pw.type === 'password';
+                    pw.type = reveal ? 'text' : 'password';
+                    btn.classList.toggle('revealed', reveal);
+                    var label = reveal ? 'Hide password' : 'Show password';
+                    btn.setAttribute('aria-label', label);
+                    btn.setAttribute('title', label);
+                    pw.focus();
+                  });
+                }
+                if (pw && caps) {
+                  var update = function (e) {
+                    var on = false;
+                    if (e && typeof e.getModifierState === 'function') {
+                      on = e.getModifierState('CapsLock');
+                    }
+                    caps.classList.toggle('show', on);
+                  };
+                  pw.addEventListener('keydown', update);
+                  pw.addEventListener('keyup', update);
+                  pw.addEventListener('blur', function () { caps.classList.remove('show'); });
+                }
+                // Remember last username: prefill on load, save on submit.
+                var user = document.getElementById('j_username');
+                var form = document.forms['login'];
+                var KEY = 'omniauth.lastUser';
+                if (user) {
+                  try {
+                    if (!user.value) {
+                      var last = window.localStorage.getItem(KEY);
+                      if (last) {
+                        user.value = last;
+                        if (pw) { pw.focus(); }
+                      }
+                    }
+                  } catch (e) {}
+                  if (form) {
+                    form.addEventListener('submit', function () {
+                      try { window.localStorage.setItem(KEY, user.value || ''); } catch (e) {}
+                    });
+                  }
+                }
+              })();
+              //]]>
+            </script>
           </j:otherwise>
         </j:choose>
       </body>
